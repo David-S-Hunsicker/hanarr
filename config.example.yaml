@@ -1,0 +1,86 @@
+# Copy this file to config.yaml and edit it. config.yaml is gitignored —
+# your preferences and resume path never get committed.
+
+profile:
+  name: "Your Name"
+  resume_path: "resumes/resume.md"   # .md, .txt, or .pdf
+
+preferences:
+  # What you're looking for. Free-text titles/keywords the matcher will
+  # weigh alongside your resume when scoring postings.
+  target_titles:
+    - "Software Engineer"
+    - "Backend Engineer"
+  keywords_boost:       # bonus weight if present in a posting
+    - "python"
+    - "distributed systems"
+  keywords_exclude:     # postings containing these are filtered out entirely
+    - "unpaid"
+    - "commission only"
+
+  seniority: "mid"        # one of: intern, junior, mid, senior, staff, principal, exec
+  employment_types:       # any of: full_time, part_time, contract, internship
+    - "full_time"
+
+  locations:
+    - "Remote"
+    - "Seattle, WA"
+  remote_ok: true
+  onsite_ok: false
+  willing_to_relocate: false
+
+  salary_floor_usd: 120000   # postings below this (when salary is listed) are filtered
+  company_size_min: null      # e.g. 50 — leave null to not filter
+  company_size_max: null
+
+  industries_include: []      # empty = no restriction
+  industries_exclude:
+    - "gambling"
+    - "tobacco"
+
+  dealbreakers:                # free text, considered by the LLM scorer
+    - "no visa sponsorship available"
+
+matching:
+  min_fit_score: 60    # 0-100; postings scoring below this are hidden by default
+
+sources:
+  greenhouse:
+    enabled: true
+    # Company board tokens, e.g. for boards.greenhouse.io/stripe -> "stripe"
+    company_boards:
+      - "stripe"
+      - "airbnb"
+  lever:
+    enabled: false
+    companies: []
+  remoteok:
+    enabled: true
+    tags: ["python", "backend"]
+  arbeitnow:
+    enabled: true
+
+llm:
+  provider: "ollama"          # ollama | anthropic (bring your own key) | none (rule-based only)
+  model: "qwen2.5:14b"
+  base_url: "http://localhost:11434"
+  # api_key: set via ANTHROPIC_API_KEY env var if provider = anthropic
+
+schedule:
+  search_interval_hours: 6
+  reminder_check_interval_hours: 1
+
+reminders:
+  follow_up_after_days: 7       # remind to follow up N days after marking "applied"
+  desktop_notifications: true
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    smtp_user: ""
+    # smtp_password: set via SMTP_PASSWORD env var
+    to_address: ""
+
+dashboard:
+  host: "127.0.0.1"
+  port: 8420

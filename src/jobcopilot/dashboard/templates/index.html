@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>job-search-copilot</title>
+  <style>
+    body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.4rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    th { color: #666; font-weight: 600; }
+    .score { font-weight: 600; }
+    .reminders { background: #fff8e1; border: 1px solid #f0e0a0; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; }
+    select, button { font-size: 0.85rem; }
+    .filters a { margin-right: 0.75rem; text-decoration: none; color: #06c; }
+    a.title-link { color: #222; text-decoration: none; }
+    a.title-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>job-search-copilot</h1>
+
+  {% if reminders %}
+  <div class="reminders">
+    <strong>{{ reminders|length }} reminder(s) due:</strong>
+    <ul>
+      {% for r in reminders %}
+      <li>{{ r.message }} (due {{ r.due_at.strftime('%Y-%m-%d') }})</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="filters">
+    <a href="/">All</a>
+    {% for s in statuses %}
+    <a href="/?status={{ s }}">{{ s }}</a>
+    {% endfor %}
+  </div>
+
+  <table>
+    <tr><th>Score</th><th>Title</th><th>Company</th><th>Location</th><th>Status</th><th></th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td class="score">{{ "%.0f"|format(job.fit_score) if job.fit_score is not none else "-" }}</td>
+      <td><a class="title-link" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }}</a></td>
+      <td>{{ job.company }}</td>
+      <td>{{ job.location }}</td>
+      <td>{{ job.status.value }}</td>
+      <td>
+        <form method="post" action="/jobs/{{ job.id }}/status">
+          <select name="new_status" onchange="this.form.submit()">
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if s == job.status.value %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6">No jobs yet — run <code>jobcopilot search</code>.</td></tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

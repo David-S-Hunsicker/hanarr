@@ -1,0 +1,176 @@
+# job-search-copilot
+
+A configurable, self-hosted job-search agent. It parses your resume, searches job sources that
+have legitimate public APIs (no ToS-violating scraping), scores how well each posting fits your
+stated preferences, tracks your application status, and reminds you to follow up or prep for
+interviews. You review matches and make the calls — this handles the searching and bookkeeping so
+you can spend your time on interview prep instead.
+
+Runs entirely on your own machine. Your resume, preferences, and match data stay in a local
+SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
+LLM provider you configure.
+
+## How it works
+
+1. You write your preferences into `config.yaml` (titles, locations, salary floor, dealbreakers,
+   which job sources to use) and drop your resume in `resumes/`.
+2. `jobcopilot init` parses your resume into a structured profile using a local LLM.
+3. `jobcopilot search` (or the scheduler in `jobcopilot serve`) fetches postings from your enabled
+   sources, rule-filters them against your preferences, and scores the survivors for fit.
+4. You review matches via `jobcopilot list` or the local dashboard, and mark status as you apply /
+   hear back / interview.
+5. Marking a job "applied" or "interviewing" schedules a reminder automatically.
+
+## Status: what's actually verified
+
+This was scaffolded in a sandboxed environment with no package-manager or live-internet access,
+so it could not be run end-to-end before landing here. What was verified there: every file
+byte-compiles cleanly, config loading against `config.example.yaml` works, the prefilter/scoring
+logic in `matching.py` produces correct results, and the Greenhouse connector correctly parses a
+(mocked) API response. What was **not** yet exercised, and should be your first pass: the CLI
+commands end-to-end, the dashboard actually rendering in a browser, the Ollama/Anthropic LLM
+clients against a real model, the RemoteOK/Arbeitnow connectors against the live APIs (their
+JSON shape may have drifted from what's coded here), and desktop notifications via `plyer`
+(notoriously inconsistent across OSes). None of this is exotic — it's the normal gap between
+"written carefully" and "run for real" — but budget your first session for `pytest` plus a
+manual walk through each command below, not just a skim.
+
+## Setup
+
+Requires Python 3.10+.
+
+If you're starting from the zip (no GitHub repo yet), unzip it, create a repo on GitHub, then:
+
+```bash
+cd job-search-copilot
+git remote add origin <your new repo's URL>
+git push -u origin master
+```
+
+Then (or if you're cloning an existing repo):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### 1. Set up a local LLM (recommended default)
+
+Install [Ollama](https://ollama.com), then pull a model:
+
+```bash
+ollama pull qwen2.5:14b   # good balance of quality/speed; a 7B model works too, just less sharp
+```
+
+No API key, no cost, nothing leaves your machine. If you'd rather use a hosted Claude model
+instead, set `llm.provider: anthropic` in `config.yaml` and put `ANTHROPIC_API_KEY` in `.env` —
+note this incurs API usage costs. Setting `llm.provider: none` skips the LLM entirely and falls
+back to keyword-overlap scoring only.
+
+### 2. Configure
+
+```bash
+cp config.example.yaml config.yaml   # jobcopilot init also does this for you
+```
+
+Edit `config.yaml`: your target titles, locations, salary floor, dealbreakers, and which job
+sources to enable (see **Job sources** below — you need to fill in real company boards/tags for
+most of them to return anything). `config.yaml` is gitignored, so your preferences never get
+committed even if you fork this repo publicly.
+
+Drop your resume at `resumes/resume.md` (or `.txt`/`.pdf`, and update `profile.resume_path` if
+you use a different name/location).
+
+### 3. Initialize
+
+```bash
+jobcopilot init
+```
+
+This parses your resume and stores the structured profile (skills, titles, seniority) used for
+scoring.
+
+### 4. Run a search
+
+```bash
+jobcopilot search        # one-off search cycle
+jobcopilot list          # see matches, sorted by fit score
+jobcopilot status 3 applied      # mark job id 3 as applied -> schedules a follow-up reminder
+jobcopilot remind        # check for and deliver due reminders
+```
+
+Or run continuously with a background scheduler and a local dashboard:
+
+```bash
+jobcopilot serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
+```
+
+## Job sources
+
+Only sources with legitimate public APIs are included — this project won't add scrapers for
+sites whose Terms of Service prohibit automated access (LinkedIn, Indeed, etc.); that risks your
+account and isn't something to build around.
+
+| Source | What it needs | Notes |
+|---|---|---|
+| Greenhouse | `sources.greenhouse.company_boards` — company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug |
+| RemoteOK | `sources.remoteok.tags` — optional tag filter | Free public API |
+| Arbeitnow | none | Free public API, mostly EU-heavy listings |
+| Lever | scaffolded (`sources/lever.py` not yet implemented) | Good first contribution — see below |
+
+Adding a new source is one file: implement `Connector.fetch()` in `src/jobcopilot/connectors/`
+returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See
+`greenhouse.py` for a minimal example.
+
+## Configuration reference
+
+See `config.example.yaml` — every field is commented there. Highlights:
+
+- `preferences.*` — target titles, keyword boosts/excludes, seniority, locations, remote/onsite,
+  salary floor, industries to include/exclude, dealbreakers (the LLM scorer weighs these).
+- `matching.min_fit_score` — postings scoring below this are filtered out before they're even
+  stored.
+- `llm.provider` — `ollama` (default, local, free), `anthropic` (hosted, needs API key, has
+  usage costs), or `none` (rule-based keyword scoring only, no LLM calls at all).
+- `schedule.*` — how often `jobcopilot serve` runs searches and checks reminders.
+- `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP.
+
+## Data & privacy
+
+Everything lives in a local SQLite database under `data/` (gitignored). `config.yaml` (your
+preferences) and `resumes/` (your resume) are also gitignored — cloning this repo gets you the
+code, not anyone's personal data. Nothing is sent off your machine except: requests to whichever
+job-source APIs you enable, and — only if you opt into `llm.provider: anthropic` — your resume
+text and job descriptions sent to Anthropic's API for scoring.
+
+## Running your own instance vs. sharing this project
+
+This is built as **one instance per person**: each user clones the repo, fills in their own
+`config.yaml` and resume, and runs it locally. That's deliberate — a shared multi-user instance
+would mean storing other people's resumes and preferences, handling auth, and isolating their
+data from each other, which is real scope beyond a personal tool. If you want to hand this to
+friends, the easiest path today is "you each clone and configure your own copy." The data model
+(everything scoped under `Profile`) is structured so a real multi-tenant version — should this
+ever become that — is an extension rather than a rewrite, but that work (auth, per-user data
+isolation, likely a hosted deployment) hasn't been built.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+Connector tests mock HTTP responses (via `respx`) — they don't hit real APIs. Matching tests
+cover the prefilter and the rule-based fallback scorer.
+
+## Roadmap ideas
+
+- Lever and Ashby connectors (same pattern as Greenhouse)
+- Cover-letter drafting from the LLM client already in place
+- A "why was this filtered out" debug view in the dashboard
+- Optional calendar-file (.ics) export for interview reminders
+
+## License
+
+MIT — see `LICENSE`.
