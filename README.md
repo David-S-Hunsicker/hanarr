@@ -42,9 +42,10 @@ Requires Python 3.10+.
 ```bash
 git clone https://github.com/David-S-Hunsicker/job-search-copilot.git
 cd job-search-copilot
-python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
+
+A virtual environment (`python3 -m venv .venv && source .venv/bin/activate`) is optional but recommended to isolate dependencies from other Python projects on your machine.
 
 ### 1. Set up a local LLM (recommended default)
 
