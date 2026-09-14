@@ -64,7 +64,7 @@ llm:
   provider: "ollama"          # ollama | anthropic (bring your own key) | none (rule-based only)
   model: "qwen2.5:14b"
   base_url: "http://localhost:11434"
-  timeout_seconds: 600        # seconds to wait for LLM response (increase for slower models like deepseek-r1)
+  timeout_seconds: 1800       # seconds to wait for LLM response (increase for slower models like deepseek-r1)
   # api_key: set via ANTHROPIC_API_KEY env var if provider = anthropic
 
 schedule:
