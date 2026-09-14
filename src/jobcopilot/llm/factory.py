@@ -8,7 +8,7 @@ def build_llm_client(cfg: LLMConfig) -> LLMClient:
     if cfg.provider == "ollama":
         from .ollama_client import OllamaClient
 
-        return OllamaClient(model=cfg.model, base_url=cfg.base_url)
+        return OllamaClient(model=cfg.model, base_url=cfg.base_url, timeout=cfg.timeout_seconds)
     if cfg.provider == "anthropic":
         from .anthropic_client import AnthropicClient
 

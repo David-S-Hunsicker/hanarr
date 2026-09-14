@@ -74,6 +74,7 @@ class LLMConfig(BaseModel):
     provider: Literal["ollama", "anthropic", "none"] = "ollama"
     model: str = "qwen2.5:14b"
     base_url: str = "http://localhost:11434"
+    timeout_seconds: float = 600.0
     api_key: Optional[str] = None
 
 
