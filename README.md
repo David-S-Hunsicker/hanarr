@@ -39,17 +39,9 @@ manual walk through each command below, not just a skim.
 
 Requires Python 3.10+.
 
-If you're starting from the zip (no GitHub repo yet), unzip it, create a repo on GitHub, then:
-
 ```bash
+git clone https://github.com/David-S-Hunsicker/job-search-copilot.git
 cd job-search-copilot
-git remote add origin <your new repo's URL>
-git push -u origin master
-```
-
-Then (or if you're cloning an existing repo):
-
-```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
