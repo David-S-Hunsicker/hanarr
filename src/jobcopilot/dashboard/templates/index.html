@@ -4,62 +4,494 @@
   <meta charset="utf-8">
   <title>job-search-copilot</title>
   <style>
-    body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    h1 { font-size: 1.4rem; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #eee; font-size: 0.9rem; }
-    th { color: #666; font-weight: 600; }
-    .score { font-weight: 600; }
-    .reminders { background: #fff8e1; border: 1px solid #f0e0a0; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; }
-    select, button { font-size: 0.85rem; }
-    .filters a { margin-right: 0.75rem; text-decoration: none; color: #06c; }
-    a.title-link { color: #222; text-decoration: none; }
-    a.title-link:hover { text-decoration: underline; }
+    :root {
+      color-scheme: light;
+      --surface-1:      #fcfcfb;
+      --page-plane:     #f9f9f7;
+      --text-primary:   #0b0b0b;
+      --text-secondary: #52514e;
+      --text-muted:     #898781;
+      --gridline:       #e1e0d9;
+      --border:         rgba(11,11,11,0.10);
+      --accent:         #2a78d6;
+      --accent-weak:    #cde2fb;
+      --status-good:      #0ca30c;
+      --status-warning:   #b5790f;
+      --status-serious:   #c1512c;
+      --status-critical:  #d03b3b;
+      --score-high-bg:  #cde2fb;
+      --score-high-fg:  #184f95;
+      --score-mid-bg:   #f0efec;
+      --score-mid-fg:   #52514e;
+      --score-low-bg:   #f9f9f7;
+      --score-low-fg:   #898781;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --surface-1:      #1a1a19;
+        --page-plane:     #0d0d0d;
+        --text-primary:   #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted:     #898781;
+        --gridline:       #2c2c2a;
+        --border:         rgba(255,255,255,0.10);
+        --accent:         #3987e5;
+        --accent-weak:    #184f95;
+        --status-good:      #0ca30c;
+        --status-warning:   #fab219;
+        --status-serious:   #ec835a;
+        --status-critical:  #e66767;
+        --score-high-bg:  #184f95;
+        --score-high-fg:  #cde2fb;
+        --score-mid-bg:   #2c2c2a;
+        --score-mid-fg:   #c3c2b7;
+        --score-low-bg:   #1a1a19;
+        --score-low-fg:   #898781;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --accent:         #3987e5;
+      --accent-weak:    #184f95;
+      --status-good:      #0ca30c;
+      --status-warning:   #fab219;
+      --status-serious:   #ec835a;
+      --status-critical:  #e66767;
+      --score-high-bg:  #184f95;
+      --score-high-fg:  #cde2fb;
+      --score-mid-bg:   #2c2c2a;
+      --score-mid-fg:   #c3c2b7;
+      --score-low-bg:   #1a1a19;
+      --score-low-fg:   #898781;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1rem 4rem;
+      background: var(--page-plane);
+      color: var(--text-primary);
+    }
+    h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
+
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .nav-link {
+      font-size: 0.85rem;
+      font-weight: 550;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .nav-link:hover { text-decoration: underline; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .toolbar button {
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 550;
+      padding: 0.5rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-1);
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+    .toolbar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .toolbar button:disabled { color: var(--text-muted); cursor: default; }
+    .toolbar .note { font-size: 0.85rem; color: var(--text-secondary); }
+    .toolbar .stop-btn { border-color: var(--status-critical); color: var(--status-critical); }
+    .toolbar .stop-btn:hover:not(:disabled) { background: var(--status-critical); color: #fff; }
+    .toolbar .stop-btn:disabled { border-color: var(--border); color: var(--text-muted); }
+
+    .progress-panel {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 1.25rem;
+    }
+    .progress-panel .progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.55rem;
+    }
+    .progress-panel .progress-head strong { color: var(--text-primary); }
+    .progress-bar-track {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--gridline);
+      overflow: hidden;
+      margin-bottom: 0.7rem;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-log {
+      max-height: 8.5rem;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 0.15rem;
+    }
+    .progress-log .log-line { color: var(--text-muted); }
+    .progress-log .log-line.matched { color: var(--status-good); font-weight: 550; }
+    .progress-log .log-line.error { color: var(--status-critical); }
+    .progress-log .log-line.done { color: var(--text-primary); font-weight: 600; }
+
+    .reminders {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--status-warning);
+      border-radius: 8px;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 1.25rem;
+    }
+    .reminders strong { font-size: 0.9rem; }
+    .reminders ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+    .reminders li { font-size: 0.85rem; color: var(--text-secondary); margin: 0.15rem 0; }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem; }
+    .filters a {
+      font-size: 0.8rem;
+      font-weight: 550;
+      text-decoration: none;
+      color: var(--text-secondary);
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .filters a:hover { border-color: var(--accent); color: var(--accent); }
+    .filters a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .job-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .job-card {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.9rem;
+      align-items: start;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1.1rem;
+    }
+    .score-badge {
+      min-width: 2.6rem;
+      height: 2.6rem;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.05rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
+    .score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
+    .score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); border: 1px solid var(--border); }
+
+    .job-main { min-width: 0; }
+    .job-title-row { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+    .job-title {
+      font-size: 1rem;
+      font-weight: 650;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+    .job-title:hover { color: var(--accent); text-decoration: underline; }
+    .job-company { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.15rem; }
+    .job-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .pill {
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .pill.remote { color: var(--status-good); border-color: var(--status-good); }
+    .job-rationale {
+      margin-top: 0.55rem;
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--gridline);
+      padding-top: 0.5rem;
+    }
+    .job-rationale summary {
+      cursor: pointer;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      list-style: none;
+    }
+    .job-rationale summary::-webkit-details-marker { display: none; }
+    .job-rationale summary:before { content: "Why this score \25B8  "; }
+    .job-rationale[open] summary:before { content: "Why this score \25BE  "; }
+    .job-rationale p { margin: 0.4rem 0 0; }
+
+    .job-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
+    .status-select {
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-primary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-secondary);
+      background: var(--surface-1);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+    .empty-state code {
+      background: var(--gridline);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    @media (max-width: 600px) {
+      .job-card { grid-template-columns: auto 1fr; }
+      .job-actions { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: flex-end; }
+    }
   </style>
 </head>
 <body>
-  <h1>job-search-copilot</h1>
+  <div class="page-header">
+    <h1>job-search-copilot</h1>
+    <a class="nav-link" href="/config">Preferences &amp; config</a>
+  </div>
+
+  <div class="toolbar">
+    <form method="post" action="/search" id="search-form">
+      <button type="submit" id="search-btn" {% if search_running %}disabled{% endif %}>
+        {% if search_running %}Search running…{% else %}Run search now{% endif %}
+      </button>
+    </form>
+    <form method="post" action="/search/stop" id="stop-form">
+      <button type="submit" id="stop-btn" class="stop-btn" {% if not search_running %}hidden{% endif %}>Stop search</button>
+    </form>
+    <form method="post" action="/remind">
+      <button type="submit">Check reminders now</button>
+    </form>
+    <span class="note" id="search-note">{% if last_search_result %}{{ last_search_result }}{% endif %}</span>
+  </div>
+
+  <div class="progress-panel" id="progress-panel" hidden>
+    <div class="progress-head">
+      <span id="progress-headline">Starting search…</span>
+      <span id="progress-count"></span>
+    </div>
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-bar-fill"></div></div>
+    <div class="progress-log" id="progress-log"></div>
+  </div>
 
   {% if reminders %}
   <div class="reminders">
-    <strong>{{ reminders|length }} reminder(s) due:</strong>
+    <strong>{{ reminders|length }} reminder(s) due</strong>
     <ul>
       {% for r in reminders %}
-      <li>{{ r.message }} (due {{ r.due_at.strftime('%Y-%m-%d') }})</li>
+      <li>{{ r.message }} — due {{ r.due_at.strftime('%Y-%m-%d') }}</li>
       {% endfor %}
     </ul>
   </div>
   {% endif %}
 
   <div class="filters">
-    <a href="/">All</a>
+    <a href="/" class="{% if not current_filter %}active{% endif %}">All</a>
     {% for s in statuses %}
-    <a href="/?status={{ s }}">{{ s }}</a>
+    <a href="/?status={{ s }}" class="{% if s == current_filter %}active{% endif %}">{{ s }}</a>
     {% endfor %}
   </div>
 
-  <table>
-    <tr><th>Score</th><th>Title</th><th>Company</th><th>Location</th><th>Status</th><th></th></tr>
+  {% if jobs %}
+  <div class="job-list">
     {% for job in jobs %}
-    <tr>
-      <td class="score">{{ "%.0f"|format(job.fit_score) if job.fit_score is not none else "-" }}</td>
-      <td><a class="title-link" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }}</a></td>
-      <td>{{ job.company }}</td>
-      <td>{{ job.location }}</td>
-      <td>{{ job.status.value }}</td>
-      <td>
+    <div class="job-card">
+      {% if job.fit_score is not none %}
+        {% if job.fit_score >= 75 %}
+        <div class="score-badge score-high">{{ "%.0f"|format(job.fit_score) }}</div>
+        {% elif job.fit_score >= 50 %}
+        <div class="score-badge score-mid">{{ "%.0f"|format(job.fit_score) }}</div>
+        {% else %}
+        <div class="score-badge score-low">{{ "%.0f"|format(job.fit_score) }}</div>
+        {% endif %}
+      {% else %}
+        <div class="score-badge score-low">–</div>
+      {% endif %}
+
+      <div class="job-main">
+        <div class="job-title-row">
+          <a class="job-title" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+        </div>
+        <div class="job-company">{{ job.company }}</div>
+        <div class="job-meta">
+          {% if job.remote %}<span class="pill remote">Remote</span>{% endif %}
+          {% if job.location %}<span class="pill">{{ job.location }}</span>{% endif %}
+          {% if job.salary_min or job.salary_max %}
+          <span class="pill">
+            {% if job.salary_min and job.salary_max %}${{ "%.0f"|format(job.salary_min) }}–${{ "%.0f"|format(job.salary_max) }}
+            {% elif job.salary_min %}${{ "%.0f"|format(job.salary_min) }}+
+            {% else %}up to ${{ "%.0f"|format(job.salary_max) }}{% endif %}
+          </span>
+          {% endif %}
+          {% if job.posted_at %}<span class="pill">Posted {{ job.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+          <span class="pill">{{ job.source }}</span>
+        </div>
+        {% if job.fit_rationale %}
+        <details class="job-rationale">
+          <summary>Why this score</summary>
+          <p>{{ job.fit_rationale }}</p>
+        </details>
+        {% endif %}
+      </div>
+
+      <div class="job-actions">
         <form method="post" action="/jobs/{{ job.id }}/status">
-          <select name="new_status" onchange="this.form.submit()">
+          <select class="status-select" name="new_status" onchange="this.form.submit()">
             {% for s in statuses %}
             <option value="{{ s }}" {% if s == job.status.value %}selected{% endif %}>{{ s }}</option>
             {% endfor %}
           </select>
         </form>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6">No jobs yet — run <code>jobcopilot search</code>.</td></tr>
+      </div>
+    </div>
     {% endfor %}
-  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    No jobs yet — run <code>jobcopilot search</code> or click "Run search now" above.
+  </div>
+  {% endif %}
+
+  <script>
+    (function () {
+      const searchBtn = document.getElementById("search-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const searchNote = document.getElementById("search-note");
+      const panel = document.getElementById("progress-panel");
+      const headline = document.getElementById("progress-headline");
+      const countLabel = document.getElementById("progress-count");
+      const barFill = document.getElementById("progress-bar-fill");
+      const logEl = document.getElementById("progress-log");
+
+      let seenRunId = {{ run_id }};
+      let pollTimer = null;
+      let wasRunning = {{ "true" if search_running else "false" }};
+
+      if ("Notification" in window && Notification.permission === "default") {
+        // Ask once, quietly — declined or ignored is fine, we still show the in-page banner.
+        Notification.requestPermission().catch(() => {});
+      }
+
+      function renderLog(entries) {
+        logEl.innerHTML = "";
+        for (const e of entries.slice().reverse()) {
+          const div = document.createElement("div");
+          div.className = "log-line " + (e.kind || "");
+          div.textContent = e.text;
+          logEl.appendChild(div);
+        }
+      }
+
+      function notifyDone(text) {
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification("job-search-copilot", { body: text });
+          } catch (e) { /* some browsers restrict this outside a user gesture */ }
+        }
+        searchNote.textContent = text;
+      }
+
+      function poll() {
+        fetch("/search/status")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.search_running) {
+              searchBtn.disabled = true;
+              searchBtn.textContent = "Search running…";
+              panel.hidden = false;
+
+              stopBtn.hidden = false;
+              stopBtn.disabled = data.stop_requested;
+              stopBtn.textContent = data.stop_requested ? "Stopping…" : "Stop search";
+
+              const total = data.sources_total || 0;
+              const done = data.sources_done || 0;
+              const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+              barFill.style.width = pct + "%";
+
+              headline.textContent = data.current_source
+                ? "Searching " + data.current_source + "…"
+                : "Working…";
+              countLabel.textContent = done + " / " + total + " source(s) · " + data.matched_count + " matched";
+              renderLog(data.log || []);
+
+              wasRunning = true;
+              seenRunId = data.run_id;
+            } else {
+              searchBtn.disabled = false;
+              searchBtn.textContent = "Run search now";
+              stopBtn.hidden = true;
+              stopBtn.disabled = false;
+              stopBtn.textContent = "Stop search";
+
+              if (wasRunning && data.run_id === seenRunId) {
+                // A run just finished — show the final log briefly, then collapse.
+                renderLog(data.log || []);
+                notifyDone(data.last_search_result || "Search complete.");
+                wasRunning = false;
+                setTimeout(() => { panel.hidden = true; }, 4000);
+                // Reload once so newly matched jobs (and any status changes
+                // made elsewhere) show up in the list below.
+                setTimeout(() => { window.location.reload(); }, 1200);
+              }
+            }
+          })
+          .catch(() => {});
+      }
+
+      pollTimer = setInterval(poll, 1500);
+      poll();
+    })();
+  </script>
 </body>
 </html>
