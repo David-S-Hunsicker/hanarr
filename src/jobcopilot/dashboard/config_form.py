@@ -1,0 +1,166 @@
+"""Builds/parses the dashboard's config-editing form.
+
+Reuses the Pydantic models in `config.py` as the single source of truth for
+validation — a save either produces a valid `Settings` object or is
+rejected with the same errors `load_settings()` would raise, so the
+dashboard can never write a broken config.yaml.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+import yaml
+from pydantic import ValidationError
+
+from ..config import Settings
+
+# Fields the dashboard's structured forms cover, grouped by tab. Anything
+# outside these paths (e.g. secrets like llm.api_key or SMTP password) is
+# left untouched — it's set via .env, never through the web UI.
+PREFERENCES_LIST_FIELDS = [
+    "preferences.target_titles",
+    "preferences.keywords_boost",
+    "preferences.keywords_exclude",
+    "preferences.employment_types",
+    "preferences.locations",
+    "preferences.industries_include",
+    "preferences.industries_exclude",
+    "preferences.dealbreakers",
+    "sources.greenhouse.company_boards",
+    "sources.lever.companies",
+    "sources.remoteok.tags",
+]
+
+
+def _list_from_form(raw: str) -> list[str]:
+    """Textareas hold one entry per line; blank lines are dropped."""
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _list_to_form(values: list[str]) -> str:
+    return "\n".join(values)
+
+
+def settings_to_dict(settings: Settings) -> dict[str, Any]:
+    return settings.model_dump(mode="json", exclude={"data_dir"})
+
+
+def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
+    """Returns an updated copy of the settings dict from the Preferences tab's form fields."""
+    data = dict(current)
+    prefs = dict(data["preferences"])
+    matching = dict(data["matching"])
+    sources = {k: dict(v) for k, v in data["sources"].items()}
+
+    prefs["target_titles"] = _list_from_form(form.get("target_titles", ""))
+    prefs["keywords_boost"] = _list_from_form(form.get("keywords_boost", ""))
+    prefs["keywords_exclude"] = _list_from_form(form.get("keywords_exclude", ""))
+    prefs["seniority"] = form.get("seniority", prefs["seniority"])
+    prefs["employment_types"] = _list_from_form(form.get("employment_types", ""))
+    prefs["locations"] = _list_from_form(form.get("locations", ""))
+    prefs["remote_ok"] = "remote_ok" in form
+    prefs["onsite_ok"] = "onsite_ok" in form
+    prefs["willing_to_relocate"] = "willing_to_relocate" in form
+    prefs["salary_floor_usd"] = _int_or_none(form.get("salary_floor_usd"))
+    prefs["company_size_min"] = _int_or_none(form.get("company_size_min"))
+    prefs["company_size_max"] = _int_or_none(form.get("company_size_max"))
+    prefs["industries_include"] = _list_from_form(form.get("industries_include", ""))
+    prefs["industries_exclude"] = _list_from_form(form.get("industries_exclude", ""))
+    prefs["dealbreakers"] = _list_from_form(form.get("dealbreakers", ""))
+
+    matching["min_fit_score"] = _int_or_none(form.get("min_fit_score")) or 0
+
+    sources["greenhouse"]["enabled"] = "greenhouse_enabled" in form
+    sources["greenhouse"]["company_boards"] = _list_from_form(form.get("greenhouse_company_boards", ""))
+    sources["lever"]["enabled"] = "lever_enabled" in form
+    sources["lever"]["companies"] = _list_from_form(form.get("lever_companies", ""))
+    sources["remoteok"]["enabled"] = "remoteok_enabled" in form
+    sources["remoteok"]["tags"] = _list_from_form(form.get("remoteok_tags", ""))
+    sources["arbeitnow"]["enabled"] = "arbeitnow_enabled" in form
+
+    data["preferences"] = prefs
+    data["matching"] = matching
+    data["sources"] = sources
+    return data
+
+
+def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
+    data = dict(current)
+    profile = dict(data["profile"])
+    llm = dict(data["llm"])
+    dashboard = dict(data["dashboard"])
+
+    profile["name"] = form.get("profile_name", profile["name"])
+    profile["resume_path"] = form.get("resume_path", profile["resume_path"])
+
+    llm["provider"] = form.get("llm_provider", llm["provider"])
+    llm["model"] = form.get("llm_model", llm["model"])
+    llm["base_url"] = form.get("llm_base_url", llm["base_url"])
+    llm["timeout_seconds"] = float(_int_or_none(form.get("llm_timeout_seconds")) or llm["timeout_seconds"])
+
+    dashboard["host"] = form.get("dashboard_host", dashboard["host"])
+    dashboard["port"] = _int_or_none(form.get("dashboard_port")) or dashboard["port"]
+
+    data["profile"] = profile
+    data["llm"] = llm
+    data["dashboard"] = dashboard
+    return data
+
+
+def apply_schedule_reminders_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
+    data = dict(current)
+    schedule = dict(data["schedule"])
+    reminders = dict(data["reminders"])
+    email = dict(reminders["email"])
+
+    schedule["search_interval_hours"] = _int_or_none(form.get("search_interval_hours")) or schedule["search_interval_hours"]
+    schedule["reminder_check_interval_hours"] = (
+        _int_or_none(form.get("reminder_check_interval_hours")) or schedule["reminder_check_interval_hours"]
+    )
+
+    reminders["follow_up_after_days"] = (
+        _int_or_none(form.get("follow_up_after_days")) or reminders["follow_up_after_days"]
+    )
+    reminders["desktop_notifications"] = "desktop_notifications" in form
+
+    email["enabled"] = "email_enabled" in form
+    email["smtp_host"] = form.get("smtp_host", email["smtp_host"])
+    email["smtp_port"] = _int_or_none(form.get("smtp_port")) or email["smtp_port"]
+    email["smtp_user"] = form.get("smtp_user", email["smtp_user"])
+    email["to_address"] = form.get("to_address", email["to_address"])
+
+    reminders["email"] = email
+    data["schedule"] = schedule
+    data["reminders"] = reminders
+    return data
+
+
+def _int_or_none(raw: str | None) -> int | None:
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def validate_and_build(data: dict[str, Any]) -> tuple[Settings | None, list[str]]:
+    """Returns (settings, []) on success, or (None, error_messages) on failure."""
+    try:
+        settings = Settings(**data)
+        return settings, []
+    except ValidationError as e:
+        messages = [f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors()]
+        return None, messages
+
+
+def save_settings_to_yaml(settings: Settings, config_path: str) -> None:
+    """Writes settings back to config.yaml, omitting secrets that
+    load_settings() populates from the environment (ANTHROPIC_API_KEY,
+    SMTP_PASSWORD) — those belong in .env, never in the gitignored-but-
+    still-plaintext config file."""
+    data = settings.model_dump(mode="json", exclude={"data_dir"})
+    data["llm"].pop("api_key", None)
+    data["reminders"]["email"].pop("smtp_password", None)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

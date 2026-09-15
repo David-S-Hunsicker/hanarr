@@ -1,0 +1,450 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>job-search-copilot · Preferences</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --surface-1:      #fcfcfb;
+      --page-plane:     #f9f9f7;
+      --text-primary:   #0b0b0b;
+      --text-secondary: #52514e;
+      --text-muted:     #898781;
+      --gridline:       #e1e0d9;
+      --border:         rgba(11,11,11,0.10);
+      --accent:         #2a78d6;
+      --accent-weak:    #cde2fb;
+      --status-good:      #0ca30c;
+      --status-warning:   #b5790f;
+      --status-critical:  #d03b3b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --surface-1:      #1a1a19;
+        --page-plane:     #0d0d0d;
+        --text-primary:   #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted:     #898781;
+        --gridline:       #2c2c2a;
+        --border:         rgba(255,255,255,0.10);
+        --accent:         #3987e5;
+        --accent-weak:    #184f95;
+        --status-good:      #0ca30c;
+        --status-warning:   #fab219;
+        --status-critical:  #e66767;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --accent:         #3987e5;
+      --accent-weak:    #184f95;
+      --status-good:      #0ca30c;
+      --status-warning:   #fab219;
+      --status-critical:  #e66767;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 2rem 1rem 4rem;
+      background: var(--page-plane);
+      color: var(--text-primary);
+    }
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
+    .nav-link { font-size: 0.85rem; font-weight: 550; color: var(--accent); text-decoration: none; }
+    .nav-link:hover { text-decoration: underline; }
+
+    .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--gridline); }
+    .tab {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 0.6rem 0.9rem;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab:hover { color: var(--text-primary); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.4rem;
+    }
+
+    .banner {
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .banner.success { background: var(--accent-weak); color: var(--text-primary); border: 1px solid var(--accent); }
+    .banner.error { background: var(--surface-1); border: 1px solid var(--status-critical); color: var(--text-primary); }
+    .banner.error ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+    .banner.notice { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
+
+    fieldset { border: none; padding: 0; margin: 0 0 1.5rem; }
+    fieldset legend { font-size: 0.95rem; font-weight: 650; margin-bottom: 0.7rem; padding: 0; }
+    .field { margin-bottom: 1rem; }
+    .field label { display: block; font-size: 0.85rem; font-weight: 550; margin-bottom: 0.3rem; }
+    .field .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+    .field input[type="text"],
+    .field input[type="number"],
+    .field input[type="url"],
+    .field select,
+    .field textarea {
+      font: inherit;
+      font-size: 0.9rem;
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--page-plane);
+      color: var(--text-primary);
+    }
+    .field textarea { min-height: 4.5rem; resize: vertical; font-family: inherit; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+    .checkbox-row input { width: auto; }
+    .checkbox-row label { font-size: 0.88rem; font-weight: 500; margin: 0; }
+
+    .source-block {
+      border: 1px solid var(--gridline);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.8rem;
+    }
+    .source-block .checkbox-row { margin-bottom: 0.5rem; }
+
+    .save-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
+    button.save {
+      font: inherit;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button.save:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Preferences &amp; config</h1>
+    <a class="nav-link" href="/">&larr; Back to jobs</a>
+  </div>
+
+  <div class="tabs">
+    <a class="tab {% if active_tab == 'preferences' %}active{% endif %}" href="/config?tab=preferences">Preferences &amp; matching</a>
+    <a class="tab {% if active_tab == 'app' %}active{% endif %}" href="/config?tab=app">App config</a>
+    <a class="tab {% if active_tab == 'schedule' %}active{% endif %}" href="/config?tab=schedule">Scheduling &amp; reminders</a>
+  </div>
+
+  {% if saved %}
+  <div class="banner success">Saved. Preference and matching changes apply on the next search — app config and scheduling changes need a restart of <code>jobcopilot serve</code>.</div>
+  {% endif %}
+  {% if errors %}
+  <div class="banner error">
+    <strong>Couldn't save — please fix:</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    {% if active_tab == 'preferences' %}
+    <form method="post" action="/config/preferences">
+      <fieldset>
+        <legend>What you're looking for</legend>
+        <div class="field">
+          <label for="target_titles">Target titles</label>
+          <textarea id="target_titles" name="target_titles">{{ "\n".join(settings.preferences.target_titles) }}</textarea>
+          <div class="hint">One title per line, e.g. "Software Engineer"</div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="keywords_boost">Keywords to boost</label>
+            <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(settings.preferences.keywords_boost) }}</textarea>
+          </div>
+          <div class="field">
+            <label for="keywords_exclude">Keywords to exclude</label>
+            <textarea id="keywords_exclude" name="keywords_exclude">{{ "\n".join(settings.preferences.keywords_exclude) }}</textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="seniority">Seniority</label>
+            <select id="seniority" name="seniority">
+              {% for level in ["intern", "junior", "mid", "senior", "staff", "principal", "exec"] %}
+              <option value="{{ level }}" {% if level == settings.preferences.seniority %}selected{% endif %}>{{ level }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="employment_types">Employment types</label>
+            <textarea id="employment_types" name="employment_types">{{ "\n".join(settings.preferences.employment_types) }}</textarea>
+            <div class="hint">full_time, part_time, contract, internship</div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Location &amp; salary</legend>
+        <div class="field">
+          <label for="locations">Locations</label>
+          <textarea id="locations" name="locations">{{ "\n".join(settings.preferences.locations) }}</textarea>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="remote_ok" name="remote_ok" {% if settings.preferences.remote_ok %}checked{% endif %}>
+          <label for="remote_ok">Open to remote roles</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="onsite_ok" name="onsite_ok" {% if settings.preferences.onsite_ok %}checked{% endif %}>
+          <label for="onsite_ok">Open to onsite roles</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="willing_to_relocate" name="willing_to_relocate" {% if settings.preferences.willing_to_relocate %}checked{% endif %}>
+          <label for="willing_to_relocate">Willing to relocate</label>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="salary_floor_usd">Salary floor (USD)</label>
+            <input type="number" id="salary_floor_usd" name="salary_floor_usd" value="{{ settings.preferences.salary_floor_usd if settings.preferences.salary_floor_usd is not none else '' }}">
+          </div>
+          <div class="field">
+            <label for="min_fit_score">Minimum fit score (0-100)</label>
+            <input type="number" id="min_fit_score" name="min_fit_score" min="0" max="100" value="{{ settings.matching.min_fit_score }}">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="company_size_min">Company size — min</label>
+            <input type="number" id="company_size_min" name="company_size_min" value="{{ settings.preferences.company_size_min if settings.preferences.company_size_min is not none else '' }}">
+          </div>
+          <div class="field">
+            <label for="company_size_max">Company size — max</label>
+            <input type="number" id="company_size_max" name="company_size_max" value="{{ settings.preferences.company_size_max if settings.preferences.company_size_max is not none else '' }}">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Industries &amp; dealbreakers</legend>
+        <div class="row">
+          <div class="field">
+            <label for="industries_include">Industries to include</label>
+            <textarea id="industries_include" name="industries_include">{{ "\n".join(settings.preferences.industries_include) }}</textarea>
+            <div class="hint">Leave blank for no restriction</div>
+          </div>
+          <div class="field">
+            <label for="industries_exclude">Industries to exclude</label>
+            <textarea id="industries_exclude" name="industries_exclude">{{ "\n".join(settings.preferences.industries_exclude) }}</textarea>
+          </div>
+        </div>
+        <div class="field">
+          <label for="dealbreakers">Dealbreakers</label>
+          <textarea id="dealbreakers" name="dealbreakers">{{ "\n".join(settings.preferences.dealbreakers) }}</textarea>
+          <div class="hint">Free text, considered by the LLM scorer</div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Job sources</legend>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="greenhouse_enabled" name="greenhouse_enabled" {% if settings.sources.greenhouse.enabled %}checked{% endif %}>
+            <label for="greenhouse_enabled">Greenhouse</label>
+          </div>
+          <div class="field">
+            <label for="greenhouse_company_boards">Company boards</label>
+            <textarea id="greenhouse_company_boards" name="greenhouse_company_boards">{{ "\n".join(settings.sources.greenhouse.company_boards) }}</textarea>
+            <div class="hint">Slugs from boards.greenhouse.io/&lt;slug&gt;, one per line</div>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="lever_enabled" name="lever_enabled" {% if settings.sources.lever.enabled %}checked{% endif %}>
+            <label for="lever_enabled">Lever</label>
+          </div>
+          <div class="field">
+            <label for="lever_companies">Companies</label>
+            <textarea id="lever_companies" name="lever_companies">{{ "\n".join(settings.sources.lever.companies) }}</textarea>
+            <div class="hint">Slugs from jobs.lever.co/&lt;slug&gt;, one per line</div>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="remoteok_enabled" name="remoteok_enabled" {% if settings.sources.remoteok.enabled %}checked{% endif %}>
+            <label for="remoteok_enabled">RemoteOK</label>
+          </div>
+          <div class="field">
+            <label for="remoteok_tags">Tags (optional filter)</label>
+            <textarea id="remoteok_tags" name="remoteok_tags">{{ "\n".join(settings.sources.remoteok.tags) }}</textarea>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="arbeitnow_enabled" name="arbeitnow_enabled" {% if settings.sources.arbeitnow.enabled %}checked{% endif %}>
+            <label for="arbeitnow_enabled">Arbeitnow</label>
+          </div>
+          <div class="hint">No configuration needed</div>
+        </div>
+      </fieldset>
+
+      <div class="save-row"><button type="submit" class="save">Save preferences</button></div>
+    </form>
+
+    {% elif active_tab == 'app' %}
+    <form method="post" action="/config/app">
+      <div class="banner notice">Changes on this tab take effect the next time you start <code>jobcopilot serve</code>.</div>
+
+      <fieldset>
+        <legend>Profile</legend>
+        <div class="row">
+          <div class="field">
+            <label for="profile_name">Your name</label>
+            <input type="text" id="profile_name" name="profile_name" value="{{ settings.profile.name }}">
+          </div>
+          <div class="field">
+            <label for="resume_path">Resume path</label>
+            <input type="text" id="resume_path" name="resume_path" value="{{ settings.profile.resume_path }}">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>LLM</legend>
+        <div class="row">
+          <div class="field">
+            <label for="llm_provider">Provider</label>
+            <select id="llm_provider" name="llm_provider">
+              {% for p in ["ollama", "anthropic", "none"] %}
+              <option value="{{ p }}" {% if p == settings.llm.provider %}selected{% endif %}>{{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="llm_model">Model</label>
+            <input type="text" id="llm_model" name="llm_model" value="{{ settings.llm.model }}">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="llm_base_url">Base URL (Ollama)</label>
+            <input type="text" id="llm_base_url" name="llm_base_url" value="{{ settings.llm.base_url }}">
+          </div>
+          <div class="field">
+            <label for="llm_timeout_seconds">Timeout (seconds)</label>
+            <input type="number" id="llm_timeout_seconds" name="llm_timeout_seconds" value="{{ settings.llm.timeout_seconds|int }}">
+          </div>
+        </div>
+        <div class="hint">The Anthropic API key is read from ANTHROPIC_API_KEY in .env, never edited here.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Dashboard</legend>
+        <div class="row">
+          <div class="field">
+            <label for="dashboard_host">Host</label>
+            <input type="text" id="dashboard_host" name="dashboard_host" value="{{ settings.dashboard.host }}">
+          </div>
+          <div class="field">
+            <label for="dashboard_port">Port</label>
+            <input type="number" id="dashboard_port" name="dashboard_port" value="{{ settings.dashboard.port }}">
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="save-row"><button type="submit" class="save">Save app config</button></div>
+    </form>
+
+    {% elif active_tab == 'schedule' %}
+    <form method="post" action="/config/schedule">
+      <div class="banner notice">Interval changes on this tab take effect the next time you start <code>jobcopilot serve</code>.</div>
+
+      <fieldset>
+        <legend>Scheduling</legend>
+        <div class="row">
+          <div class="field">
+            <label for="search_interval_hours">Search every (hours)</label>
+            <input type="number" id="search_interval_hours" name="search_interval_hours" value="{{ settings.schedule.search_interval_hours }}">
+          </div>
+          <div class="field">
+            <label for="reminder_check_interval_hours">Check reminders every (hours)</label>
+            <input type="number" id="reminder_check_interval_hours" name="reminder_check_interval_hours" value="{{ settings.schedule.reminder_check_interval_hours }}">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Reminders</legend>
+        <div class="field">
+          <label for="follow_up_after_days">Follow up after (days)</label>
+          <input type="number" id="follow_up_after_days" name="follow_up_after_days" value="{{ settings.reminders.follow_up_after_days }}">
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="desktop_notifications" name="desktop_notifications" {% if settings.reminders.desktop_notifications %}checked{% endif %}>
+          <label for="desktop_notifications">Desktop notifications</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Email digest</legend>
+        <div class="checkbox-row">
+          <input type="checkbox" id="email_enabled" name="email_enabled" {% if settings.reminders.email.enabled %}checked{% endif %}>
+          <label for="email_enabled">Enable email digest</label>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="smtp_host">SMTP host</label>
+            <input type="text" id="smtp_host" name="smtp_host" value="{{ settings.reminders.email.smtp_host }}">
+          </div>
+          <div class="field">
+            <label for="smtp_port">SMTP port</label>
+            <input type="number" id="smtp_port" name="smtp_port" value="{{ settings.reminders.email.smtp_port }}">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="smtp_user">SMTP user</label>
+            <input type="text" id="smtp_user" name="smtp_user" value="{{ settings.reminders.email.smtp_user }}">
+          </div>
+          <div class="field">
+            <label for="to_address">Send digest to</label>
+            <input type="text" id="to_address" name="to_address" value="{{ settings.reminders.email.to_address }}">
+          </div>
+        </div>
+        <div class="hint">SMTP password is read from SMTP_PASSWORD in .env, never edited here.</div>
+      </fieldset>
+
+      <div class="save-row"><button type="submit" class="save">Save scheduling &amp; reminders</button></div>
+    </form>
+    {% endif %}
+  </div>
+</body>
+</html>
