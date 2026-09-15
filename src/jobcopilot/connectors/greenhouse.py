@@ -9,12 +9,18 @@ boards.greenhouse.io/stripe it's "stripe".
 from __future__ import annotations
 
 import re
+import time
 
 import httpx
 
 from .base import Connector, RawJobPosting
 
 API_URL = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs"
+
+# Greenhouse's board API is shared across many companies' job boards, and
+# we hit one endpoint per configured company back-to-back — a short delay
+# between requests keeps a multi-board search from looking like a burst.
+REQUEST_DELAY_SECONDS = 0.75
 
 
 class GreenhouseConnector(Connector):
@@ -25,7 +31,9 @@ class GreenhouseConnector(Connector):
 
     def fetch(self) -> list[RawJobPosting]:
         postings: list[RawJobPosting] = []
-        for board in self.company_boards:
+        for i, board in enumerate(self.company_boards):
+            if i > 0:
+                time.sleep(REQUEST_DELAY_SECONDS)
             try:
                 resp = httpx.get(
                     API_URL.format(board=board), params={"content": "true"}, timeout=30.0
