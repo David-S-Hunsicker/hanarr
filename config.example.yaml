@@ -53,6 +53,7 @@ sources:
       - "airbnb"
   lever:
     enabled: false
+    # Company slugs, e.g. for jobs.lever.co/netflix -> "netflix"
     companies: []
   remoteok:
     enabled: true

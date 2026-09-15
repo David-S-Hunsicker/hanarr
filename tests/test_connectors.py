@@ -3,6 +3,7 @@ import respx
 
 from jobcopilot.connectors.arbeitnow import ArbeitnowConnector
 from jobcopilot.connectors.greenhouse import GreenhouseConnector
+from jobcopilot.connectors.lever import LeverConnector
 from jobcopilot.connectors.remoteok import RemoteOKConnector
 
 
@@ -73,6 +74,40 @@ def test_remoteok_connector_skips_legend_row_and_filters_tags():
 
     assert len(postings) == 1
     assert postings[0].company == "RemoteCo"
+
+
+@respx.mock
+def test_lever_connector_parses_jobs():
+    respx.get("https://api.lever.co/v0/postings/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "abc-123",
+                    "text": "Backend Engineer",
+                    "categories": {"location": "Remote - US"},
+                    "hostedUrl": "https://jobs.lever.co/acme/abc-123",
+                    "descriptionPlain": "We build things.",
+                }
+            ],
+        )
+    )
+    connector = LeverConnector(companies=["acme"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    assert postings[0].external_id == "abc-123"
+    assert postings[0].remote is True
+    assert "We build things." in postings[0].description
+
+
+@respx.mock
+def test_lever_connector_skips_failed_company_without_crashing():
+    respx.get("https://api.lever.co/v0/postings/gone").mock(
+        return_value=httpx.Response(404)
+    )
+    connector = LeverConnector(companies=["gone"])
+    assert connector.fetch() == []
 
 
 @respx.mock

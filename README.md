@@ -109,7 +109,7 @@ account and isn't something to build around.
 | Greenhouse | `sources.greenhouse.company_boards` — company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug |
 | RemoteOK | `sources.remoteok.tags` — optional tag filter | Free public API |
 | Arbeitnow | none | Free public API, mostly EU-heavy listings |
-| Lever | scaffolded (`sources/lever.py` not yet implemented) | Good first contribution — see below |
+| Lever | `sources.lever.companies` — company slugs from `jobs.lever.co/<slug>` | Free public API |
 
 Adding a new source is one file: implement `Connector.fetch()` in `src/jobcopilot/connectors/`
 returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See
@@ -159,7 +159,7 @@ cover the prefilter and the rule-based fallback scorer.
 
 ## Roadmap ideas
 
-- Lever and Ashby connectors (same pattern as Greenhouse)
+- Ashby connector (same pattern as Greenhouse/Lever)
 - Cover-letter drafting from the LLM client already in place
 - A "why was this filtered out" debug view in the dashboard
 - Optional calendar-file (.ics) export for interview reminders
