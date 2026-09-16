@@ -7,9 +7,12 @@ self-host with nothing but `jobcopilot serve`.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -53,7 +56,11 @@ def task_is_stuck(task_state: dict, llm_timeout_seconds: float, now: float | Non
     return ((now if now is not None else time.time()) - task_state["started_at"]) > ceiling
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
+    """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
+    through so the restart route can shut it down cleanly before
+    re-executing the process. Optional — tests and other callers that don't
+    run the scheduler can omit it; the restart route just skips that step."""
     app = FastAPI(title="job-search-copilot")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
@@ -426,5 +433,34 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/config/schedule")
     async def save_schedule_reminders(request: Request):
         return await _handle_config_post(request, "schedule", apply_schedule_reminders_form)
+
+    def _shutdown_and_reexec():
+        # A background LLM call (resume re-parse, keyword suggestion) has no
+        # cooperative stop hook the way search does, so it's not "gracefully"
+        # stopped here — it's simply killed along with the rest of the
+        # process, which is the correct behavior for a restart. Search does
+        # get a cooperative stop signal first since it checks should_stop
+        # between postings and can wind down cleanly in that brief window.
+        if state["search_running"]:
+            stop_event.set()
+        if scheduler is not None:
+            try:
+                scheduler.shutdown(wait=False)
+            except Exception:  # noqa: BLE001
+                logger.exception("Scheduler shutdown failed during restart")
+        # Re-exec sys.argv[0] directly rather than routing through
+        # sys.executable: on Windows, an installed console script
+        # (jobcopilot.exe) is itself a runnable launcher, not a .py file
+        # python.exe can take as an argument, so it needs to be the program
+        # being executed, not a value passed to the interpreter.
+        os.execv(sys.argv[0], sys.argv)
+
+    @app.post("/restart")
+    def restart_server():
+        # Delay the actual re-exec until after this response has had a
+        # moment to reach the browser — doing it inline would kill the
+        # process (and the socket) before the client ever sees a reply.
+        threading.Timer(0.5, _shutdown_and_reexec).start()
+        return JSONResponse({"restarting": True})
 
     return app

@@ -103,12 +103,35 @@
     .banner.error { background: var(--surface-1); border: 1px solid var(--status-critical); color: var(--text-primary); }
     .banner.error ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     .banner.notice { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
+    .banner .restart-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+    .restart-btn {
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--status-critical);
+      background: transparent;
+      color: var(--status-critical);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .restart-btn:hover:not(:disabled) { background: var(--status-critical); color: #fff; }
+    .restart-btn:disabled { border-color: var(--border); color: var(--text-muted); cursor: default; }
 
     fieldset { border: none; padding: 0; margin: 0 0 1.5rem; }
     fieldset legend { font-size: 0.95rem; font-weight: 650; margin-bottom: 0.7rem; padding: 0; }
     .field { margin-bottom: 1rem; }
     .field label { display: block; font-size: 0.85rem; font-weight: 550; margin-bottom: 0.3rem; }
     .field .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+    .field .readonly-value {
+      font-size: 0.9rem;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--gridline);
+      color: var(--text-secondary);
+    }
     .field .label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
     .field .label-row label { margin-bottom: 0; }
     .suggest-btn {
@@ -343,20 +366,19 @@
 
     {% elif active_tab == 'app' %}
     <form method="post" action="/config/app">
-      <div class="banner notice">Changes on this tab take effect the next time you start <code>jobcopilot serve</code>.</div>
+      <div class="banner notice">
+        <div class="restart-row">
+          <span>Changes on this tab take effect the next time <code>jobcopilot serve</code> starts.</span>
+          <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
+        </div>
+      </div>
 
       <fieldset>
-        <legend>Profile</legend>
-        <div class="row">
-          <div class="field">
-            <label for="profile_name">Your name</label>
-            <input type="text" id="profile_name" name="profile_name" value="{{ settings.profile.name }}">
-          </div>
-          <div class="field">
-            <label for="resume_path">Resume path</label>
-            <input type="text" id="resume_path" name="resume_path" value="{{ settings.profile.resume_path }}">
-            <div class="hint">Uploading a resume below updates this automatically; edit it directly if your resume already lives on disk.</div>
-          </div>
+        <legend>Resume</legend>
+        <div class="field">
+          <label>Current resume</label>
+          <div class="readonly-value" id="resume-path-display">{{ settings.profile.resume_path }}</div>
+          <input type="hidden" id="resume_path" name="resume_path" value="{{ settings.profile.resume_path }}">
         </div>
         <div class="field">
           <div class="label-row">
@@ -418,7 +440,12 @@
 
     {% elif active_tab == 'schedule' %}
     <form method="post" action="/config/schedule">
-      <div class="banner notice">Interval changes on this tab take effect the next time you start <code>jobcopilot serve</code>.</div>
+      <div class="banner notice">
+        <div class="restart-row">
+          <span>Interval changes on this tab take effect the next time <code>jobcopilot serve</code> starts.</span>
+          <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
+        </div>
+      </div>
 
       <fieldset>
         <legend>Scheduling</legend>
@@ -555,6 +582,7 @@
       const filenameEl = document.getElementById("resume-upload-filename");
       const statusEl = document.getElementById("resume-upload-status");
       const resumePathInput = document.getElementById("resume_path");
+      const resumePathDisplay = document.getElementById("resume-path-display");
       if (!chooseBtn) return;
 
       let pollTimer = null;
@@ -582,6 +610,7 @@
             }
             stopPolling();
             resumePathInput.value = data.resume_path;
+            resumePathDisplay.textContent = data.resume_path;
             if (data.error) {
               showStatus(data.error, true);
             } else if (data.result) {
@@ -630,5 +659,43 @@
     })();
   </script>
   {% endif %}
+
+  <script>
+    (function () {
+      const restartBtn = document.getElementById("restart-server-btn");
+      if (!restartBtn) return;
+
+      function waitForServerAndReload() {
+        const check = () => {
+          fetch("/", { cache: "no-store" })
+            .then(() => { window.location.reload(); })
+            .catch(() => { setTimeout(check, 1000); });
+        };
+        setTimeout(check, 1500); // give the old process a moment to actually exit first
+      }
+
+      restartBtn.addEventListener("click", function () {
+        const form = restartBtn.closest("form");
+        restartBtn.disabled = true;
+        restartBtn.textContent = "Saving…";
+
+        const proceedToRestart = () => {
+          restartBtn.textContent = "Restarting…";
+          fetch("/restart", { method: "POST" })
+            .then(() => waitForServerAndReload())
+            .catch(() => waitForServerAndReload()); // the connection dying IS the expected outcome here
+        };
+
+        if (form) {
+          const formData = new FormData(form);
+          fetch(form.action, { method: "POST", body: formData, redirect: "manual" })
+            .then(proceedToRestart)
+            .catch(proceedToRestart);
+        } else {
+          proceedToRestart();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

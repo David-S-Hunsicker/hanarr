@@ -90,7 +90,6 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     llm = dict(data["llm"])
     dashboard = dict(data["dashboard"])
 
-    profile["name"] = form.get("profile_name", profile["name"])
     profile["resume_path"] = form.get("resume_path", profile["resume_path"])
 
     llm["provider"] = form.get("llm_provider", llm["provider"])

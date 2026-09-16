@@ -200,13 +200,13 @@ def serve(ctx: click.Context):
 
     from .scheduler import start_scheduler
 
-    start_scheduler(settings)
+    scheduler = start_scheduler(settings)
 
     import uvicorn
 
     from .dashboard.app import create_app
 
-    app = create_app(settings)
+    app = create_app(settings, scheduler=scheduler)
     console.print(f"[green]Dashboard running at http://{settings.dashboard.host}:{settings.dashboard.port}[/green]")
     uvicorn.run(app, host=settings.dashboard.host, port=settings.dashboard.port, log_level="warning")
 

@@ -25,3 +25,6 @@ venv/
 
 # OS
 .DS_Store
+
+# Local editor/tool settings — not project config
+.claude/
