@@ -149,3 +149,15 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
+
+
+def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_CONFIG_PATH) -> None:
+    """Writes settings back to config.yaml, omitting secrets that
+    load_settings() populates from the environment (ANTHROPIC_API_KEY,
+    SMTP_PASSWORD) — those belong in .env, never in the gitignored-but-
+    still-plaintext config file."""
+    data = settings.model_dump(mode="json", exclude={"data_dir"})
+    data["llm"].pop("api_key", None)
+    data["reminders"]["email"].pop("smtp_password", None)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

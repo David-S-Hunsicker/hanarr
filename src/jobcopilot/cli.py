@@ -10,7 +10,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from .config import DEFAULT_CONFIG_PATH, load_settings
+from .config import DEFAULT_CONFIG_PATH, load_settings, save_settings_to_yaml
 from .db import get_or_create_profile, make_session_factory
 from .llm import build_llm_client
 from .models import ApplicationStatus, JobPosting
@@ -22,7 +22,7 @@ from .reminders import (
     schedule_follow_up,
     schedule_interview_prep,
 )
-from .resume import extract_profile_summary, load_resume_text
+from .resume import parse_and_store_resume
 
 console = Console()
 
@@ -61,16 +61,10 @@ def init(ctx: click.Context):
         return
 
     console.print("Parsing resume...")
-    resume_text = load_resume_text(resume_path)
     llm = build_llm_client(settings.llm)
-    summary = extract_profile_summary(resume_text, llm)
-
     session_factory = make_session_factory(settings)
     with session_factory() as session:
-        profile = get_or_create_profile(session, settings)
-        profile.resume_text = resume_text
-        profile.resume_summary_json = json.dumps(summary)
-        session.commit()
+        profile, summary, prefs_changed = parse_and_store_resume(session, settings, llm)
 
     console.print("[green]Resume parsed and saved.[/green]")
     if summary.get("_extraction_error"):
@@ -82,6 +76,14 @@ def init(ctx: click.Context):
     else:
         console.print(f"Detected titles: {summary.get('titles')}")
         console.print(f"Detected skills: {summary.get('skills')}")
+
+        if prefs_changed:
+            save_settings_to_yaml(settings, config_path)
+            console.print(
+                "[green]Filled in target_titles/keywords_boost from your resume[/green] "
+                "(they were blank or still the example defaults) — a tighter prefilter means "
+                "fewer postings reach the LLM. Edit them anytime in config.yaml or the dashboard."
+            )
 
 
 @cli.command()
@@ -177,7 +179,25 @@ def remind(ctx: click.Context):
 @click.pass_context
 def serve(ctx: click.Context):
     """Run the scheduler and dashboard together (long-running)."""
-    settings = load_settings(ctx.obj["config_path"])
+    config_path = Path(ctx.obj["config_path"])
+    settings = load_settings(config_path)
+
+    # Self-heal on startup: if preferences are still blank/example-default,
+    # fill them in from whatever resume profile was already parsed by
+    # `jobcopilot init` — no LLM call needed, this only reads what's already
+    # stored. Catches the case where a resume was updated without re-running
+    # `init`, or `init` ran before this feature existed.
+    session_factory = make_session_factory(settings)
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        if profile.resume_summary_json:
+            summary = json.loads(profile.resume_summary_json)
+            if autopopulate_preferences_from_resume(settings.preferences, summary):
+                save_settings_to_yaml(settings, config_path)
+                console.print(
+                    "[green]Filled in target_titles/keywords_boost from your saved resume profile.[/green]"
+                )
+
     from .scheduler import start_scheduler
 
     start_scheduler(settings)

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import yaml
 from pydantic import ValidationError
 
 from ..config import Settings
+from ..config import save_settings_to_yaml as _save_settings_to_yaml
 
 # Fields the dashboard's structured forms cover, grouped by tab. Anything
 # outside these paths (e.g. secrets like llm.api_key or SMTP password) is
@@ -154,13 +154,7 @@ def validate_and_build(data: dict[str, Any]) -> tuple[Settings | None, list[str]
         return None, messages
 
 
-def save_settings_to_yaml(settings: Settings, config_path: str) -> None:
-    """Writes settings back to config.yaml, omitting secrets that
-    load_settings() populates from the environment (ANTHROPIC_API_KEY,
-    SMTP_PASSWORD) — those belong in .env, never in the gitignored-but-
-    still-plaintext config file."""
-    data = settings.model_dump(mode="json", exclude={"data_dir"})
-    data["llm"].pop("api_key", None)
-    data["reminders"]["email"].pop("smtp_password", None)
-    with open(config_path, "w") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+# Re-exported so existing callers (app.py) importing save_settings_to_yaml
+# from this module keep working — the implementation now lives in config.py
+# since it's config persistence, not dashboard-specific.
+save_settings_to_yaml = _save_settings_to_yaml

@@ -109,6 +109,24 @@
     .field { margin-bottom: 1rem; }
     .field label { display: block; font-size: 0.85rem; font-weight: 550; margin-bottom: 0.3rem; }
     .field .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+    .field .label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
+    .field .label-row label { margin-bottom: 0; }
+    .suggest-btn {
+      font: inherit;
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .suggest-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .suggest-btn:disabled { border-color: var(--border); color: var(--text-muted); cursor: default; }
+    .suggest-status { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+    .suggest-status.error { color: var(--status-critical); }
     .field input[type="text"],
     .field input[type="number"],
     .field input[type="url"],
@@ -188,8 +206,12 @@
         </div>
         <div class="row">
           <div class="field">
-            <label for="keywords_boost">Keywords to boost</label>
+            <div class="label-row">
+              <label for="keywords_boost">Keywords to boost</label>
+              <button type="button" class="suggest-btn" id="suggest-keywords-btn">Suggest from resume</button>
+            </div>
             <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(settings.preferences.keywords_boost) }}</textarea>
+            <div class="suggest-status" id="suggest-keywords-status" hidden></div>
           </div>
           <div class="field">
             <label for="keywords_exclude">Keywords to exclude</label>
@@ -333,7 +355,18 @@
           <div class="field">
             <label for="resume_path">Resume path</label>
             <input type="text" id="resume_path" name="resume_path" value="{{ settings.profile.resume_path }}">
+            <div class="hint">Uploading a resume below updates this automatically; edit it directly if your resume already lives on disk.</div>
           </div>
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label for="resume-file-input">Upload a resume</label>
+          </div>
+          <input type="file" id="resume-file-input" accept=".pdf,.txt,.md" hidden>
+          <button type="button" class="suggest-btn" id="resume-upload-btn">Choose file…</button>
+          <span class="suggest-status" id="resume-upload-filename"></span>
+          <div class="hint">.pdf, .txt, or .md. Replaces the current resume and re-parses it automatically.</div>
+          <div class="suggest-status" id="resume-upload-status" hidden></div>
         </div>
       </fieldset>
 
@@ -446,5 +479,156 @@
     </form>
     {% endif %}
   </div>
+
+  {% if active_tab == 'preferences' %}
+  <script>
+    (function () {
+      const btn = document.getElementById("suggest-keywords-btn");
+      const statusEl = document.getElementById("suggest-keywords-status");
+      const textarea = document.getElementById("keywords_boost");
+      if (!btn) return;
+
+      let pollTimer = null;
+      let watchingRunId = null;
+
+      function showStatus(text, isError) {
+        statusEl.hidden = false;
+        statusEl.textContent = text;
+        statusEl.className = "suggest-status" + (isError ? " error" : "");
+      }
+
+      function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        btn.disabled = false;
+        btn.textContent = "Suggest from resume";
+      }
+
+      function poll() {
+        fetch("/config/suggest-keywords/status")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.run_id !== watchingRunId) return;
+            if (data.running) {
+              showStatus("Asking the LLM for keyword suggestions…", false);
+              return;
+            }
+            stopPolling();
+            if (data.error) {
+              showStatus(data.error, true);
+            } else if (data.keywords && data.keywords.length) {
+              textarea.value = data.keywords.join("\n");
+              showStatus("Replaced with " + data.keywords.length + " suggested keyword(s) — review, then Save.", false);
+            }
+          })
+          .catch(() => {
+            stopPolling();
+            showStatus("Lost connection while waiting for suggestions.", true);
+          });
+      }
+
+      btn.addEventListener("click", function () {
+        btn.disabled = true;
+        btn.textContent = "Suggesting…";
+        showStatus("Asking the LLM for keyword suggestions…", false);
+
+        fetch("/config/suggest-keywords", { method: "POST" })
+          .then((r) => r.json())
+          .then((data) => {
+            watchingRunId = data.run_id;
+            pollTimer = setInterval(poll, 1500);
+            poll();
+          })
+          .catch(() => {
+            stopPolling();
+            showStatus("Couldn't start the suggestion request.", true);
+          });
+      });
+    })();
+  </script>
+  {% endif %}
+
+  {% if active_tab == 'app' %}
+  <script>
+    (function () {
+      const fileInput = document.getElementById("resume-file-input");
+      const chooseBtn = document.getElementById("resume-upload-btn");
+      const filenameEl = document.getElementById("resume-upload-filename");
+      const statusEl = document.getElementById("resume-upload-status");
+      const resumePathInput = document.getElementById("resume_path");
+      if (!chooseBtn) return;
+
+      let pollTimer = null;
+      let watchingRunId = null;
+
+      function showStatus(text, isError) {
+        statusEl.hidden = false;
+        statusEl.textContent = text;
+        statusEl.className = "suggest-status" + (isError ? " error" : "");
+      }
+
+      function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        chooseBtn.disabled = false;
+      }
+
+      function poll() {
+        fetch("/config/resume/status")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.run_id !== watchingRunId) return;
+            if (data.running) {
+              showStatus("Parsing new resume…", false);
+              return;
+            }
+            stopPolling();
+            resumePathInput.value = data.resume_path;
+            if (data.error) {
+              showStatus(data.error, true);
+            } else if (data.result) {
+              showStatus(data.result, false);
+            }
+          })
+          .catch(() => {
+            stopPolling();
+            showStatus("Lost connection while parsing the resume.", true);
+          });
+      }
+
+      chooseBtn.addEventListener("click", function () {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener("change", function () {
+        const file = fileInput.files[0];
+        if (!file) return;
+        filenameEl.textContent = file.name;
+
+        chooseBtn.disabled = true;
+        showStatus("Uploading…", false);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        fetch("/config/resume", { method: "POST", body: formData })
+          .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+          .then(({ ok, data }) => {
+            if (!ok) {
+              stopPolling();
+              showStatus(data.error || "Upload failed.", true);
+              return;
+            }
+            watchingRunId = data.run_id;
+            showStatus("Uploaded — parsing…", false);
+            pollTimer = setInterval(poll, 1500);
+            poll();
+          })
+          .catch(() => {
+            stopPolling();
+            showStatus("Couldn't upload the file.", true);
+          });
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>

@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -21,6 +21,7 @@ from ..llm import build_llm_client
 from ..models import ApplicationStatus, JobPosting
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
+from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
 from .config_form import (
     apply_app_config_form,
     apply_preferences_form,
@@ -124,6 +125,78 @@ def create_app(settings: Settings) -> FastAPI:
         finally:
             state["search_running"] = False
             stop_event.clear()
+
+    # Same pattern as the search trigger: one LLM call, run in a background
+    # thread so the request returns immediately, with a run_id so the
+    # browser can tell "still this run" apart from a new click.
+    keyword_state = {
+        "running": False,
+        "run_id": 0,
+        "keywords": None,
+        "error": None,
+    }
+
+    def _suggest_keywords_in_background(run_id: int):
+        keyword_state["running"] = True
+        keyword_state["run_id"] = run_id
+        keyword_state["keywords"] = None
+        keyword_state["error"] = None
+        try:
+            with session_factory() as session:
+                profile = get_or_create_profile(session, settings)
+                if not profile.resume_text:
+                    keyword_state["error"] = "No resume text on file — run `jobcopilot init` first."
+                    return
+                keywords = suggest_boost_keywords(
+                    profile.resume_text, settings.preferences.target_titles, llm
+                )
+                if not keywords:
+                    keyword_state["error"] = "The model didn't return any keywords — try again."
+                else:
+                    keyword_state["keywords"] = keywords
+        except Exception:  # noqa: BLE001
+            logger.exception("Keyword suggestion failed")
+            keyword_state["error"] = "Suggestion failed — check server logs (is the LLM reachable?)."
+        finally:
+            keyword_state["running"] = False
+
+    # Same background-thread pattern again: saving the upload is instant,
+    # but the re-parse is an LLM call.
+    RESUMES_DIR = Path("resumes")
+    resume_state = {
+        "running": False,
+        "run_id": 0,
+        "result": None,
+        "error": None,
+    }
+
+    def _reparse_resume_in_background(run_id: int):
+        resume_state["running"] = True
+        resume_state["run_id"] = run_id
+        resume_state["result"] = None
+        resume_state["error"] = None
+        try:
+            with session_factory() as session:
+                profile, summary, prefs_changed = parse_and_store_resume(session, settings, llm)
+                save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
+                if summary.get("_extraction_error"):
+                    resume_state["error"] = (
+                        f"Resume saved, but structured extraction failed "
+                        f"({summary['_extraction_error']}); falling back to raw-text matching."
+                    )
+                else:
+                    titles = ", ".join(summary.get("titles") or []) or "none detected"
+                    skills = ", ".join((summary.get("skills") or [])[:6]) or "none detected"
+                    note = " Preferences updated from the new resume." if prefs_changed else ""
+                    resume_state["result"] = f"Detected titles: {titles}. Top skills: {skills}.{note}"
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Resume re-parse failed")
+            resume_state["error"] = (
+                f"Couldn't read the uploaded file ({e}) — make sure it's a valid PDF, "
+                f"or upload a .txt/.md instead."
+            )
+        finally:
+            resume_state["running"] = False
 
     @app.get("/")
     def index(request: Request, status: str | None = None):
@@ -244,6 +317,65 @@ def create_app(settings: Settings) -> FastAPI:
 
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
+
+    @app.post("/config/suggest-keywords")
+    def trigger_suggest_keywords():
+        if not keyword_state["running"]:
+            next_run_id = keyword_state["run_id"] + 1
+            threading.Thread(
+                target=_suggest_keywords_in_background, args=(next_run_id,), daemon=True
+            ).start()
+            return JSONResponse({"run_id": next_run_id})
+        return JSONResponse({"run_id": keyword_state["run_id"]})
+
+    @app.get("/config/suggest-keywords/status")
+    def suggest_keywords_status():
+        return JSONResponse(
+            {
+                "running": keyword_state["running"],
+                "run_id": keyword_state["run_id"],
+                "keywords": keyword_state["keywords"],
+                "error": keyword_state["error"],
+            }
+        )
+
+    @app.post("/config/resume")
+    async def upload_resume(file: UploadFile = File(...)):
+        if resume_state["running"]:
+            return JSONResponse({"error": "A resume is already being parsed — wait for it to finish."}, status_code=409)
+
+        original_name = file.filename or ""
+        ext = Path(original_name).suffix.lower()
+        if ext not in ALLOWED_RESUME_EXTENSIONS:
+            allowed = ", ".join(sorted(ALLOWED_RESUME_EXTENSIONS))
+            return JSONResponse({"error": f"Unsupported file type {ext!r} — allowed: {allowed}"}, status_code=400)
+
+        contents = await file.read()
+        RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+        # Fixed filename per extension rather than keeping the upload's
+        # original name — one resume per instance, so each new upload
+        # replaces the last rather than accumulating files.
+        dest = RESUMES_DIR / f"resume{ext}"
+        dest.write_bytes(contents)
+
+        settings.profile.resume_path = str(dest)
+        save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
+
+        next_run_id = resume_state["run_id"] + 1
+        threading.Thread(target=_reparse_resume_in_background, args=(next_run_id,), daemon=True).start()
+        return JSONResponse({"run_id": next_run_id, "saved_as": str(dest)})
+
+    @app.get("/config/resume/status")
+    def resume_status():
+        return JSONResponse(
+            {
+                "running": resume_state["running"],
+                "run_id": resume_state["run_id"],
+                "result": resume_state["result"],
+                "error": resume_state["error"],
+                "resume_path": settings.profile.resume_path,
+            }
+        )
 
     @app.post("/config/preferences")
     async def save_preferences(request: Request):
