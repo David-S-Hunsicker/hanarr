@@ -35,6 +35,23 @@ logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
+# A wedged LLM call (Ollama hung, unreachable, or just very slow on a long
+# prompt) would otherwise leave a background task's "running" flag stuck
+# true forever, locking out all future attempts with no recovery short of
+# restarting the server. Any task whose "running" flag has been set longer
+# than the configured LLM timeout plus this buffer is treated as dead — the
+# ceiling is generous on purpose, since a false "not stuck" verdict just
+# means a redundant background thread, while a false "stuck" verdict would
+# let two re-parses race on the same profile.
+STUCK_TASK_BUFFER_SECONDS = 30.0
+
+
+def task_is_stuck(task_state: dict, llm_timeout_seconds: float, now: float | None = None) -> bool:
+    if not task_state["running"] or task_state["started_at"] is None:
+        return False
+    ceiling = llm_timeout_seconds + STUCK_TASK_BUFFER_SECONDS
+    return ((now if now is not None else time.time()) - task_state["started_at"]) > ceiling
+
 
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="job-search-copilot")
@@ -126,6 +143,9 @@ def create_app(settings: Settings) -> FastAPI:
             state["search_running"] = False
             stop_event.clear()
 
+    def _task_is_stuck(task_state: dict) -> bool:
+        return task_is_stuck(task_state, settings.llm.timeout_seconds)
+
     # Same pattern as the search trigger: one LLM call, run in a background
     # thread so the request returns immediately, with a run_id so the
     # browser can tell "still this run" apart from a new click.
@@ -134,6 +154,7 @@ def create_app(settings: Settings) -> FastAPI:
         "run_id": 0,
         "keywords": None,
         "error": None,
+        "started_at": None,
     }
 
     def _suggest_keywords_in_background(run_id: int):
@@ -141,6 +162,7 @@ def create_app(settings: Settings) -> FastAPI:
         keyword_state["run_id"] = run_id
         keyword_state["keywords"] = None
         keyword_state["error"] = None
+        keyword_state["started_at"] = time.time()
         try:
             with session_factory() as session:
                 profile = get_or_create_profile(session, settings)
@@ -168,6 +190,7 @@ def create_app(settings: Settings) -> FastAPI:
         "run_id": 0,
         "result": None,
         "error": None,
+        "started_at": None,
     }
 
     def _reparse_resume_in_background(run_id: int):
@@ -175,9 +198,22 @@ def create_app(settings: Settings) -> FastAPI:
         resume_state["run_id"] = run_id
         resume_state["result"] = None
         resume_state["error"] = None
+        resume_state["started_at"] = time.time()
         try:
             with session_factory() as session:
                 profile, summary, prefs_changed = parse_and_store_resume(session, settings, llm)
+
+                # A previous run may have been declared stuck and superseded
+                # by a newer upload while this one was still blocked on the
+                # LLM call. If so, don't let this stale run's save clobber
+                # whatever the newer run has already written.
+                if resume_state["run_id"] != run_id:
+                    logger.warning(
+                        "Resume re-parse run %d finished after being superseded by run %d; discarding its save.",
+                        run_id, resume_state["run_id"],
+                    )
+                    return
+
                 save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
                 if summary.get("_extraction_error"):
                     resume_state["error"] = (
@@ -191,12 +227,14 @@ def create_app(settings: Settings) -> FastAPI:
                     resume_state["result"] = f"Detected titles: {titles}. Top skills: {skills}.{note}"
         except Exception as e:  # noqa: BLE001
             logger.exception("Resume re-parse failed")
-            resume_state["error"] = (
-                f"Couldn't read the uploaded file ({e}) — make sure it's a valid PDF, "
-                f"or upload a .txt/.md instead."
-            )
+            if resume_state["run_id"] == run_id:
+                resume_state["error"] = (
+                    f"Couldn't read the uploaded file ({e}) — make sure it's a valid PDF, "
+                    f"or upload a .txt/.md instead."
+                )
         finally:
-            resume_state["running"] = False
+            if resume_state["run_id"] == run_id:
+                resume_state["running"] = False
 
     @app.get("/")
     def index(request: Request, status: str | None = None):
@@ -320,7 +358,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/config/suggest-keywords")
     def trigger_suggest_keywords():
-        if not keyword_state["running"]:
+        if not keyword_state["running"] or _task_is_stuck(keyword_state):
             next_run_id = keyword_state["run_id"] + 1
             threading.Thread(
                 target=_suggest_keywords_in_background, args=(next_run_id,), daemon=True
@@ -341,7 +379,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/config/resume")
     async def upload_resume(file: UploadFile = File(...)):
-        if resume_state["running"]:
+        if resume_state["running"] and not _task_is_stuck(resume_state):
             return JSONResponse({"error": "A resume is already being parsed — wait for it to finish."}, status_code=409)
 
         original_name = file.filename or ""
