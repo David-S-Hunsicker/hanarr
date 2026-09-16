@@ -15,7 +15,7 @@ from .config import Settings
 from .connectors import build_enabled_connectors
 from .llm.base import LLMClient
 from .matching import passes_prefilter, score_fit
-from .models import JobPosting, Profile
+from .models import JobPosting, Profile, SeenPosting
 
 logger = logging.getLogger(__name__)
 
@@ -72,20 +72,24 @@ def run_search_cycle(
             if not passes_prefilter(job, settings.preferences):
                 continue
 
-            existing = session.execute(
-                select(JobPosting).where(
-                    JobPosting.source == job.source,
-                    JobPosting.external_id == job.external_id,
+            already_seen = session.execute(
+                select(SeenPosting.id).where(
+                    SeenPosting.profile_id == profile.id,
+                    SeenPosting.source == job.source,
+                    SeenPosting.external_id == job.external_id,
                 )
             ).scalars().first()
-            if existing is not None:
-                continue  # already seen this posting
+            if already_seen is not None:
+                continue  # fetched and scored on a previous search, whether matched or rejected
 
             if on_progress:
                 on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
 
             score, rationale = score_fit(job, resume_summary, resume_text, settings.preferences, llm)
+            session.add(SeenPosting(profile_id=profile.id, source=job.source, external_id=job.external_id))
+
             if score < settings.matching.min_fit_score:
+                session.commit()
                 continue
 
             posting = JobPosting(

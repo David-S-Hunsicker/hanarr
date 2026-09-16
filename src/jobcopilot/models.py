@@ -87,6 +87,27 @@ class JobPosting(Base):
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="job")
 
 
+class SeenPosting(Base):
+    """Records that a posting was fetched and scored, whether or not it
+    cleared min_fit_score — lets the pipeline skip re-fetching-and-rescoring
+    the same posting on every search cycle. Deliberately minimal (no title,
+    description, etc.): postings that passed are already fully captured in
+    JobPosting, so this table only exists to avoid redundant LLM calls on
+    postings that didn't. Note: like JobPosting's own uniqueness, a posting
+    seen once stays seen even if min_fit_score or preferences change later —
+    it won't be automatically re-scored under new criteria.
+    """
+
+    __tablename__ = "seen_postings"
+    __table_args__ = (UniqueConstraint("profile_id", "source", "external_id", name="uq_seen_source_external_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    source: Mapped[str] = mapped_column(String)
+    external_id: Mapped[str] = mapped_column(String)
+    seen_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class ReminderType(str, enum.Enum):
     FOLLOW_UP = "follow_up"
     INTERVIEW_PREP = "interview_prep"
