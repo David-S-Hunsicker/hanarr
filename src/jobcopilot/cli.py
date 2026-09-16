@@ -22,7 +22,7 @@ from .reminders import (
     schedule_follow_up,
     schedule_interview_prep,
 )
-from .resume import parse_and_store_resume
+from .resume import autopopulate_preferences_from_resume, parse_and_store_resume
 
 console = Console()
 
