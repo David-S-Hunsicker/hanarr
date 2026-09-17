@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from ..config import Settings
 from ..config import save_settings_to_yaml as _save_settings_to_yaml
-from ..matching import SENIORITY_LEVELS
+from ..matching import EMPLOYMENT_TYPES, SENIORITY_LEVELS
 
 # Fields the dashboard's structured forms cover, grouped by tab. Anything
 # outside these paths (e.g. secrets like llm.api_key or SMTP password) is
@@ -57,7 +57,7 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     prefs["keywords_boost"] = _list_from_form(form.get("keywords_boost", ""))
     prefs["keywords_exclude"] = _list_from_form(form.get("keywords_exclude", ""))
     prefs["seniority"] = [level for level in SENIORITY_LEVELS if f"seniority_{level}" in form] or prefs["seniority"]
-    prefs["employment_types"] = _list_from_form(form.get("employment_types", ""))
+    prefs["employment_types"] = [t for t in EMPLOYMENT_TYPES if f"employment_type_{t}" in form]
     prefs["locations"] = _list_from_form(form.get("locations", ""))
     prefs["remote_ok"] = "remote_ok" in form
     prefs["onsite_ok"] = "onsite_ok" in form

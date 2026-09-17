@@ -98,6 +98,9 @@ def _detected_title_seniority(title: str) -> str | None:
     return None
 
 
+EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"]
+
+
 # A handful of countries commonly seen restricting "remote" roles on
 # Greenhouse/Lever/RemoteOK-style boards, mapped to name variants that show
 # up in a location string or "must be X-based" phrasing. This is not

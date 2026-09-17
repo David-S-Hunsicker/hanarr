@@ -271,9 +271,16 @@
             <div class="hint">Select every level you're open to — postings far from all selected levels are filtered out.</div>
           </div>
           <div class="field">
-            <label for="employment_types">Employment types</label>
-            <textarea id="employment_types" name="employment_types">{{ "\n".join(settings.preferences.employment_types) }}</textarea>
-            <div class="hint">full_time, part_time, contract, internship</div>
+            <label>Employment types</label>
+            <div class="checkbox-group">
+              {% for etype in ["full_time", "part_time", "contract", "internship"] %}
+              <label class="checkbox-chip">
+                <input type="checkbox" name="employment_type_{{ etype }}" {% if etype in settings.preferences.employment_types %}checked{% endif %}>
+                {{ etype }}
+              </label>
+              {% endfor %}
+            </div>
+            <div class="hint">Leave all unchecked to accept any employment type.</div>
           </div>
         </div>
       </fieldset>
