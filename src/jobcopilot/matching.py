@@ -22,35 +22,40 @@ First, find the posting's minimum/required qualifications section (however it's 
 "Requirements", "You have", "Minimum qualifications", "What you'll need", etc.) and its
 preferred/nice-to-have qualifications if present. Check each REQUIRED qualification against
 the candidate's actual resume text — not just vibes from the title or a skill keyword
-appearing somewhere in the description. A required qualification that the resume does not
-clearly satisfy (e.g. required years of experience the candidate doesn't have, a required
-credential/clearance/degree they don't hold, required hands-on experience with something not
-in their history) should sharply pull the score down, even if the role otherwise looks
-appealing — required means required. Preferred/nice-to-have qualifications matter less: missing
-several of them should cost some points but not disqualify a strong-otherwise candidate.
+appearing somewhere in the description. Preferred/nice-to-have qualifications matter less:
+missing several of them should cost some points but not disqualify a strong-otherwise
+candidate.
 
 Then return ONLY a JSON object:
 
 {
   "score": <integer 0-100, how strong a fit this is>,
   "unmet_requirements": ["each REQUIRED qualification the resume does not clearly satisfy"],
+  "fails_minimum_requirements": <true if the candidate is missing MULTIPLE required \
+qualifications, or is missing ONE major one (e.g. years of experience far short of what's \
+asked, a required credential/clearance/degree they don't hold, required hands-on experience \
+with something core to the role that's absent from their history) — false if they're missing \
+at most one minor required qualification or none at all>,
   "dealbreaker_hit": <true if the posting appears to violate ANY of the candidate's stated \
 dealbreakers, false otherwise>,
   "rationale": "1-3 sentences explaining the score, calling out unmet requirements and any \
-dealbreakers hit"
+dealbreakers hit. Address the candidate directly as 'you' (e.g. 'You have strong Python \
+experience but lack the required security clearance'), never as 'the candidate' or by name — \
+this text is shown directly to them."
 }
 
-Scoring guide: 80-100 only if the candidate clearly meets essentially all required
-qualifications; 50-79 if they meet most required qualifications but are missing one or two
-minor ones, or are missing several preferred ones; below 50 if they're missing multiple
-required qualifications or a major one (e.g. years of experience far short of what's asked).
+Scoring guide (before the fails_minimum_requirements override below): 80-100 only if the
+candidate clearly meets essentially all required qualifications; 50-79 if they meet most
+required qualifications but are missing one or two minor ones, or are missing several
+preferred ones.
 
-The candidate's dealbreakers are hard requirements, not preferences to weigh in with
-everything else — if the posting violates one, set dealbreaker_hit to true regardless of how
-well anything else matches; the caller will disqualify the posting outright. Be honest and
-specific — this score is used to filter what the candidate spends time reviewing, so don't
-inflate it, and don't guess a requirement is met just because a related keyword appears
-somewhere in the posting."""
+Both fails_minimum_requirements and the candidate's stated dealbreakers are hard
+disqualifiers, not preferences to weigh in with everything else — if either applies, set the
+corresponding field to true regardless of how well anything else matches; the caller will
+zero out the score and disqualify the posting outright, so don't try to reflect that in the
+"score" field yourself. Be honest and specific — this score is used to filter what the
+candidate spends time reviewing, so don't inflate it, and don't guess a requirement is met
+just because a related keyword appears somewhere in the posting."""
 
 
 # Ordered low to high. Used to reject postings whose title explicitly
@@ -141,12 +146,12 @@ def score_fit(
 ) -> tuple[float, str]:
     """Returns (score 0-100, rationale). The LLM checks the posting's
     required qualifications against the candidate's actual resume text (not
-    just the compressed skills/titles summary), and a missing required
-    qualification should sharply reduce the score — see SYSTEM_PROMPT. A hit
-    on one of the candidate's stated dealbreakers forces the score to 0,
-    since dealbreakers are hard requirements rather than one more factor
-    blended into the score. Falls back to a keyword-overlap heuristic if the
-    LLM call fails or isn't configured."""
+    just the compressed skills/titles summary). Two things force the score
+    to 0 outright rather than just lowering it: a hit on one of the
+    candidate's stated dealbreakers, or failing minimum/required
+    qualifications (missing multiple required items, or one major one) —
+    see SYSTEM_PROMPT. Falls back to a keyword-overlap heuristic if the LLM
+    call fails or isn't configured."""
     try:
         user_prompt = json.dumps(
             {
@@ -169,6 +174,12 @@ def score_fit(
 
         if data.get("dealbreaker_hit"):
             return 0.0, rationale or "Disqualified: posting appears to violate a stated dealbreaker."
+
+        if data.get("fails_minimum_requirements"):
+            fallback = "Disqualified: missing minimum/required qualifications."
+            if unmet:
+                fallback = "Disqualified: missing required qualification(s): " + "; ".join(unmet)
+            return 0.0, rationale or fallback
 
         score = float(data.get("score", 0))
         if unmet and not rationale:

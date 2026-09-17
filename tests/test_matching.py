@@ -184,6 +184,44 @@ def test_score_fit_surfaces_unmet_requirements_when_llm_omits_rationale():
     assert "Kubernetes" in rationale
 
 
+def test_score_fit_disqualifies_on_fails_minimum_requirements():
+    job = make_job()
+    prefs = Preferences()
+    llm = _FakeLLM(
+        {
+            "score": 60,
+            "dealbreaker_hit": False,
+            "fails_minimum_requirements": True,
+            "unmet_requirements": ["5+ years of cybersecurity investigation experience"],
+            "rationale": "",
+        }
+    )
+
+    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+
+    assert score == 0
+    assert "cybersecurity" in rationale.lower()
+
+
+def test_score_fit_keeps_score_when_minimum_requirements_met():
+    job = make_job()
+    prefs = Preferences()
+    llm = _FakeLLM(
+        {
+            "score": 78,
+            "dealbreaker_hit": False,
+            "fails_minimum_requirements": False,
+            "unmet_requirements": [],
+            "rationale": "Strong match.",
+        }
+    )
+
+    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+
+    assert score == 78
+    assert rationale == "Strong match."
+
+
 def test_score_fit_sends_resume_text_to_llm():
     job = make_job()
     prefs = Preferences()
