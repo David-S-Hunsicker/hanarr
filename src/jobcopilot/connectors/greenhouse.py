@@ -8,12 +8,13 @@ boards.greenhouse.io/stripe it's "stripe".
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 import time
 
 import httpx
 
-from .base import Connector, RawJobPosting
+from .base import Connector, RawJobPosting, to_naive_utc
 
 API_URL = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs"
 
@@ -56,6 +57,7 @@ class GreenhouseConnector(Connector):
                         remote="remote" in location.lower(),
                         url=job.get("absolute_url", ""),
                         description=description,
+                        posted_at=_parse_first_published(job.get("first_published")),
                     )
                 )
         return postings
@@ -63,3 +65,12 @@ class GreenhouseConnector(Connector):
 
 def _strip_html(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html or "").strip()
+
+
+def _parse_first_published(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        return to_naive_utc(dt.datetime.fromisoformat(value))
+    except ValueError:
+        return None

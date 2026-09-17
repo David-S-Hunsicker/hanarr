@@ -40,3 +40,14 @@ class Connector(ABC):
         failure but never partially-crash the whole search run — callers
         catch and log per-connector errors."""
         raise NotImplementedError
+
+
+def to_naive_utc(value: dt.datetime) -> dt.datetime:
+    """Normalizes a datetime to naive UTC — the convention every posted_at
+    (and every other datetime in this codebase) uses, so values from
+    different connectors are directly comparable/sortable. A naive input is
+    assumed to already be UTC (source APIs that return unzoned timestamps
+    are documented as UTC); an aware input is converted."""
+    if value.tzinfo is not None:
+        value = value.astimezone(dt.timezone.utc)
+    return value.replace(tzinfo=None)

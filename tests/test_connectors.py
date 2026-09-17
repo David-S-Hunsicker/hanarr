@@ -1,10 +1,34 @@
+import datetime as dt
+
 import httpx
 import respx
 
 from jobcopilot.connectors.arbeitnow import ArbeitnowConnector
+from jobcopilot.connectors.base import to_naive_utc
 from jobcopilot.connectors.greenhouse import GreenhouseConnector
 from jobcopilot.connectors.lever import LeverConnector
 from jobcopilot.connectors.remoteok import RemoteOKConnector
+
+
+def test_to_naive_utc_converts_aware_offset_datetime():
+    aware = dt.datetime(2026, 9, 9, 10, 50, 29, tzinfo=dt.timezone(dt.timedelta(hours=-4)))
+    result = to_naive_utc(aware)
+    assert result == dt.datetime(2026, 9, 9, 14, 50, 29)
+    assert result.tzinfo is None
+
+
+def test_to_naive_utc_strips_tzinfo_from_aware_utc_datetime():
+    aware_utc = dt.datetime(2026, 9, 9, 14, 50, 29, tzinfo=dt.timezone.utc)
+    result = to_naive_utc(aware_utc)
+    assert result == dt.datetime(2026, 9, 9, 14, 50, 29)
+    assert result.tzinfo is None
+
+
+def test_to_naive_utc_passes_through_naive_datetime_unchanged():
+    naive = dt.datetime(2026, 9, 9, 14, 50, 29)
+    result = to_naive_utc(naive)
+    assert result == naive
+    assert result.tzinfo is None
 
 
 @respx.mock
@@ -32,6 +56,47 @@ def test_greenhouse_connector_parses_jobs():
     assert postings[0].external_id == "123"
     assert postings[0].remote is True
     assert "We build things." in postings[0].description
+
+
+@respx.mock
+def test_greenhouse_connector_parses_first_published_as_naive_utc():
+    respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": 123,
+                        "title": "Backend Engineer",
+                        "location": {"name": "Remote - US"},
+                        "absolute_url": "https://boards.greenhouse.io/acme/jobs/123",
+                        "content": "<p>We build things.</p>",
+                        "first_published": "2026-09-09T10:50:29-04:00",
+                    }
+                ]
+            },
+        )
+    )
+    connector = GreenhouseConnector(company_boards=["acme"])
+    postings = connector.fetch()
+
+    posted_at = postings[0].posted_at
+    assert posted_at is not None
+    assert posted_at.tzinfo is None
+    assert posted_at == dt.datetime(2026, 9, 9, 14, 50, 29)  # -04:00 converted to UTC
+
+
+@respx.mock
+def test_greenhouse_connector_handles_missing_first_published():
+    respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={"jobs": [{"id": 123, "title": "Backend Engineer", "absolute_url": "u", "content": ""}]},
+        )
+    )
+    connector = GreenhouseConnector(company_boards=["acme"])
+    postings = connector.fetch()
+    assert postings[0].posted_at is None
 
 
 @respx.mock
@@ -77,6 +142,34 @@ def test_remoteok_connector_skips_legend_row_and_filters_tags():
 
 
 @respx.mock
+def test_remoteok_connector_parses_date_as_naive_utc():
+    respx.get("https://remoteok.com/api").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"legend": "this first row has no id"},
+                {
+                    "id": "999",
+                    "position": "Python Developer",
+                    "company": "RemoteCo",
+                    "tags": [],
+                    "url": "https://remoteok.com/remote-jobs/999",
+                    "description": "desc",
+                    "date": "2026-09-09T13:00:00Z",
+                },
+            ],
+        )
+    )
+    connector = RemoteOKConnector()
+    postings = connector.fetch()
+
+    posted_at = postings[0].posted_at
+    assert posted_at is not None
+    assert posted_at.tzinfo is None
+    assert posted_at == dt.datetime(2026, 9, 9, 13, 0, 0)
+
+
+@respx.mock
 def test_lever_connector_parses_jobs():
     respx.get("https://api.lever.co/v0/postings/acme").mock(
         return_value=httpx.Response(
@@ -99,6 +192,32 @@ def test_lever_connector_parses_jobs():
     assert postings[0].external_id == "abc-123"
     assert postings[0].remote is True
     assert "We build things." in postings[0].description
+
+
+@respx.mock
+def test_lever_connector_parses_created_at_as_naive_utc():
+    respx.get("https://api.lever.co/v0/postings/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "abc-123",
+                    "text": "Backend Engineer",
+                    "categories": {"location": "Remote - US"},
+                    "hostedUrl": "https://jobs.lever.co/acme/abc-123",
+                    "descriptionPlain": "We build things.",
+                    "createdAt": 1757437200000,  # 2025-09-09T17:00:00Z
+                }
+            ],
+        )
+    )
+    connector = LeverConnector(companies=["acme"])
+    postings = connector.fetch()
+
+    posted_at = postings[0].posted_at
+    assert posted_at is not None
+    assert posted_at.tzinfo is None
+    assert posted_at == dt.datetime(2025, 9, 9, 17, 0, 0)
 
 
 @respx.mock
@@ -137,3 +256,8 @@ def test_arbeitnow_connector_parses_jobs():
     assert len(postings) == 1
     assert postings[0].company == "Acme"
     assert postings[0].remote is False
+    # Regression check: created_at is UTC epoch seconds. fromtimestamp()
+    # without tz= previously interpreted it in the local system timezone,
+    # silently shifting posted_at by whatever the host's UTC offset was.
+    assert postings[0].posted_at == dt.datetime(2023, 11, 14, 22, 13, 20)
+    assert postings[0].posted_at.tzinfo is None

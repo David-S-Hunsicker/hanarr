@@ -8,7 +8,7 @@ import datetime as dt
 
 import httpx
 
-from .base import Connector, RawJobPosting
+from .base import Connector, RawJobPosting, to_naive_utc
 
 API_URL = "https://www.arbeitnow.com/api/job-board-api"
 
@@ -29,7 +29,11 @@ class ArbeitnowConnector(Connector):
             posted_at = None
             if item.get("created_at"):
                 try:
-                    posted_at = dt.datetime.fromtimestamp(int(item["created_at"]))
+                    # created_at is UTC epoch seconds — must pass tz= or
+                    # fromtimestamp silently interprets it in local time.
+                    posted_at = to_naive_utc(
+                        dt.datetime.fromtimestamp(int(item["created_at"]), tz=dt.timezone.utc)
+                    )
                 except (TypeError, ValueError, OSError):
                     pass
 

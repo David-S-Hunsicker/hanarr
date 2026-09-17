@@ -8,7 +8,7 @@ import datetime as dt
 
 import httpx
 
-from .base import Connector, RawJobPosting
+from .base import Connector, RawJobPosting, to_naive_utc
 
 API_URL = "https://remoteok.com/api"
 
@@ -43,7 +43,7 @@ class RemoteOKConnector(Connector):
             posted_at = None
             if item.get("date"):
                 try:
-                    posted_at = dt.datetime.fromisoformat(item["date"].replace("Z", "+00:00"))
+                    posted_at = to_naive_utc(dt.datetime.fromisoformat(item["date"].replace("Z", "+00:00")))
                 except ValueError:
                     pass
 

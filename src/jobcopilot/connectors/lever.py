@@ -8,12 +8,13 @@ jobs.lever.co/netflix it's "netflix".
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 import time
 
 import httpx
 
-from .base import Connector, RawJobPosting
+from .base import Connector, RawJobPosting, to_naive_utc
 
 API_URL = "https://api.lever.co/v0/postings/{company}"
 
@@ -57,6 +58,7 @@ class LeverConnector(Connector):
                         remote="remote" in location.lower(),
                         url=job.get("hostedUrl", ""),
                         description=description,
+                        posted_at=_parse_created_at(job.get("createdAt")),
                     )
                 )
         return postings
@@ -64,3 +66,12 @@ class LeverConnector(Connector):
 
 def _strip_html(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html or "").strip()
+
+
+def _parse_created_at(value) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        return to_naive_utc(dt.datetime.fromtimestamp(int(value) / 1000, tz=dt.timezone.utc))
+    except (TypeError, ValueError, OSError):
+        return None
