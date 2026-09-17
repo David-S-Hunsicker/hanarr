@@ -312,6 +312,9 @@
     <form method="post" action="/remind">
       <button type="submit">Check reminders now</button>
     </form>
+    <form method="post" action="/jobs/clear" id="clear-jobs-form">
+      <button type="submit" class="stop-btn" id="clear-jobs-btn">Clear all jobs</button>
+    </form>
     <span class="note" id="search-note">{% if last_search_result %}{{ last_search_result }}{% endif %}</span>
   </div>
 
@@ -416,6 +419,17 @@
       let seenRunId = {{ run_id }};
       let pollTimer = null;
       let wasRunning = {{ "true" if search_running else "false" }};
+
+      const clearJobsForm = document.getElementById("clear-jobs-form");
+      if (clearJobsForm) {
+        clearJobsForm.addEventListener("submit", function (e) {
+          const ok = window.confirm(
+            "Delete all matched jobs and their statuses (applied, interviewing, etc.)? " +
+            "This can't be undone. Your next search will re-fetch and re-score everything from scratch."
+          );
+          if (!ok) e.preventDefault();
+        });
+      }
 
       if ("Notification" in window && Notification.permission === "default") {
         // Ask once, quietly — declined or ignored is fine, we still show the in-page banner.

@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
-from ..models import ApplicationStatus, JobPosting
+from ..models import ApplicationStatus, JobPosting, Reminder, SeenPosting
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
@@ -274,6 +274,29 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if job and job.profile_id == profile.id:
                 job.status = ApplicationStatus(new_status)
                 session.commit()
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/clear")
+    def clear_jobs():
+        # Wipes SeenPosting too, not just JobPosting -- otherwise every
+        # posting fetched before this point (matched or rejected) would
+        # stay permanently skipped by the pipeline's dedup check, and the
+        # next search would find nothing "new" even though the dashboard
+        # is now empty. This is the escape hatch for exactly that: forcing
+        # everything to be re-fetched and re-scored from scratch, e.g.
+        # after a scoring-logic change.
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            session.query(Reminder).filter(
+                Reminder.profile_id == profile.id, Reminder.job_id.isnot(None)
+            ).delete(synchronize_session=False)
+            session.query(JobPosting).filter(JobPosting.profile_id == profile.id).delete(
+                synchronize_session=False
+            )
+            session.query(SeenPosting).filter(SeenPosting.profile_id == profile.id).delete(
+                synchronize_session=False
+            )
+            session.commit()
         return RedirectResponse("/", status_code=303)
 
     @app.post("/search")
