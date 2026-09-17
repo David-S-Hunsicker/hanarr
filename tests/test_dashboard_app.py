@@ -8,7 +8,7 @@ import jobcopilot.dashboard.app as app_mod
 import jobcopilot.pipeline as pipeline_mod
 from jobcopilot.config import Settings
 from jobcopilot.connectors.base import RawJobPosting
-from jobcopilot.dashboard.app import create_app, task_is_stuck
+from jobcopilot.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
 from jobcopilot.db import get_or_create_profile, make_session_factory
 from jobcopilot.llm.base import LLMClient
 from jobcopilot.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
@@ -34,6 +34,53 @@ def test_task_is_stuck_true_past_ceiling():
 
 def test_task_is_stuck_false_exactly_at_ceiling():
     assert task_is_stuck({"running": True, "started_at": 1000.0}, 60.0, now=1000.0 + 60.0 + 30.0) is False
+
+
+def test_format_posting_age_none_when_no_date():
+    assert format_posting_age(None) is None
+
+
+def test_format_posting_age_today():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    assert format_posting_age(now, now=now) == "Posted today"
+
+
+def test_format_posting_age_yesterday():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    posted = now - dt.timedelta(days=1)
+    assert format_posting_age(posted, now=now) == "Posted yesterday"
+
+
+def test_format_posting_age_days():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    posted = now - dt.timedelta(days=7)
+    assert format_posting_age(posted, now=now) == "Posted 7d ago"
+
+
+def test_format_posting_age_months():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    posted = now - dt.timedelta(days=45)
+    assert format_posting_age(posted, now=now) == "Posted 1mo ago"
+
+
+def test_format_posting_age_future_date_does_not_go_negative():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    posted = now + dt.timedelta(hours=2)  # clock skew between sources
+    assert format_posting_age(posted, now=now) == "Posted today"
+
+
+def test_is_recent_posting_true_within_window():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    assert is_recent_posting(now - dt.timedelta(days=2), now=now) is True
+
+
+def test_is_recent_posting_false_outside_window():
+    now = dt.datetime(2026, 9, 17, 12, 0, 0)
+    assert is_recent_posting(now - dt.timedelta(days=4), now=now) is False
+
+
+def test_is_recent_posting_false_when_no_date():
+    assert is_recent_posting(None) is False
 
 
 def _make_isolated_settings(tmp_path):
@@ -182,3 +229,86 @@ def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
     finally:
         hang.set()
         time.sleep(0.3)
+
+
+def _extract_job_card(html: str, title: str) -> str:
+    """Splits on the job-card class boundary so assertions check the
+    correct posting's markup, not text bleeding in from an adjacent card."""
+    for card in html.split("job-card"):
+        if title in card:
+            return card
+    raise AssertionError(f"No job-card found containing title {title!r}")
+
+
+def test_index_shows_new_badge_and_relative_age_for_recent_posting(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    now = dt.datetime.utcnow()
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="1", company="Acme",
+                title="Recent Posting Title", url="u", fit_score=80,
+                status=ApplicationStatus.NEW, posted_at=now,
+            )
+        )
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    html = client.get("/").text
+
+    card = _extract_job_card(html, "Recent Posting Title")
+    assert "new-badge" in card
+    assert "Posted today" in card
+
+
+def test_index_omits_new_badge_for_old_posting(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    now = dt.datetime.utcnow()
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="1", company="Acme",
+                title="Old Posting Title", url="u", fit_score=80,
+                status=ApplicationStatus.NEW, posted_at=now - dt.timedelta(days=45),
+            )
+        )
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    html = client.get("/").text
+
+    card = _extract_job_card(html, "Old Posting Title")
+    assert "new-badge" not in card
+    assert "Posted 1mo ago" in card
+
+
+def test_index_omits_age_pill_when_posted_at_is_none(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="1", company="Acme",
+                title="No Date Posting Title", url="u", fit_score=80,
+                status=ApplicationStatus.NEW, posted_at=None,
+            )
+        )
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    html = client.get("/").text
+
+    card = _extract_job_card(html, "No Date Posting Title")
+    assert "new-badge" not in card
+    assert "Posted" not in card

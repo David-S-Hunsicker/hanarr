@@ -255,6 +255,16 @@
       border: 1px solid var(--border);
     }
     .pill.remote { color: var(--status-good); border-color: var(--status-good); }
+    .pill.new-badge {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 650;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      padding: 0.1rem 0.5rem;
+    }
     .job-rationale {
       margin-top: 0.55rem;
       font-size: 0.82rem;
@@ -381,6 +391,7 @@
       <div class="job-main">
         <div class="job-title-row">
           <a class="job-title" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+          {% if job.posted_at|is_recent_posting %}<span class="pill new-badge">New</span>{% endif %}
         </div>
         <div class="job-company">{{ job.company }}</div>
         <div class="job-meta">
@@ -393,7 +404,8 @@
             {% else %}up to ${{ "%.0f"|format(job.salary_max) }}{% endif %}
           </span>
           {% endif %}
-          {% if job.posted_at %}<span class="pill">Posted {{ job.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+          {% set age = job.posted_at|posting_age %}
+          {% if age %}<span class="pill" title="{{ job.posted_at.strftime('%Y-%m-%d') }}">{{ age }}</span>{% endif %}
           <span class="pill">{{ job.source }}</span>
         </div>
         {% if job.fit_rationale %}

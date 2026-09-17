@@ -6,6 +6,7 @@ self-host with nothing but `jobcopilot serve`.
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 import sys
@@ -57,6 +58,38 @@ def task_is_stuck(task_state: dict, llm_timeout_seconds: float, now: float | Non
     return ((now if now is not None else time.time()) - task_state["started_at"]) > ceiling
 
 
+def format_posting_age(posted_at: dt.datetime | None, now: dt.datetime | None = None) -> str | None:
+    """Renders posted_at as a short relative label for the dashboard, or
+    None if there's nothing to show. now is naive UTC, matching how
+    connectors normalize posted_at (see connectors.base.to_naive_utc)."""
+    if posted_at is None:
+        return None
+    now = now if now is not None else dt.datetime.utcnow()
+    delta_seconds = (now - posted_at).total_seconds()
+    if delta_seconds < 0:
+        return "Posted today"  # clock skew between sources; don't show a negative age
+    days = int(delta_seconds // 86400)
+    if days == 0:
+        return "Posted today"
+    if days == 1:
+        return "Posted yesterday"
+    if days < 30:
+        return f"Posted {days}d ago"
+    months = days // 30
+    return f"Posted {months}mo ago"
+
+
+def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = None, within_days: int = 3) -> bool:
+    """True if posted_at is within the last `within_days` days — drives the
+    "New" badge. Unknown posted_at (source doesn't provide one) is never
+    flagged as new, since there's no evidence either way."""
+    if posted_at is None:
+        return False
+    now = now if now is not None else dt.datetime.utcnow()
+    delta_seconds = (now - posted_at).total_seconds()
+    return 0 <= delta_seconds < within_days * 86400
+
+
 def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
     through so the restart route can shut it down cleanly before
@@ -65,6 +98,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     app = FastAPI(title="job-search-copilot")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
+    templates.env.filters["posting_age"] = format_posting_age
+    templates.env.filters["is_recent_posting"] = is_recent_posting
     session_factory = make_session_factory(settings)
     llm = build_llm_client(settings.llm)
 
