@@ -115,6 +115,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         "sources_total": 0,
         "current_source": None,
         "matched_count": 0,
+        # considered_total grows as each source's fetch completes (we don't
+        # know the grand total upfront — sources are fetched one at a
+        # time); considered_done counts postings actually looked at
+        # (skipped or scored, either way) toward that running total.
+        "considered_total": 0,
+        "considered_done": 0,
         "log": [],
         "last_search_result": None,
     }
@@ -132,11 +138,14 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             state["current_source"] = event["source"]
             _log_event({"kind": "source_start", "text": f"Searching {event['source']}…"})
         elif kind == "source_fetched":
+            state["considered_total"] += event["count"]
             _log_event({"kind": "info", "text": f"{event['source']}: {event['count']} posting(s) fetched"})
         elif kind == "source_error":
             _log_event({"kind": "error", "text": f"{event['source']}: fetch failed, skipping"})
         elif kind == "scoring":
             _log_event({"kind": "scoring", "text": f"Scoring: {event['title']} at {event['company']}"})
+        elif kind == "considered":
+            state["considered_done"] += 1
         elif kind == "matched":
             state["matched_count"] += 1
             score = event["fit_score"]
@@ -161,6 +170,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         state["sources_total"] = len(settings.sources.__class__.model_fields)
         state["current_source"] = None
         state["matched_count"] = 0
+        state["considered_total"] = 0
+        state["considered_done"] = 0
         state["log"] = []
         stop_event.clear()
         try:
@@ -387,6 +398,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "sources_total": state["sources_total"],
                 "current_source": state["current_source"],
                 "matched_count": state["matched_count"],
+                "considered_total": state["considered_total"],
+                "considered_done": state["considered_done"],
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),

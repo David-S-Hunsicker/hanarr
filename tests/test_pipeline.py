@@ -119,3 +119,60 @@ def test_different_postings_are_scored_independently(monkeypatch):
     assert count == 2
     assert llm.call_count == 2
     assert session.query(SeenPosting).count() == 2
+
+
+def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeypatch):
+    """Covers all four ways a posting can be handled -- prefiltered out,
+    already-seen (skipped before scoring), scored-and-rejected, and
+    scored-and-matched -- and confirms each fires exactly one "considered"
+    event, which is what the dashboard's progress bar denominator relies on."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+
+    settings = Settings()
+    settings.matching.min_fit_score = 60
+    settings.preferences.keywords_exclude = ["blocked"]
+
+    prefiltered_job = _make_job("prefiltered")
+    prefiltered_job.description = "this posting is blocked by a keyword"
+
+    already_seen_job = _make_job("already-seen")
+    session.add(SeenPosting(profile_id=profile.id, source="arbeitnow", external_id="already-seen"))
+    session.commit()
+
+    rejected_job = _make_job("rejected")
+    matched_job = _make_job("matched")
+
+    connector = _FakeConnector(
+        "arbeitnow", [prefiltered_job, already_seen_job, rejected_job, matched_job]
+    )
+    monkeypatch.setattr("jobcopilot.pipeline.build_enabled_connectors", lambda sources: [connector])
+
+    scores = {"rejected": 30, "matched": 85}
+
+    class _PerJobLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            payload = json.loads(user)
+            title = payload["job"]["title"]
+            # external_id isn't in the payload, but our jobs all share a
+            # title/company; use call order against the two real LLM calls
+            # expected (rejected, then matched) to pick the right score.
+            score = scores["rejected"] if self.calls == 0 else scores["matched"]
+            self.calls += 1
+            return json.dumps({"score": score, "dealbreaker_hit": False, "rationale": "r"})
+
+        calls = 0
+
+    llm = _PerJobLLM()
+    considered_events = []
+
+    def on_progress(event):
+        if event["event"] == "considered":
+            considered_events.append(event)
+
+    new_count = run_search_cycle(session, settings, profile, llm, on_progress=on_progress)
+
+    assert new_count == 1  # only "matched" cleared the threshold
+    assert len(considered_events) == 4, "one considered event per posting, regardless of outcome"

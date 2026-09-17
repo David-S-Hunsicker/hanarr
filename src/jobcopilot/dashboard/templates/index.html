@@ -499,15 +499,25 @@
               stopBtn.disabled = data.stop_requested;
               stopBtn.textContent = data.stop_requested ? "Stopping…" : "Stop search";
 
-              const total = data.sources_total || 0;
-              const done = data.sources_done || 0;
-              const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+              const sourcesTotal = data.sources_total || 0;
+              const sourcesDone = data.sources_done || 0;
+              const consideredTotal = data.considered_total || 0;
+              const consideredDone = data.considered_done || 0;
+              // Prefer posting-level progress once we know a total (after
+              // the first source's fetch completes); source-level percent
+              // is only a placeholder before that, so the bar isn't stuck
+              // at 0% during the first fetch.
+              const pct = consideredTotal > 0
+                ? Math.min(100, Math.round((consideredDone / consideredTotal) * 100))
+                : (sourcesTotal > 0 ? Math.min(100, Math.round((sourcesDone / sourcesTotal) * 100)) : 0);
               barFill.style.width = pct + "%";
 
               headline.textContent = data.current_source
                 ? "Searching " + data.current_source + "…"
                 : "Working…";
-              countLabel.textContent = done + " / " + total + " source(s) · " + data.matched_count + " matched";
+              countLabel.textContent = consideredTotal > 0
+                ? consideredDone + " / " + consideredTotal + " considered · " + data.matched_count + " matched"
+                : sourcesDone + " / " + sourcesTotal + " source(s) · " + data.matched_count + " matched";
               renderLog(data.log || []);
 
               wasRunning = true;

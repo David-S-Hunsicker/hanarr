@@ -312,3 +312,56 @@ def test_index_omits_age_pill_when_posted_at_is_none(tmp_path):
     card = _extract_job_card(html, "No Date Posting Title")
     assert "new-badge" not in card
     assert "Posted" not in card
+
+
+def test_search_status_tracks_considered_progress_across_sources(monkeypatch, tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    settings.matching.min_fit_score = 60
+
+    def make_jobs(source, n):
+        return [
+            RawJobPosting(
+                source=source, external_id=f"{source}-{i}", company="Acme", title="Engineer",
+                location="Remote", remote=True, url="http://x", description="d",
+            )
+            for i in range(n)
+        ]
+
+    class SourceA:
+        name = "sourceA"
+
+        def fetch(self):
+            return make_jobs("sourceA", 3)
+
+    class SourceB:
+        name = "sourceB"
+
+        def fetch(self):
+            return make_jobs("sourceB", 2)
+
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [SourceA(), SourceB()])
+
+    class FastLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            return '{"score": 85, "dealbreaker_hit": false, "fails_minimum_requirements": false, "rationale": "ok"}'
+
+    monkeypatch.setattr(app_mod, "build_llm_client", lambda cfg: FastLLM())
+
+    app = create_app(settings)
+    client = TestClient(app)
+
+    r = client.post("/search", follow_redirects=False)
+    assert r.status_code == 303
+
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/search/status").json()
+        if not s["search_running"]:
+            final = s
+            break
+
+    assert final is not None, "search did not finish in time"
+    assert final["considered_done"] == 5
+    assert final["considered_total"] == 5
+    assert final["matched_count"] == 5

@@ -70,6 +70,8 @@ def run_search_cycle(
                 break
 
             if not passes_prefilter(job, settings.preferences):
+                if on_progress:
+                    on_progress({"event": "considered"})
                 continue
 
             already_seen = session.execute(
@@ -80,6 +82,8 @@ def run_search_cycle(
                 )
             ).scalars().first()
             if already_seen is not None:
+                if on_progress:
+                    on_progress({"event": "considered"})
                 continue  # fetched and scored on a previous search, whether matched or rejected
 
             if on_progress:
@@ -90,6 +94,8 @@ def run_search_cycle(
 
             if score < settings.matching.min_fit_score:
                 session.commit()
+                if on_progress:
+                    on_progress({"event": "considered"})
                 continue
 
             posting = JobPosting(
@@ -121,6 +127,7 @@ def run_search_cycle(
                         "fit_score": posting.fit_score,
                     }
                 )
+                on_progress({"event": "considered"})
 
         session.commit()
         if on_progress:
