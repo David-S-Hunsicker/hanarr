@@ -20,11 +20,19 @@ it, their stated preferences, and a job posting.
 
 First, find the posting's minimum/required qualifications section (however it's labeled —
 "Requirements", "You have", "Minimum qualifications", "What you'll need", etc.) and its
-preferred/nice-to-have qualifications if present. Check each REQUIRED qualification against
-the candidate's actual resume text — not just vibes from the title or a skill keyword
-appearing somewhere in the description. Preferred/nice-to-have qualifications matter less:
-missing several of them should cost some points but not disqualify a strong-otherwise
-candidate.
+preferred/nice-to-have qualifications if present. Check each qualification — required AND \
+preferred — against what the resume's WORK EXPERIENCE and PROJECT sections actually describe \
+the candidate doing, not against a skills list or summary line by itself. A skill appearing \
+only in a "Skills" list, or a technology mentioned only as something the candidate is \
+"currently learning" / "completing a course in" / studying, is a claimed familiarity, not \
+demonstrated experience — do not describe it as "extensive experience," "a strong \
+background," or similar unless the work history or project bullets actually show hands-on \
+use of it (built something with it, shipped it, applied it to a real problem). A candidate \
+whose only connection to a preferred qualification is a skills-list keyword or in-progress \
+coursework should be scored as PARTIALLY meeting that qualification at best, not as \
+possessing it. Preferred/nice-to-have qualifications matter less than required ones: missing \
+several of them should cost some points but not disqualify a strong-otherwise candidate — but \
+don't claim the candidate meets a preferred qualification they haven't actually demonstrated.
 
 Then return ONLY a JSON object:
 
