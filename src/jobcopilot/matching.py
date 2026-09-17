@@ -38,10 +38,14 @@ with something core to the role that's absent from their history) — false if t
 at most one minor required qualification or none at all>,
   "dealbreaker_hit": <true if the posting appears to violate ANY of the candidate's stated \
 dealbreakers, false otherwise>,
-  "rationale": "1-3 sentences explaining the score, calling out unmet requirements and any \
-dealbreakers hit. Address the candidate directly as 'you' (e.g. 'You have strong Python \
-experience but lack the required security clearance'), never as 'the candidate' or by name — \
-this text is shown directly to them."
+  "rationale": "1-3 sentences explaining the score. Only mention what's actually relevant to \
+THIS score — if a dealbreaker was hit or a requirement is unmet, say so specifically; if there \
+were no dealbreakers or unmet requirements, don't mention dealbreakers/requirements at all, \
+just explain the fit. Never state the absence of a problem (no 'no dealbreakers found', no \
+'meets all requirements' filler) — only state what's actually noteworthy. Address the \
+candidate directly as 'you' (e.g. 'You have strong Python experience but lack the required \
+security clearance'), never as 'the candidate' or by name — this text is shown directly to \
+them."
 }
 
 Scoring guide (before the fails_minimum_requirements override below): 80-100 only if the
