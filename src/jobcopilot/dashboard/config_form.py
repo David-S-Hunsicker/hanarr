@@ -61,6 +61,7 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     prefs["remote_ok"] = "remote_ok" in form
     prefs["onsite_ok"] = "onsite_ok" in form
     prefs["willing_to_relocate"] = "willing_to_relocate" in form
+    prefs["work_country"] = form.get("work_country", prefs["work_country"]).strip()
     prefs["salary_floor_usd"] = _int_or_none(form.get("salary_floor_usd"))
     prefs["company_size_min"] = _int_or_none(form.get("company_size_min"))
     prefs["company_size_max"] = _int_or_none(form.get("company_size_max"))

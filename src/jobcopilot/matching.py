@@ -90,6 +90,70 @@ def _detected_title_seniority(title: str) -> str | None:
     return None
 
 
+# A handful of countries commonly seen restricting "remote" roles on
+# Greenhouse/Lever/RemoteOK-style boards, mapped to name variants that show
+# up in a location string or "must be X-based" phrasing. This is not
+# exhaustive — it only needs to catch the common case of a posting
+# advertising remote work scoped to one specific other country, not every
+# possible country in the world.
+_OTHER_COUNTRY_NAMES = {
+    "canada": ["canada", "canadian"],
+    "united kingdom": ["united kingdom", "uk", "u.k.", "britain"],
+    "germany": ["germany", "german"],
+    "india": ["india"],
+    "australia": ["australia", "australian"],
+    "mexico": ["mexico", "mexican"],
+    "brazil": ["brazil", "brazilian"],
+    "philippines": ["philippines", "filipino"],
+    "poland": ["poland", "polish"],
+    "ireland": ["ireland", "irish"],
+    "eu": ["european union", "eu member state"],
+}
+
+# Phrasing that signals an explicit restriction/requirement, checked against
+# the description — deliberately narrow (see module docstring) to avoid
+# false-rejecting a posting that only mentions a country in passing (e.g.
+# "we have an office in Canada" without restricting this specific role).
+_RESTRICTION_PATTERNS = [
+    r"\bmust be (a )?{variant}[ -]based\b",
+    r"\bmust be (a )?{variant} resident\b",
+    r"\b{variant} residen(t|cy) (is )?required\b",
+    r"\bopen (only )?to {variant}\b",
+    r"\b{variant}[ -]based candidates? only\b",
+    r"\b{variant} only\b",
+    r"\bthis role is (based |located )?in {variant}\b",
+]
+
+
+def _detected_other_country_restriction(job: RawJobPosting, work_country: str) -> str | None:
+    """Returns the name of another country the posting appears to restrict
+    remote work to, or None if no such restriction is detected. The
+    location field is checked by whole-word match (it's a short, structured
+    field so a country name appearing there reliably means the role is
+    scoped to it); the description is only checked against explicit
+    restriction phrasing, not any mention of a country name, since a
+    posting merely mentioning a country (e.g. an office location) doesn't
+    mean this specific role is restricted to it."""
+    if not work_country.strip():
+        return None  # check disabled
+
+    location_lower = job.location.lower()
+    text_lower = f"{job.title} {job.description}".lower()
+
+    for country, variants in _OTHER_COUNTRY_NAMES.items():
+        if country == work_country.strip().lower():
+            continue  # the candidate's own configured country, not a restriction
+        for variant in variants:
+            escaped = re.escape(variant)
+            if re.search(rf"\b{escaped}\b", location_lower):
+                return country
+            for pattern in _RESTRICTION_PATTERNS:
+                if re.search(pattern.format(variant=escaped), text_lower):
+                    return country
+
+    return None
+
+
 def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
     text = f"{job.title} {job.description}".lower()
 
@@ -107,6 +171,14 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
         )
         if not location_matches:
             return False
+
+    # A "remote" posting is often remote *within one specific country* —
+    # being remote-ok doesn't mean eligible for a "Remote - Canada" role.
+    # This applies whether or not job.remote is set, since some sources
+    # (Greenhouse) put the country restriction in the location field
+    # without a clean remote/onsite flag either way.
+    if _detected_other_country_restriction(job, prefs.work_country):
+        return False
 
     if prefs.salary_floor_usd and job.salary_max:
         if job.salary_max < prefs.salary_floor_usd:

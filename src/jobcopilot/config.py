@@ -27,6 +27,11 @@ class Preferences(BaseModel):
     remote_ok: bool = True
     onsite_ok: bool = False
     willing_to_relocate: bool = False
+    # Applies even to remote postings — a "remote" job is often remote
+    # *within a specific country* (e.g. "Remote - Canada only"), which a
+    # plain locations/remote_ok check doesn't catch. Empty string disables
+    # this check entirely.
+    work_country: str = "United States"
     salary_floor_usd: Optional[int] = None
     company_size_min: Optional[int] = None
     company_size_max: Optional[int] = None

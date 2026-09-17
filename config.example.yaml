@@ -28,6 +28,10 @@ preferences:
   remote_ok: true
   onsite_ok: false
   willing_to_relocate: false
+  # Even a "remote" posting can be scoped to one country (e.g. "Remote -
+  # Canada"); postings that clearly restrict to another country are
+  # filtered out. Leave blank ("") to disable this check.
+  work_country: "United States"
 
   salary_floor_usd: 120000   # postings below this (when salary is listed) are filtered
   company_size_min: null      # e.g. 50 — leave null to not filter

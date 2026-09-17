@@ -101,6 +101,42 @@ def test_prefilter_accepts_boost_keyword_overlap_even_without_title_overlap():
     assert passes_prefilter(job, prefs) is True
 
 
+def test_prefilter_rejects_remote_posting_restricted_to_another_country():
+    job = make_job(location="Remote - Canada")
+    prefs = Preferences(remote_ok=True, work_country="United States")
+    assert passes_prefilter(job, prefs) is False
+
+
+def test_prefilter_accepts_remote_posting_explicitly_us():
+    job = make_job(location="Remote - US")
+    prefs = Preferences(remote_ok=True, work_country="United States")
+    assert passes_prefilter(job, prefs) is True
+
+
+def test_prefilter_accepts_remote_posting_with_no_country_mentioned():
+    job = make_job(location="Remote")
+    prefs = Preferences(remote_ok=True, work_country="United States")
+    assert passes_prefilter(job, prefs) is True
+
+
+def test_prefilter_rejects_on_clear_country_restriction_phrasing_in_description():
+    job = make_job(location="Remote", description="Germany-based candidates only for this position.")
+    prefs = Preferences(remote_ok=True, work_country="United States")
+    assert passes_prefilter(job, prefs) is False
+
+
+def test_prefilter_ignores_passing_country_mention_in_description():
+    job = make_job(location="Remote", description="We have an engineering office in Germany.")
+    prefs = Preferences(remote_ok=True, work_country="United States")
+    assert passes_prefilter(job, prefs) is True
+
+
+def test_prefilter_country_check_disabled_when_work_country_blank():
+    job = make_job(location="Remote - Canada")
+    prefs = Preferences(remote_ok=True, work_country="")
+    assert passes_prefilter(job, prefs) is True
+
+
 def test_rule_based_score_rewards_title_and_skill_overlap():
     job = make_job(title="Backend Engineer", description="python distributed systems kubernetes")
     prefs = Preferences(target_titles=["Backend Engineer"], keywords_boost=["kubernetes"])

@@ -276,6 +276,11 @@
           <input type="checkbox" id="willing_to_relocate" name="willing_to_relocate" {% if settings.preferences.willing_to_relocate %}checked{% endif %}>
           <label for="willing_to_relocate">Willing to relocate</label>
         </div>
+        <div class="field">
+          <label for="work_country">Work country</label>
+          <input type="text" id="work_country" name="work_country" value="{{ settings.preferences.work_country }}">
+          <div class="hint">Postings that clearly restrict remote work to another country (e.g. "Remote - Canada") are filtered out. Leave blank to disable this check.</div>
+        </div>
         <div class="row">
           <div class="field">
             <label for="salary_floor_usd">Salary floor (USD)</label>
