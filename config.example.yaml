@@ -18,7 +18,8 @@ preferences:
     - "unpaid"
     - "commission only"
 
-  seniority: "mid"        # one of: intern, junior, mid, senior, staff, principal, exec
+  seniority:              # any of: intern, junior, mid, senior, staff, principal, exec
+    - "mid"
   employment_types:       # any of: full_time, part_time, contract, internship
     - "full_time"
 

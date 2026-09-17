@@ -81,6 +81,29 @@ def test_prefilter_ignores_seniority_when_title_has_no_level_signal():
     assert passes_prefilter(job, prefs) is True
 
 
+def test_preferences_migrates_old_string_seniority_to_list():
+    prefs = Preferences(seniority="senior")
+    assert prefs.seniority == ["senior"]
+
+
+def test_prefilter_multi_select_seniority_widens_tolerance():
+    # 2 rungs from "senior" alone, but only 1 rung from "staff" -- should
+    # pass when the candidate selected both levels.
+    job = make_job(title="Principal Backend Engineer")
+    prefs = Preferences(
+        seniority=["senior", "staff"],
+        remote_ok=True,
+        target_titles=["Backend Engineer"],
+    )
+    assert passes_prefilter(job, prefs) is True
+
+
+def test_prefilter_multi_select_seniority_still_rejects_outside_all_selected():
+    job = make_job(title="Software Engineering Intern")
+    prefs = Preferences(seniority=["senior", "staff"], remote_ok=True)
+    assert passes_prefilter(job, prefs) is False
+
+
 def test_prefilter_rejects_zero_title_and_keyword_overlap():
     job = make_job(title="Marketing Manager", description="Own our social media campaigns.")
     prefs = Preferences(

@@ -200,11 +200,19 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
         ):
             return False
 
-    if prefs.seniority in SENIORITY_LEVELS:
+    candidate_levels = [s for s in prefs.seniority if s in SENIORITY_LEVELS]
+    if candidate_levels:
         detected = _detected_title_seniority(job.title)
         if detected and detected in SENIORITY_LEVELS:
-            gap = abs(SENIORITY_LEVELS.index(detected) - SENIORITY_LEVELS.index(prefs.seniority))
-            if gap > SENIORITY_TOLERANCE:
+            # Reject only if the posting is too far from EVERY level the
+            # candidate selected — someone open to both "senior" and
+            # "staff" shouldn't lose a staff-adjacent posting just because
+            # it's 2 rungs from "senior" alone.
+            min_gap = min(
+                abs(SENIORITY_LEVELS.index(detected) - SENIORITY_LEVELS.index(level))
+                for level in candidate_levels
+            )
+            if min_gap > SENIORITY_TOLERANCE:
                 return False
 
     if prefs.target_titles or prefs.keywords_boost:

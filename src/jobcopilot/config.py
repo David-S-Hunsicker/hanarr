@@ -12,7 +12,7 @@ from typing import Literal, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 
@@ -21,7 +21,9 @@ class Preferences(BaseModel):
     target_titles: list[str] = Field(default_factory=list)
     keywords_boost: list[str] = Field(default_factory=list)
     keywords_exclude: list[str] = Field(default_factory=list)
-    seniority: str = "mid"
+    # Accepts a plain string too (old config.yaml format, pre-multi-select) —
+    # see _coerce_seniority_list below — and normalizes it to a one-item list.
+    seniority: list[str] = Field(default_factory=lambda: ["mid"])
     employment_types: list[str] = Field(default_factory=lambda: ["full_time"])
     locations: list[str] = Field(default_factory=list)
     remote_ok: bool = True
@@ -38,6 +40,16 @@ class Preferences(BaseModel):
     industries_include: list[str] = Field(default_factory=list)
     industries_exclude: list[str] = Field(default_factory=list)
     dealbreakers: list[str] = Field(default_factory=list)
+
+    @field_validator("seniority", mode="before")
+    @classmethod
+    def _coerce_seniority_list(cls, value):
+        """A config.yaml from before multi-select seniority has a plain
+        string (e.g. "senior"); wrap it into a one-item list so old configs
+        keep loading without a manual edit."""
+        if isinstance(value, str):
+            return [value]
+        return value
 
 
 class ProfileConfig(BaseModel):

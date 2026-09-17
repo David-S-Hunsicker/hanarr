@@ -172,6 +172,22 @@
     .checkbox-row input { width: auto; }
     .checkbox-row label { font-size: 0.88rem; font-weight: 500; margin: 0; }
 
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .checkbox-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.35rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .checkbox-chip input { width: auto; margin: 0; }
+    .checkbox-chip:has(input:checked) { border-color: var(--accent); background: var(--accent-weak); }
+
     .source-block {
       border: 1px solid var(--gridline);
       border-radius: 8px;
@@ -243,12 +259,16 @@
         </div>
         <div class="row">
           <div class="field">
-            <label for="seniority">Seniority</label>
-            <select id="seniority" name="seniority">
+            <label>Seniority</label>
+            <div class="checkbox-group">
               {% for level in ["intern", "junior", "mid", "senior", "staff", "principal", "exec"] %}
-              <option value="{{ level }}" {% if level == settings.preferences.seniority %}selected{% endif %}>{{ level }}</option>
+              <label class="checkbox-chip">
+                <input type="checkbox" name="seniority_{{ level }}" {% if level in settings.preferences.seniority %}checked{% endif %}>
+                {{ level }}
+              </label>
               {% endfor %}
-            </select>
+            </div>
+            <div class="hint">Select every level you're open to — postings far from all selected levels are filtered out.</div>
           </div>
           <div class="field">
             <label for="employment_types">Employment types</label>
