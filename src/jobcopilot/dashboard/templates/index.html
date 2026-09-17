@@ -100,6 +100,17 @@
     }
     .nav-link:hover { text-decoration: underline; }
 
+    .stats-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.9rem;
+    }
+    .stats-bar strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .stats-bar .stats-sep { color: var(--text-muted); }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -300,6 +311,12 @@
     <a class="nav-link" href="/config">Preferences &amp; config</a>
   </div>
 
+  <div class="stats-bar">
+    <span><strong>{{ considered_count }}</strong> considered</span>
+    <span class="stats-sep">·</span>
+    <span><strong>{{ matched_count }}</strong> matched</span>
+  </div>
+
   <div class="toolbar">
     <form method="post" action="/search" id="search-form">
       <button type="submit" id="search-btn" {% if search_running %}disabled{% endif %}>
@@ -339,9 +356,9 @@
   {% endif %}
 
   <div class="filters">
-    <a href="/" class="{% if not current_filter %}active{% endif %}">All</a>
+    <a href="/" class="{% if not current_filter %}active{% endif %}">All ({{ matched_count }})</a>
     {% for s in statuses %}
-    <a href="/?status={{ s }}" class="{% if s == current_filter %}active{% endif %}">{{ s }}</a>
+    <a href="/?status={{ s }}" class="{% if s == current_filter %}active{% endif %}">{{ s }} ({{ status_counts[s] }})</a>
     {% endfor %}
   </div>
 

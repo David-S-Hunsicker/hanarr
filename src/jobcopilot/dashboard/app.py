@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..db import get_or_create_profile, make_session_factory
@@ -252,6 +253,27 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 query = query.filter(JobPosting.status == ApplicationStatus(status))
             jobs = query.order_by(JobPosting.fit_score.desc()).all()
             reminders = get_due_reminders(session, profile)
+
+            # "Considered" = every posting fetched and scored (matched or
+            # not), regardless of the current status filter above — this is
+            # a standing total, not affected by which status tab is open.
+            considered_count = (
+                session.query(SeenPosting).filter(SeenPosting.profile_id == profile.id).count()
+            )
+            matched_count = (
+                session.query(JobPosting).filter(JobPosting.profile_id == profile.id).count()
+            )
+
+            status_counts_rows = (
+                session.query(JobPosting.status, func.count(JobPosting.id))
+                .filter(JobPosting.profile_id == profile.id)
+                .group_by(JobPosting.status)
+                .all()
+            )
+            status_counts = {s.value: 0 for s in ApplicationStatus}
+            for status_value, count in status_counts_rows:
+                status_counts[status_value.value] = count
+
             return templates.TemplateResponse(
                 request=request,
                 name="index.html",
@@ -263,6 +285,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "search_running": state["search_running"],
                     "last_search_result": state["last_search_result"],
                     "run_id": state["run_id"],
+                    "considered_count": considered_count,
+                    "matched_count": matched_count,
+                    "status_counts": status_counts,
                 },
             )
 

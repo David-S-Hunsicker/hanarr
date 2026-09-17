@@ -91,3 +91,45 @@ def test_clear_jobs_is_a_no_op_when_nothing_exists(tmp_path):
 
     r = client.post("/jobs/clear", follow_redirects=False)
     assert r.status_code == 303
+
+
+def test_index_shows_considered_matched_and_per_status_counts(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        for i in range(5):
+            session.add(SeenPosting(profile_id=profile.id, source="test", external_id=str(i)))
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="0", company="C",
+                title="T1", url="u", fit_score=80, status=ApplicationStatus.NEW,
+            )
+        )
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="1", company="C",
+                title="T2", url="u", fit_score=75, status=ApplicationStatus.APPLIED,
+            )
+        )
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="2", company="C",
+                title="T3", url="u", fit_score=90, status=ApplicationStatus.NEW,
+            )
+        )
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    r = client.get("/")
+
+    assert r.status_code == 200
+    html = r.text
+    assert "5" in html and "considered" in html
+    assert "3" in html and "matched" in html
+    assert "new (2)" in html
+    assert "applied (1)" in html
+    assert "reviewed (0)" in html
+    assert "All (3)" in html
