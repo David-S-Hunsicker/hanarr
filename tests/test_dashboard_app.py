@@ -1,10 +1,16 @@
 import datetime as dt
+import threading
+import time
 
 from fastapi.testclient import TestClient
 
+import jobcopilot.dashboard.app as app_mod
+import jobcopilot.pipeline as pipeline_mod
 from jobcopilot.config import Settings
+from jobcopilot.connectors.base import RawJobPosting
 from jobcopilot.dashboard.app import create_app, task_is_stuck
 from jobcopilot.db import get_or_create_profile, make_session_factory
+from jobcopilot.llm.base import LLMClient
 from jobcopilot.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
 
 
@@ -133,3 +139,46 @@ def test_index_shows_considered_matched_and_per_status_counts(tmp_path):
     assert "applied (1)" in html
     assert "reviewed (0)" in html
     assert "All (3)" in html
+
+
+def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.matching.min_fit_score = 0
+
+    hang = threading.Event()
+
+    class SlowConnector:
+        name = "arbeitnow"
+
+        def fetch(self):
+            return [
+                RawJobPosting(
+                    source="arbeitnow", external_id="1", company="Acme", title="Engineer",
+                    location="Remote", remote=True, url="http://x", description="d",
+                )
+            ]
+
+    class SlowLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            hang.wait(timeout=10)
+            return '{"score": 80, "dealbreaker_hit": false, "fails_minimum_requirements": false, "rationale": "ok"}'
+
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [SlowConnector()])
+    monkeypatch.setattr(app_mod, "build_llm_client", lambda cfg: SlowLLM())
+
+    app = create_app(settings)
+    client = TestClient(app)
+
+    try:
+        r = client.post("/search", follow_redirects=False)
+        assert r.status_code == 303
+        time.sleep(0.3)
+
+        status = client.get("/search/status").json()
+        assert status["search_running"] is True
+
+        r2 = client.post("/jobs/clear", follow_redirects=False)
+        assert r2.status_code == 409
+    finally:
+        hang.set()
+        time.sleep(0.3)

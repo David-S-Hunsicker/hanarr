@@ -303,6 +303,17 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
     @app.post("/jobs/clear")
     def clear_jobs():
+        # Refuse while a search is writing to the same tables -- clearing
+        # mid-search could race with the pipeline's own inserts (delete a
+        # row it just added, or leave a partial mix once the search
+        # finishes), and afterward the search would still be reporting
+        # progress against data that's already been wiped out from under it.
+        if state["search_running"]:
+            return JSONResponse(
+                {"error": "Can't clear jobs while a search is running — stop the search first."},
+                status_code=409,
+            )
+
         # Wipes SeenPosting too, not just JobPosting -- otherwise every
         # posting fetched before this point (matched or rejected) would
         # stay permanently skipped by the pipeline's dedup check, and the

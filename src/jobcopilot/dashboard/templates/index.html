@@ -426,6 +426,7 @@
     (function () {
       const searchBtn = document.getElementById("search-btn");
       const stopBtn = document.getElementById("stop-btn");
+      const clearJobsBtn = document.getElementById("clear-jobs-btn");
       const searchNote = document.getElementById("search-note");
       const panel = document.getElementById("progress-panel");
       const headline = document.getElementById("progress-headline");
@@ -480,6 +481,7 @@
               searchBtn.disabled = true;
               searchBtn.textContent = "Search running…";
               panel.hidden = false;
+              if (clearJobsBtn) clearJobsBtn.disabled = true;
 
               stopBtn.hidden = false;
               stopBtn.disabled = data.stop_requested;
@@ -504,6 +506,7 @@
               stopBtn.hidden = true;
               stopBtn.disabled = false;
               stopBtn.textContent = "Stop search";
+              if (clearJobsBtn) clearJobsBtn.disabled = false;
 
               if (wasRunning && data.run_id === seenRunId) {
                 // A run just finished — show the final log briefly, then collapse.
