@@ -303,6 +303,33 @@ project creation manually opted-in; defer orchestration and automatic resume act
 **Exit:** A user can understand why a posting has a gap and can identify the next useful
 skill action from the dashboard.
 
+#### Phase 2 — requirements and gap vertical slice: complete
+
+**Completed deliverables**
+
+- Added `skill_analysis` application service that materializes resume-summary skills,
+  incorporates proven skills, extracts posting requirements through the existing LLM
+  abstraction, and falls back to a deterministic common-skill vocabulary when inference
+  is unavailable.
+- Persisted normalized `JobSkill` records with required/preferred classification, evidence,
+  confidence, analysis timestamp, and `satisfied`, `partial`, or `missing` status.
+- Added dashboard contracts `POST /api/jobs/{job_id}/skill-gaps/analyze` for explicit
+  re-analysis and `GET /api/skill-gaps` for analyzed gaps grouped by saved posting.
+  Analysis does not alter fit scores, application status, or existing search behavior.
+
+**Validation**
+
+- `python -m pytest -q tests/test_skill_analysis.py tests/test_career_schema.py tests/test_migrations.py tests/test_dashboard_app.py`
+  (29 passed).
+- The focused API test confirms fit score preservation and that only analyzed saved jobs
+  appear in the gap listing.
+
+**Next handoff**
+
+Add the first compact job-card/detail presentation for these API results, then proceed to
+manually opted-in project actions. Keep re-analysis explicit; do not couple gap analysis
+to automatic scoring or create coaching projects implicitly.
+
 ### Phase 3 — dashboard coaching and projects
 
 - Add dashboard coaching panels and a manually invoked coach action.

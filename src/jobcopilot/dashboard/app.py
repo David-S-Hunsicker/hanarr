@@ -27,6 +27,7 @@ from ..models import ApplicationStatus, JobPosting, Reminder, SeenPosting
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
+from ..skill_analysis import analyze_job, saved_job_gaps
 from .config_form import (
     apply_app_config_form,
     apply_preferences_form,
@@ -346,6 +347,23 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 job.status = ApplicationStatus(new_status)
                 session.commit()
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/api/jobs/{job_id}/skill-gaps/analyze")
+    def analyze_job_skill_gaps(job_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            job = session.get(JobPosting, job_id)
+            if job is None or job.profile_id != profile.id:
+                return JSONResponse({"error": "Saved job not found."}, status_code=404)
+            result = analyze_job(session, profile, job, llm)
+            session.commit()
+            return JSONResponse(result)
+
+    @app.get("/api/skill-gaps")
+    def get_skill_gaps():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return JSONResponse({"jobs": saved_job_gaps(session, profile)})
 
     @app.post("/jobs/clear")
     def clear_jobs():
