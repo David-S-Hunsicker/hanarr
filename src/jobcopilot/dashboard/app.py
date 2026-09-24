@@ -61,6 +61,7 @@ from ..skill_analysis import (
     saved_job_gaps,
 )
 from ..submissions import (
+    create_github_submission,
     create_local_submission,
     create_written_submission,
     submit_submission,
@@ -585,6 +586,27 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             try:
                 submission = create_local_submission(
                     session, profile.id, project_id, uploaded, Path(settings.data_dir) / "submissions", title
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission), status_code=201)
+
+    @app.post("/api/coaching-projects/{project_id}/submissions/github")
+    async def create_github_project_submission(project_id: int, request: Request):
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "submission payload must be an object."}, status_code=400)
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                submission = create_github_submission(
+                    session,
+                    profile.id,
+                    project_id,
+                    str(payload.get("reference", "")),
+                    str(payload.get("ref", "")),
+                    str(payload.get("title", "")),
                 )
                 session.commit()
             except ValueError as exc:

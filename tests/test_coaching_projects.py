@@ -193,6 +193,47 @@ def test_local_submission_stores_manifest_and_rejects_traversal(tmp_path):
     assert rejected.status_code == 400
 
 
+def test_github_submission_persists_safe_reference_without_fetching(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    created = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/github",
+        json={"reference": "https://github.com/example/demo.git", "ref": "main"},
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["kind"] == "github_repository"
+    assert body["content"] == "https://github.com/example/demo@main"
+    assert body["metadata"] == {
+        "provider": "github",
+        "repository_url": "https://github.com/example/demo",
+        "ref": "main",
+        "fetched": False,
+        "execution": False,
+    }
+    assert body["artifact_dir"] is None
+
+    rejected = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/github",
+        json={"reference": "https://evil.example/demo", "ref": "main"},
+    )
+    assert rejected.status_code == 400
+    rejected = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/github",
+        json={"reference": "https://github.com/example/demo?clone=1", "ref": "main"},
+    )
+    assert rejected.status_code == 400
+
+
 def test_submission_evaluation_persists_structured_result_and_resubmission_history(tmp_path, monkeypatch):
     settings = _settings(tmp_path)
 

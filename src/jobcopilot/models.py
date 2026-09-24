@@ -314,6 +314,7 @@ class ProjectSubmissionStatus(str, enum.Enum):
 class ProjectSubmissionKind(str, enum.Enum):
     WRITTEN_RESPONSE = "written_response"
     LOCAL_FILES = "local_files"
+    GITHUB_REPOSITORY = "github_repository"
 
 
 class ProjectSubmission(Base):

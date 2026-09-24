@@ -88,6 +88,12 @@
           <input type="file" multiple data-project-id="{{ project.id }}" class="local-files">
           <button type="button" data-project-id="{{ project.id }}" class="save-files">Save files as draft</button>
         </div>
+        <div class="submission-form">
+          <strong>Add a GitHub repository reference</strong>
+          <input type="url" placeholder="https://github.com/owner/repository" data-project-id="{{ project.id }}" class="github-reference">
+          <input type="text" placeholder="Optional branch, tag, or commit" data-project-id="{{ project.id }}" class="github-ref">
+          <button type="button" data-project-id="{{ project.id }}" class="save-github">Save GitHub reference as draft</button>
+        </div>
         {% if project.submissions %}
         <div class="meta"><strong>Submission history:</strong>
           {% for submission in project.submissions %}
@@ -132,6 +138,19 @@
         const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/files`, {method: "POST", body: form});
         if (!response.ok) window.alert((await response.json()).error || "Could not save files.");
         else window.location.reload();
+      });
+      document.querySelectorAll(".save-github").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const projectId = button.dataset.projectId;
+          const reference = document.querySelector(`.github-reference[data-project-id="${projectId}"]`).value;
+          const ref = document.querySelector(`.github-ref[data-project-id="${projectId}"]`).value;
+          const response = await fetch(`/api/coaching-projects/${projectId}/submissions/github`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({reference, ref})
+          });
+          if (!response.ok) window.alert((await response.json()).error || "Could not save GitHub reference.");
+          else window.location.reload();
+        });
       });
     });
     document.querySelectorAll(".submit-draft").forEach((button) => {

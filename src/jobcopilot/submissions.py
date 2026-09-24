@@ -5,6 +5,7 @@ import datetime as dt
 import json
 from pathlib import Path, PurePosixPath
 from typing import Iterable
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from .models import Project, ProjectSubmission, ProjectSubmissionKind, ProjectSu
 MAX_RESPONSE_LENGTH = 100_000
 MAX_FILES = 100
 MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_GITHUB_REFERENCE_LENGTH = 2048
 
 
 def _project_for_profile(session: Session, project_id: int, profile_id: int) -> Project:
@@ -87,6 +89,82 @@ def create_local_submission(
     submission.artifact_dir = str(artifact_dir)
     submission.manifest_json = json.dumps(manifest)
     submission.metadata_json = json.dumps({"storage": "local", "file_count": len(manifest)})
+    session.flush()
+    return submission
+
+
+def _normalize_github_reference(reference: str, ref: str = "") -> tuple[str, str, str]:
+    """Validate a GitHub repository reference without resolving or fetching it."""
+    raw_reference = str(reference or "").strip()
+    raw_ref = str(ref or "").strip()
+    if not raw_reference or len(raw_reference) > MAX_GITHUB_REFERENCE_LENGTH:
+        raise ValueError("GitHub repository reference is required and must be reasonably sized.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in raw_reference + raw_ref):
+        raise ValueError("GitHub repository references cannot contain control characters.")
+    candidate = raw_reference if "://" in raw_reference else f"https://github.com/{raw_reference}"
+    parsed = urlsplit(candidate)
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.hostname is None
+        or parsed.hostname.lower() != "github.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("GitHub references must use an HTTPS github.com repository URL.")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 2 or any(part in {".", ".."} for part in parts):
+        raise ValueError("GitHub reference must identify one repository as owner/repository.")
+    owner, repository = parts
+    if repository.endswith(".git"):
+        repository = repository[:-4]
+    if (
+        not owner
+        or not repository
+        or any(char in owner + repository for char in "\\<>:\"|?*%")
+        or any(char.isspace() for char in owner + repository)
+    ):
+        raise ValueError("GitHub reference contains an invalid repository name.")
+    ref_parts = raw_ref.split("/")
+    if raw_ref and (
+        len(raw_ref) > 512
+        or "\\" in raw_ref
+        or any(char.isspace() for char in raw_ref)
+        or not all(part not in {"", ".", ".."} for part in ref_parts)
+    ):
+        raise ValueError("GitHub ref must be a single safe branch, tag, or commit reference.")
+    normalized_ref = raw_ref
+    repository_url = f"https://github.com/{owner}/{repository}"
+    normalized = f"{repository_url}@{normalized_ref}" if normalized_ref else repository_url
+    return normalized, repository_url, normalized_ref
+
+
+def create_github_submission(
+    session: Session,
+    profile_id: int,
+    project_id: int,
+    reference: str,
+    ref: str = "",
+    title: str = "",
+) -> ProjectSubmission:
+    _project_for_profile(session, project_id, profile_id)
+    normalized, repository_url, normalized_ref = _normalize_github_reference(reference, ref)
+    submission = ProjectSubmission(
+        project_id=project_id,
+        kind=ProjectSubmissionKind.GITHUB_REPOSITORY,
+        title=title.strip()[:200],
+        content=normalized,
+        metadata_json=json.dumps({
+            "provider": "github",
+            "repository_url": repository_url,
+            "ref": normalized_ref,
+            "fetched": False,
+            "execution": False,
+        }),
+    )
+    session.add(submission)
     session.flush()
     return submission
 

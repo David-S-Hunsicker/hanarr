@@ -568,6 +568,27 @@ read the before/after explanations and trace the impact back to project evidence
   GitHub-ready adapter; sequencing, durable agent runs, automatic proposal approval, and
   external delivery remain deferred.
 
+  #### Progress — GitHub repository submission adapter
+
+  The GitHub submission milestone is complete. The normalized submission contract now
+  accepts a profile-scoped GitHub repository URL plus an optional branch, tag, or commit
+  reference. The adapter canonicalizes and validates HTTPS `github.com` repository
+  references, rejects credentials, query/fragment injection, traversal, unsafe refs, and
+  oversized/control-character input, and persists only metadata. It never clones,
+  downloads, imports, or executes repository content; existing written and local-file
+  submissions remain unchanged.
+
+  `POST /api/coaching-projects/{project_id}/submissions/github` and the Coaching page
+  expose the adapter as a draft-first flow. Evaluator input remains compatible because
+  the canonical reference is represented in the existing submission content contract.
+
+  **Validation:** `python -m pytest -q tests/test_coaching_projects.py` and
+  `python -m compileall -q src` passed. The focused security/regression coverage verifies
+  canonical persistence, rejection of non-GitHub/query-bearing references, and absence of
+  local artifact storage. The next handoff is review/diff presentation and an explicit
+  external-delivery design; cloning, checkout, code execution, and unattended submission
+  remain deferred.
+
 ### Deferred decisions
 
 - Anthropic web search, web scraping, and any new source whose access terms are unclear.
