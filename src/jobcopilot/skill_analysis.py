@@ -18,6 +18,7 @@ from .models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
+    JobSkillRequirement,
     Profile,
     ProfileSkill,
     ProvenSkill,
@@ -257,6 +258,7 @@ def profile_skill_page(session: Session, profile: Profile) -> list[dict]:
         .where(ProfileSkill.profile_id == profile.id)
         .order_by(Skill.name)
     ).all()
+    capability_by_skill = {skill.id: row for row, skill in rows}
     proven = {
         item.skill_id: item
         for item in session.execute(
@@ -298,16 +300,23 @@ def profile_skill_page(session: Session, profile: Profile) -> list[dict]:
                 "confidence": job_skill.confidence,
             }
         )
+        if job_skill.skill_id not in capability_by_skill:
+            capability_by_skill[job_skill.skill_id] = None
+    skills_by_id = {
+        skill.id: skill
+        for skill in session.execute(select(Skill).where(Skill.id.in_(set(jobs_by_skill) | set(capability_by_skill)))).scalars()
+    }
+    demand = {item["skill_id"]: item for item in market_demand_summary(session, profile)}
     return [
         {
             "id": skill.id,
             "name": skill.name,
             "slug": skill.slug,
             "capability": {
-                "proficiency": row.proficiency,
-                "confidence": row.confidence,
-                "evidence": row.evidence,
-                "source": row.source,
+                "proficiency": row.proficiency if row else None,
+                "confidence": row.confidence if row else None,
+                "evidence": row.evidence if row else "",
+                "source": row.source if row else "not recorded",
             },
             "proven": (
                 {
@@ -318,9 +327,106 @@ def profile_skill_page(session: Session, profile: Profile) -> list[dict]:
                 if skill.id in proven
                 else None
             ),
-            "resume_wording": row.source == "resume",
+            "resume_wording": row is not None and row.source == "resume",
             "projects": projects_by_skill.get(skill.id, []),
             "jobs": jobs_by_skill.get(skill.id, []),
+            "market_demand": demand.get(skill.id),
         }
-        for row, skill in rows
+        for skill_id, row in capability_by_skill.items()
+        for skill in [skills_by_id[skill_id]]
+    ]
+
+
+def market_demand_summary(session: Session, profile: Profile) -> list[dict]:
+    """Aggregate analyzed saved-job demand into reusable skill priorities."""
+    rows = session.execute(
+        select(JobSkill, JobPosting)
+        .join(JobPosting, JobPosting.id == JobSkill.job_id)
+        .where(JobPosting.profile_id == profile.id)
+        .order_by(JobSkill.skill_id, JobSkill.id)
+    ).all()
+    profile_rows = {
+        row.skill_id: row
+        for row in session.execute(
+            select(ProfileSkill).where(ProfileSkill.profile_id == profile.id)
+        ).scalars()
+    }
+    grouped: dict[int, dict] = {}
+    for job_skill, job in rows:
+        item = grouped.setdefault(job_skill.skill_id, {
+            "skill_id": job_skill.skill_id,
+            "skill": {"id": job_skill.skill.id, "name": job_skill.skill.name, "slug": job_skill.skill.slug},
+            "affected_job_ids": set(),
+            "required_count": 0,
+            "preferred_count": 0,
+            "missing_count": 0,
+            "partial_count": 0,
+            "satisfied_count": 0,
+            "jobs": [],
+        })
+        item["affected_job_ids"].add(job.id)
+        if job_skill.requirement is JobSkillRequirement.REQUIRED:
+            item["required_count"] += 1
+        else:
+            item["preferred_count"] += 1
+        if job_skill.gap_status is SkillGapStatus.MISSING:
+            item["missing_count"] += 1
+        elif job_skill.gap_status is SkillGapStatus.PARTIAL:
+            item["partial_count"] += 1
+        elif job_skill.gap_status is SkillGapStatus.SATISFIED:
+            item["satisfied_count"] += 1
+        item["jobs"].append({
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "requirement": job_skill.requirement.value,
+            "status": job_skill.gap_status.value,
+        })
+
+    output = []
+    for item in grouped.values():
+        gap_weight = item["missing_count"] * 2 + item["partial_count"]
+        demand_weight = item["required_count"] * 2 + item["preferred_count"]
+        priority_score = demand_weight + gap_weight + len(item["affected_job_ids"])
+        effort_points = 1 + item["missing_count"] * 2 + item["partial_count"]
+        effort = "low" if effort_points <= 2 else "medium" if effort_points <= 5 else "high"
+        correction = profile_rows.get(item["skill_id"])
+        output.append({
+            "skill_id": item["skill_id"],
+            "skill": item["skill"],
+            "affected_job_ids": sorted(item["affected_job_ids"]),
+            "affected_job_count": len(item["affected_job_ids"]),
+            "required_count": item["required_count"],
+            "preferred_count": item["preferred_count"],
+            "missing_count": item["missing_count"],
+            "partial_count": item["partial_count"],
+            "satisfied_count": item["satisfied_count"],
+            "gap_count": item["missing_count"] + item["partial_count"],
+            "priority_score": priority_score,
+            "estimated_effort": effort,
+            "effort_points": effort_points,
+            "user_correction": (
+                {
+                    "proficiency": correction.proficiency,
+                    "confidence": correction.confidence,
+                    "evidence": correction.evidence,
+                    "source": correction.source,
+                }
+                if correction is not None and correction.source == "manual"
+                else None
+            ),
+            "jobs": item["jobs"],
+        })
+    return sorted(output, key=lambda item: (-item["priority_score"], item["skill"]["name"].lower()))
+
+
+def coaching_suggestions(session: Session, profile: Profile) -> list[dict]:
+    """Return one reusable suggestion per skill, ranked by market priority."""
+    return [
+        {
+            **item,
+            "status": "missing" if item["missing_count"] else "partial",
+        }
+        for item in market_demand_summary(session, profile)
+        if item["gap_count"]
     ]

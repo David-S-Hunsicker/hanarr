@@ -42,12 +42,22 @@
       <div class="card suggestion">
         <div>
           <h3>{{ suggestion.skill.name }} <span class="pill">{{ suggestion.status }}</span></h3>
-          <p class="description">{{ suggestion.job.title }} at {{ suggestion.job.company }}{% if suggestion.evidence %} — {{ suggestion.evidence }}{% endif %}</p>
+          <p class="description">{{ suggestion.affected_job_count }} affected job{{ "" if suggestion.affected_job_count == 1 else "s" }} · {{ suggestion.required_count }} required · {{ suggestion.preferred_count }} preferred · estimated {{ suggestion.estimated_effort }} effort</p>
+          {% if suggestion.user_correction %}<p class="description">User correction: {{ suggestion.user_correction.evidence }}</p>{% endif %}
         </div>
         <a href="/?status=new">Review in Jobs</a>
       </div>
       {% endfor %}
     {% else %}<div class="empty">Analyze a saved job's fit to see coaching suggestions here.</div>{% endif %}
+  </section>
+
+  <section class="section">
+    <h2>Market demand</h2>
+    {% if market_demand %}
+      <div class="card"><p class="description">Priorities combine demand, required status, gap severity, and the number of affected saved jobs.</p>
+      {% for item in market_demand[:8] %}<p><strong>{{ item.skill.name }}</strong> · {{ item.affected_job_count }} job{{ "" if item.affected_job_count == 1 else "s" }} · {{ item.required_count }} required / {{ item.preferred_count }} preferred · {{ item.gap_count }} gap{{ "" if item.gap_count == 1 else "s" }} · {{ item.estimated_effort }} effort</p>{% endfor %}
+      </div>
+    {% else %}<div class="empty">Analyze saved jobs to build a market-demand summary.</div>{% endif %}
   </section>
 
   <section class="section">

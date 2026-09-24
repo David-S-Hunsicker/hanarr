@@ -627,3 +627,32 @@ The transition is ready for an initial Hannar release when all of the following 
 This document is a transition plan rather than immediate implementation. Code changes
 should follow the phases, preserve the foundation's verified behavior, and be proposed as
 separate, reviewable increments.
+
+### Phase 7 — market-demand learning loop
+
+#### Progress — reusable demand summaries and skill priorities
+
+This bounded learning-loop milestone is complete. Derived summaries aggregate analyzed
+saved-job requirements by canonical skill, including required versus preferred demand,
+missing versus partial gaps, affected-job count, a deterministic priority score,
+estimated effort, and manually corrected capability evidence when present. The summaries
+reuse existing `JobSkill` and `ProfileSkill` records and do not alter fit, search, or
+application behavior.
+
+`GET /api/coaching` exposes ranked reusable coaching suggestions and the full market-demand
+summary. `GET /api/skills` and the Skills page expose the same demand data alongside
+capability, evidence, resume wording, projects, and job evidence. The Coaching page now
+shows one ranked suggestion per skill and a compact market-demand summary rather than
+repeating one suggestion for every affected posting. Skills inferred only from analyzed
+jobs remain visible with an explicit unrecorded capability state.
+
+Validation:
+
+- `python -m pytest -q tests/test_skill_analysis.py tests/test_coaching_projects.py`
+  (15 passed)
+- `python -m pytest -q` (111 passed)
+
+**Next handoff**
+
+Add review/diff presentation and a GitHub-ready adapter for the existing review-first
+submission model, while preserving explicit approval and local artifact boundaries.

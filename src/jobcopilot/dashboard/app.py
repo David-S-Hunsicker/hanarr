@@ -52,7 +52,14 @@ from ..resume_loop import (
     reject_resume_proposal,
     resume_status as resume_page_status,
 )
-from ..skill_analysis import analyze_job, profile_skill_page, saved_job_gap, saved_job_gaps
+from ..skill_analysis import (
+    analyze_job,
+    coaching_suggestions,
+    market_demand_summary,
+    profile_skill_page,
+    saved_job_gap,
+    saved_job_gaps,
+)
 from ..submissions import (
     create_local_submission,
     create_written_submission,
@@ -435,6 +442,15 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             profile = get_or_create_profile(session, settings)
             return JSONResponse({"skills": profile_skill_page(session, profile)})
 
+    @app.get("/api/coaching")
+    def get_coaching():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return JSONResponse({
+                "suggestions": coaching_suggestions(session, profile),
+                "market_demand": market_demand_summary(session, profile),
+            })
+
     @app.patch("/api/skills/{skill_id}/profile")
     async def update_profile_skill(skill_id: int, request: Request):
         payload = await request.json()
@@ -655,17 +671,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 .order_by(Project.id.desc())
                 .all()
             )
-            suggestions = []
-            for item in saved_job_gaps(session, profile):
-                job = item["job"]
-                for gap in item["gaps"]:
-                    if gap["status"] in ("missing", "partial"):
-                        suggestions.append({
-                            "job": job,
-                            "skill": gap["skill"],
-                            "status": gap["status"],
-                            "evidence": gap.get("evidence", ""),
-                        })
+            suggestions = coaching_suggestions(session, profile)
+            demand = market_demand_summary(session, profile)
             project_cards = []
             for project in projects:
                 status = project_status(project)
@@ -677,7 +684,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return templates.TemplateResponse(
                 request=request,
                 name="coaching.html",
-                context={"projects": project_cards, "suggestions": suggestions},
+                context={"projects": project_cards, "suggestions": suggestions, "market_demand": demand},
             )
 
     @app.get("/api/resume")

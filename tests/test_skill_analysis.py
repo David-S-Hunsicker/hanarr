@@ -8,6 +8,8 @@ from jobcopilot.dashboard.app import create_app
 from jobcopilot.db import get_or_create_profile, make_session_factory
 from jobcopilot.models import (
     JobPosting,
+    JobSkill,
+    JobSkillRequirement,
     ProfileSkill,
     Project,
     ProjectMode,
@@ -17,6 +19,7 @@ from jobcopilot.models import (
     SkillGapStatus,
 )
 from jobcopilot.skill_analysis import analyze_job
+from jobcopilot.skill_analysis import market_demand_summary
 
 
 class FakeLLM:
@@ -222,3 +225,68 @@ def test_skill_override_requires_evidence_and_never_creates_proof(tmp_path):
         json={"proficiency": 2, "confidence": .5, "evidence": "No"},
     )
     assert invalid.status_code == 400
+
+
+def test_market_demand_prioritizes_required_gaps_and_surfaces_manual_correction(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="Python", slug="python")
+        session.add(skill)
+        session.flush()
+        session.add(ProfileSkill(
+            profile_id=profile.id, skill_id=skill.id, proficiency=.8,
+            confidence=.9, evidence="User corrected capability level", source="manual",
+        ))
+        jobs = [
+            JobPosting(profile_id=profile.id, source="test", external_id=str(i),
+                       company="Co", title=f"Engineer {i}", url=f"https://example.test/{i}")
+            for i in (1, 2)
+        ]
+        session.add_all(jobs)
+        session.flush()
+        session.add_all([
+            JobSkill(job_id=jobs[0].id, skill_id=skill.id,
+                     requirement=JobSkillRequirement.REQUIRED, gap_status=SkillGapStatus.MISSING),
+            JobSkill(job_id=jobs[1].id, skill_id=skill.id,
+                     requirement=JobSkillRequirement.PREFERRED, gap_status=SkillGapStatus.PARTIAL),
+        ])
+        session.commit()
+
+        summary = market_demand_summary(session, profile)
+
+    assert summary[0]["affected_job_count"] == 2
+    assert summary[0]["required_count"] == 1
+    assert summary[0]["preferred_count"] == 1
+    assert summary[0]["gap_count"] == 2
+    assert summary[0]["estimated_effort"] == "medium"
+    assert summary[0]["user_correction"]["evidence"] == "User corrected capability level"
+
+
+def test_coaching_api_and_pages_expose_reusable_market_priorities(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="market",
+            company="Acme", title="Backend Engineer", url="https://example.test/market",
+        )
+        skill = Skill(name="Python", slug="python")
+        session.add_all([job, skill])
+        session.flush()
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id,
+            requirement=JobSkillRequirement.REQUIRED, gap_status=SkillGapStatus.MISSING,
+        ))
+        session.commit()
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+
+    coaching = client.get("/api/coaching")
+    assert coaching.status_code == 200
+    assert coaching.json()["suggestions"][0]["skill"]["id"] == skill_id
+    assert coaching.json()["market_demand"][0]["affected_job_ids"] == [job_id]
+    assert "Market demand" in client.get("/coaching").text
+    assert "Market priority" in client.get("/skills").text
