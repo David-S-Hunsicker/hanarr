@@ -434,6 +434,23 @@
 
       <fieldset>
         <legend>LLM</legend>
+        <div class="banner notice">
+          <strong>Local provider status</strong><br>
+          Executable:
+          {% if provider_diagnostics.executable_path %}detected{% else %}not found on PATH{% endif %};
+          service:
+          {% if provider_diagnostics.service_reachable %}reachable{% else %}not reachable{% endif %}.
+          {% if provider_diagnostics.configured_model_available %}
+          Configured model <code>{{ provider_diagnostics.configured_model }}</code> is installed.
+          {% else %}
+          Configured model <code>{{ provider_diagnostics.configured_model }}</code> is not detected.
+          {% endif %}
+          <div class="hint">
+            Recommendation: <code>{{ provider_diagnostics.recommendation.model }}</code> —
+            {{ provider_diagnostics.recommendation.reason }}
+            Detection is read-only; Hanarr never installs Ollama or downloads models silently.
+          </div>
+        </div>
         <div class="row">
           <div class="field">
             <label for="llm_provider">Provider</label>

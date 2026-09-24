@@ -65,7 +65,7 @@ A virtual environment (`python3 -m venv .venv && source .venv/bin/activate`) is 
 
 ### 1. Set up a local LLM (recommended default)
 
-Install [Ollama](https://ollama.com), then pull a model:
+Install [Ollama](https://ollama.com), then pull a model explicitly:
 
 ```bash
 ollama pull qwen2.5:14b   # good balance of quality/speed; a 7B model works too, just less sharp
@@ -75,6 +75,12 @@ No API key, no cost, nothing leaves your machine. If you'd rather use a hosted C
 instead, set `llm.provider: anthropic` in `config.yaml` and put `ANTHROPIC_API_KEY` in `.env` —
 note this incurs API usage costs. Setting `llm.provider: none` skips the LLM entirely and falls
 back to keyword-overlap scoring only.
+
+The Settings → App config page reports whether the Ollama executable, local service, and
+configured model are detected. It also shows a conservative hardware-based starting model
+recommendation (RAM and free-storage heuristics only). Detection is read-only: this milestone
+does not install Ollama, start services, or download models. If Ollama is unavailable, choose
+`anthropic` explicitly or use `none` for deterministic keyword-overlap scoring.
 
 ### 2. Configure
 
@@ -125,8 +131,8 @@ dashboard:
 Or select it for one run: `jobcopilot serve --launch-mode browser`. The optional webview mode
 requires `pip install -e ".[desktop]"` and can be selected with
 `jobcopilot serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
-Windows installer packaging, runtime bundling, shortcuts, Ollama/model installation, update
-services, and signing remain planned work.
+Windows installer packaging, runtime bundling, shortcuts, unattended Ollama/model installation,
+explicit-consent download flows, update services, and signing remain planned work.
 
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are

@@ -922,12 +922,19 @@ cover URL construction, supported-mode validation, and config loading. Validatio
 handoff: `python -m pytest -q tests/test_launch.py tests/test_dashboard_app.py`, the full test
 suite, `python -m compileall -q src`, and `git diff --check`.
 
-No installer artifact, packaged runtime, Python/Ollama bundling, shortcut registration, first-run
-wizard, update service, signing configuration, or automatic Ollama/model installation has been
-added.
+The first-run local-AI foundation is now implemented without crossing the consent boundary:
+typed, read-only Ollama diagnostics inspect the executable on PATH, local `/api/tags` service,
+installed models, configured-model readiness, and best-effort RAM/free-storage facts. Conservative
+3B/7B/14B recommendations explain their RAM/storage heuristic. Settings exposes the same status
+and `/config/provider/status` provides a secret-free JSON diagnostic API. Anthropic remains
+optional and deterministic `none` fallback behavior is unchanged. Focused tests cover
+recommendations, model parsing, unavailable services, and the dashboard-facing diagnostic shape.
 
-**Next handoff:** Turn the supported Windows/runtime/signing/data-location contract into a
-reviewed build specification, then produce the repeatable packaged-runtime spike (M2) without
-changing the launch contract. Preserve the existing local-first backend, localhost security
-boundary, additive migrations, explicit provider consent, and browser launch path throughout.
-macOS and Linux remain deferred.
+No installer artifact, packaged runtime, Python/Ollama bundling, shortcut registration, first-run
+wizard, update service, signing configuration, or Ollama/model installation or download has been
+added. Detection never starts a service or changes machine state.
+
+**Next handoff:** Build the explicit-consent M4 setup flow on top of these diagnostics: present
+source/license/size/destination before any optional Ollama or model download, keep cancellation
+usable, and add actionable non-destructive recovery. Installer packaging, unattended downloads,
+and macOS/Linux remain deferred.

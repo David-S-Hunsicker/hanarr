@@ -24,6 +24,7 @@ from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..agent_orchestration import AgentOrchestrator
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
+from ..ollama_setup import detect_ollama
 from ..coaching_projects import create_coaching_project, project_status
 from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
@@ -877,6 +878,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
     @app.get("/config")
     def config_page(request: Request, tab: str = "preferences", saved: str | None = None):
+        provider_diagnostics = _provider_diagnostics()
         return templates.TemplateResponse(
             request=request,
             name="config.html",
@@ -885,8 +887,17 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "active_tab": tab if tab in {"preferences", "app", "schedule"} else "preferences",
                 "saved": saved == "1",
                 "errors": [],
+                "provider_diagnostics": provider_diagnostics,
             },
         )
+
+    def _provider_diagnostics():
+        return detect_ollama(settings.llm.model, settings.llm.base_url, settings.data_dir)
+
+    @app.get("/config/provider/status")
+    def provider_status():
+        """Read-only local provider diagnostics; never includes API secrets."""
+        return JSONResponse(_provider_diagnostics().to_dict())
 
     async def _handle_config_post(request: Request, tab: str, apply_fn):
         form = await request.form()
@@ -904,6 +915,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "active_tab": tab,
                     "saved": False,
                     "errors": errors,
+                    "provider_diagnostics": _provider_diagnostics(),
                 },
             )
 
