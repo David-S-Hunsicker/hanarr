@@ -23,6 +23,16 @@ The following decisions are treated as requirements for the transition:
 - Add visual skill-gap indicators to each eligible job posting. A user should be able to
   see both the relevant strengths and the missing or uncertain skills before deciding
   whether to pursue a role.
+- Use expanded first-class navigation with these tabs: **Jobs**, **Coaching**, **Resume**,
+  **Skills**, **Applications**, and **Settings**. Each page has a clear responsibility:
+  jobs are for discovery and decisions, coaching for active guidance and projects, resume
+  for source content and proposals, skills for capability/evidence, applications for
+  submission and status history, and settings for configuration.
+- Keep pages uncluttered. Do not make one dashboard page carry every workflow; use concise
+  summaries and deliberate links into the responsible page.
+- Provide a direct **Improve my fit** action from a job posting. It starts the appropriate
+  coaching/project flow for that posting while preserving the existing apply and status
+  actions during coaching.
 - Projects are manually opted into. Hannar may recommend a project, but it must not
   silently create work, change a resume, or submit an application.
 - Support two project modes:
@@ -36,6 +46,12 @@ The following decisions are treated as requirements for the transition:
   permissions, and user approval.
 - Resume changes are versioned proposals requiring explicit approval. No agent may replace
   the active resume without the user accepting a proposal.
+- Project completion is a loop, not an endpoint: completing a project generates a resume
+  proposal; user approval makes that proposal the active resume; the approved resume is
+  automatically re-parsed and fed back into job matching without requiring a re-upload.
+- Keep capability, evidence, and resume wording distinct. A capability is what the user
+  can do, evidence is why Hannar believes it, and resume wording is the proposed way to
+  communicate it. Improving one must not silently fabricate or conflate the others.
 - Future submission types include local files/folders, written responses, and GitHub.
   Submission is a later capability and must remain opt-in and reviewable.
 - Defer Anthropic web search and scraping. Hannar should use the existing public
@@ -88,9 +104,15 @@ behavior merely to match the separate project's structure.
 Hannar should remain a modular local application with the existing dashboard and pipeline
 at its center:
 
-1. **Presentation layer:** the dashboard becomes Hannar's primary UI. Job cards expose
-   fit, skill gaps, project actions, score history, and coaching context without hiding
-   the existing application-status and reminder workflows.
+1. **Presentation layer:** the dashboard becomes Hannar's primary UI with clear tab
+   navigation: Jobs, Coaching, Resume, Skills, Applications, and Settings. The Jobs page
+   owns discovery, fit, skill gaps, **Improve my fit**, apply, status, and reminders;
+   Coaching owns active guidance and project work; Resume owns readable active content,
+   extracted profile, proposals, versions, and rollback; Skills owns capabilities and
+   evidence; Applications owns submission artifacts and application history; Settings owns
+   configuration. Job cards expose fit, skill gaps, project actions, score history, and
+   coaching context without hiding apply/status actions or making the page a workflow
+   dumping ground.
 2. **Application services:** separate services coordinate skill extraction, gap analysis,
    project lifecycle, coaching sessions, rescoring, resume proposals, and submissions.
    Services should be callable by HTTP routes, the scheduler, and agent tools without
@@ -102,7 +124,9 @@ at its center:
    runs next and when user approval is required.
 4. **Domain model:** extend the existing profile/job/reminder model with normalized skills,
    job-skill evidence, projects, project skills, project outcomes, score snapshots,
-   coaching/agent runs, resume versions/proposals, and submission artifacts.
+   coaching/agent runs, resume versions/proposals, and submission artifacts. Skill records
+   must distinguish capability, supporting evidence, and resume wording rather than
+   storing them as one undifferentiated claim.
 5. **Persistence:** continue using SQLite and SQLAlchemy. Add migrations before relying on
    new tables, preserve existing IDs and timestamps, and keep user content on disk/local
    unless the user explicitly configures an external provider.
@@ -133,7 +157,9 @@ Names are provisional and should be finalized during schema design:
 - `AgentRun` and `AgentArtifact`: orchestrator state, role, inputs, outputs, model/provider,
   errors, approvals, and links to affected jobs/projects/proposals.
 - `ResumeVersion` and `ResumeProposal`: immutable resume content/metadata and a proposed
-  diff with `pending`, `approved`, or `rejected` state.
+  diff with `pending`, `approved`, or `rejected` state. An approved proposal becomes the
+  active version, triggers re-parsing from stored content, and feeds the refreshed
+  extracted profile into matching without requiring another upload.
 - `Submission` and `SubmissionArtifact`: destination type, local path or GitHub reference,
   written response, review state, and eventual submission result.
 
@@ -156,6 +182,10 @@ latest explainable analysis.
    eligibility so a project pass or explicit criteria change can trigger a new score.
 6. Make migration idempotent, report failures clearly, and keep a rollback/backup
    procedure documented for local installations.
+7. Preserve the active resume and prior versions as readable content. The Resume page
+   must expose active contents, extracted profile, pending/decided proposals, version
+   history, and an explicit rollback action; rollback selects a prior version and runs the
+   same parse-and-rematch path rather than editing files behind the user's back.
 
 No data migration should send existing resumes, job descriptions, or database contents to
 Anthropic without the user's configured consent.
@@ -196,6 +226,11 @@ skill action from the dashboard.
 ### Phase 3 — dashboard coaching and projects
 
 - Add dashboard coaching panels and a manually invoked coach action.
+- Establish the Jobs, Coaching, Resume, Skills, Applications, and Settings tabs with
+  uncluttered page responsibilities. Add **Improve my fit** directly to job cards/detail
+  views and keep apply/status controls available while coaching is active.
+- Build the first-class Resume page: readable active resume contents, extracted profile,
+  pending and decided proposals, version history, and rollback.
 - Implement posting-specific and reusable-skill project creation, with explicit opt-in,
   scope, status, and completion/pass controls.
 - Let the coach recommend projects while preserving user approval and local artifacts.
@@ -216,16 +251,21 @@ mark it passed without affecting unrelated jobs.
 
 ### Phase 5 — rescoring and resume proposals
 
-- On a passed project, identify related saved jobs by explicit skill overlap and create
-  new score snapshots.
-- Show before/after score, changed skills, rationale, and the jobs affected; do not
-  mutate historical snapshots.
-- Generate versioned resume proposals tied to evidence and affected skills.
-- Require approval before activating a resume version or changing downstream scoring
-  inputs.
+- On project completion/pass, identify related saved jobs by explicit skill overlap and
+  generate a versioned resume proposal tied to the completed project's evidence and
+  affected skills.
+- Require user approval before activation. Approval makes the proposal the active resume,
+  automatically re-parses the stored approved content, and feeds the refreshed extracted
+  profile into job matching without a re-upload.
+- Re-score related saved jobs after that approved resume refresh. Show each before/after
+  score, changed capabilities and evidence, changed resume wording where relevant, the
+  rationale, and why the score changed; do not mutate historical snapshots.
+- Keep the full loop visible on the Resume and Coaching pages, with links back to affected
+  Jobs and preserved apply/status actions.
 
-**Exit:** Passing one project produces a transparent, bounded rescoring report and an
-  optional reviewable resume proposal.
+**Exit:** Passing one project produces a reviewable resume proposal. After approval, the
+stored resume is re-parsed without re-upload, related jobs are re-scored, and the user can
+read the before/after explanations and trace the impact back to project evidence.
 
 ### Phase 6 — submissions
 
@@ -269,18 +309,23 @@ The transition is ready for an initial Hannar release when all of the following 
 
 - Existing users can upgrade a copy of their SQLite database without losing profiles,
   jobs, statuses, reminders, resume text, or connector configuration.
-- The dashboard still supports searching, reviewing, status changes, reminders, and resume
-  management, and now presents understandable skill-gap indicators.
+- Navigation provides Jobs, Coaching, Resume, Skills, Applications, and Settings, with
+  uncluttered responsibilities; Jobs still supports searching, reviewing, apply/status
+  actions, reminders, and direct **Improve my fit** coaching.
+- The Resume page is first-class and readable: it shows active contents, extracted
+  profile, proposals, version history, and rollback.
 - Hannar remains single-user and local-first by default; Ollama works without a hosted API
   key, and Anthropic is optional and configurable per agent.
 - Public connectors and scheduled searches/reminders remain operational, with no scraping
   added as a shortcut.
 - A user can manually opt into either project mode, see project scope and evidence, and
   mark a project passed.
-- Passing a project produces bounded, related-job rescoring with immutable before/after
-  snapshots and an understandable impact report.
-- Resume changes are proposals with versions, diffs, provenance, and explicit approval;
-  the active resume cannot be silently replaced.
+- Passing a project generates a resume proposal; approval makes it active, automatically
+  re-parses the stored resume, and feeds it into matching without re-upload.
+- Related saved jobs are re-scored with immutable before/after snapshots that explain why
+  each score changed, including capability, evidence, and resume-wording distinctions.
+- Resume changes are proposals with versions, diffs, provenance, explicit approval, and
+  rollback; the active resume cannot be silently replaced.
 - Agent runs expose role, provider/model, inputs, outputs/artifacts, status, and errors,
   and recover safely from interruption.
 - Submission support, when enabled in a later phase, handles local files/folders, written
