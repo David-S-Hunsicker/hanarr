@@ -7,6 +7,7 @@ committed template — copy it to get started (see `jobcopilot init`).
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
+EXAMPLE_CONFIG_PATH = Path("config.example.yaml")
 
 
 class Preferences(BaseModel):
@@ -180,19 +182,26 @@ class Settings(BaseModel):
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     """Load config.yaml (falling back to defaults for anything missing) and
-    apply .env secrets on top."""
+    apply .env secrets on top.
+
+    A missing config.yaml is not an error: it means this is a first run, so
+    the template is copied into place automatically (falling back to
+    built-in defaults if even the template is missing, e.g. running outside
+    a repo checkout) and startup proceeds normally. Callers that want to
+    react to a first run — e.g. showing a one-time welcome message — can
+    check `not config_path.exists()` themselves before calling this."""
     load_dotenv()
     config_path = Path(config_path)
+
+    if not config_path.exists():
+        example = EXAMPLE_CONFIG_PATH
+        if example.exists():
+            shutil.copy(example, config_path)
 
     raw: dict = {}
     if config_path.exists():
         with open(config_path, "r") as f:
             raw = yaml.safe_load(f) or {}
-    else:
-        raise FileNotFoundError(
-            f"{config_path} not found. Run `jobcopilot init` to create one "
-            f"from config.example.yaml."
-        )
 
     settings = Settings(**raw)
 

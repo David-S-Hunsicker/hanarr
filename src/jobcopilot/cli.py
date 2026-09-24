@@ -186,7 +186,13 @@ def remind(ctx: click.Context):
 def serve(ctx: click.Context, launch_mode: str | None):
     """Run the scheduler and dashboard together (long-running)."""
     config_path = Path(ctx.obj["config_path"])
+    first_run = not config_path.exists()
     settings = load_settings(config_path)
+    if first_run and config_path.exists():
+        console.print(
+            f"[green]First run: created {config_path} from the template.[/green] "
+            f"Add a resume from the dashboard's Resume page, or edit {config_path} directly, whenever you're ready."
+        )
 
     # Self-heal on startup: if preferences are still blank/example-default,
     # fill them in from whatever resume profile was already parsed by
