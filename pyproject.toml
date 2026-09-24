@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-mock>=3.14", "respx>=0.21"]
+desktop = ["pywebview>=5.0"]
 
 [project.scripts]
 jobcopilot = "jobcopilot.cli:cli"

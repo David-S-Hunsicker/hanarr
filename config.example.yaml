@@ -110,3 +110,6 @@ reminders:
 dashboard:
   host: "127.0.0.1"
   port: 8420
+  # none preserves foreground server behavior; browser opens your default
+  # browser; webview uses the optional desktop dependency.
+  launch_mode: "none"

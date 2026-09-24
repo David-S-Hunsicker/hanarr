@@ -176,8 +176,14 @@ def remind(ctx: click.Context):
 
 
 @cli.command()
+@click.option(
+    "--launch-mode",
+    type=click.Choice(["none", "browser", "webview"]),
+    default=None,
+    help="Dashboard UI: keep foreground-only, open a browser, or use a desktop webview.",
+)
 @click.pass_context
-def serve(ctx: click.Context):
+def serve(ctx: click.Context, launch_mode: str | None):
     """Run the scheduler and dashboard together (long-running)."""
     config_path = Path(ctx.obj["config_path"])
     settings = load_settings(config_path)
@@ -202,13 +208,21 @@ def serve(ctx: click.Context):
 
     scheduler = start_scheduler(settings)
 
-    import uvicorn
-
     from .dashboard.app import create_app
+    from .launch import DashboardLaunchConfig, launch_dashboard
 
     app = create_app(settings, scheduler=scheduler)
-    console.print(f"[green]Dashboard running at http://{settings.dashboard.host}:{settings.dashboard.port}[/green]")
-    uvicorn.run(app, host=settings.dashboard.host, port=settings.dashboard.port, log_level="warning")
+    mode = launch_mode or settings.dashboard.launch_mode
+    launch_config = DashboardLaunchConfig(
+        mode=mode,
+        host=settings.dashboard.host,
+        port=settings.dashboard.port,
+    )
+    console.print(f"[green]Dashboard running at {launch_config.url} ({mode} mode)[/green]")
+    try:
+        launch_dashboard(app, launch_config)
+    finally:
+        scheduler.shutdown(wait=False)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 # Hanarr transition plan
 
-**Status:** Phase 10 Windows-first installer and distribution planning is complete; implementation
-remains intentionally deferred. Phase 6 submission, evaluator, and local-first provider-routing
+**Status:** Phase 10 Windows-first installer and distribution planning is complete; the first
+desktop-launch foundation is implemented, while installer packaging remains deferred. Phase 6
+submission, evaluator, and local-first provider-routing
 foundations are complete. Alembic migrations, a
 frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
 skills, resume proposal storage, review-first submissions, and structured evaluation
@@ -807,11 +808,11 @@ No further local-first release-blocking issues were found in this validation pas
 handoff is the Windows installer implementation only after the plan below is approved for
 execution; this document change itself adds no installer code.
 
-### Phase 10 — Windows-first installer and distribution plan (planning only)
+### Phase 10 — Windows-first installer and distribution plan
 
-This phase records the approved distribution plan. It is documentation and sequencing only:
-do not implement installer scripts, packaging hooks, runtime bundling, update services, or
-platform-specific launch code as part of this transition-plan update.
+This phase records the approved distribution plan and the bounded launch work completed against
+it. Installer scripts, packaging hooks, runtime bundling, update services, and Ollama setup remain
+future work.
 
 #### Product and launch shape
 
@@ -912,12 +913,21 @@ platform-specific launch code as part of this transition-plan update.
 #### Progress and next handoff
 
 **Progress:** The Windows-first installer/distribution contract, setup behavior, recovery
-requirements, update/data guarantees, phased milestones, and acceptance criteria are approved
-for planning purposes. No installer code, packaging configuration, runtime bundle, or platform
-integration has been added.
+requirements, update/data guarantees, phased milestones, and acceptance criteria remain the
+planning baseline. The M2 launch contract is now implemented in a bounded form: one `jobcopilot
+serve` backend supports explicit `none`, `browser`, and optional `webview` launch modes; the
+mode is configurable in `config.yaml` or selectable with `--launch-mode`; and the webview
+dependency remains optional so existing CLI/browser behavior is preserved. Focused launch tests
+cover URL construction, supported-mode validation, and config loading. Validation for this
+handoff: `python -m pytest -q tests/test_launch.py tests/test_dashboard_app.py`, the full test
+suite, `python -m compileall -q src`, and `git diff --check`.
 
-**Next handoff:** Begin M1 as a separate implementation increment. First turn the supported
-Windows/runtime/signing/data-location contract into a reviewed build specification, then
-implement M2 only after the specification is accepted. Preserve the existing local-first
-backend, localhost security boundary, additive migrations, explicit provider consent, and
-browser launch path throughout. macOS and Linux remain deferred.
+No installer artifact, packaged runtime, Python/Ollama bundling, shortcut registration, first-run
+wizard, update service, signing configuration, or automatic Ollama/model installation has been
+added.
+
+**Next handoff:** Turn the supported Windows/runtime/signing/data-location contract into a
+reviewed build specification, then produce the repeatable packaged-runtime spike (M2) without
+changing the launch contract. Preserve the existing local-first backend, localhost security
+boundary, additive migrations, explicit provider consent, and browser launch path throughout.
+macOS and Linux remain deferred.

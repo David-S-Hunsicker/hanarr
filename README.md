@@ -43,9 +43,13 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 The local-first release validation pass completed the automated checks: the full suite passes
 (117 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
 upload-boundary, approval-gate, and localhost-default behaviors are covered by the test suite.
-Still requiring a real local installation or manual walk-through are the CLI commands end to end,
-the dashboard in a browser, Ollama/Anthropic clients against a real model, RemoteOK/Arbeitnow
-against live APIs, and desktop notifications via `plyer`.
+The first desktop-launch foundation is now implemented: `jobcopilot serve` can retain the
+foreground server (`none`), open the dashboard in the default browser (`browser`), or host the
+same dashboard in an optional desktop webview (`webview`). This is not an installer and does not
+bundle Python, Ollama, or a runtime. Still requiring a real local installation or manual
+walk-through are the CLI commands end to end, the dashboard in a browser/webview, Ollama/Anthropic
+clients against a real model, RemoteOK/Arbeitnow against live APIs, and desktop notifications via
+`plyer`.
 
 ## Setup
 
@@ -109,6 +113,20 @@ Or run continuously with a background scheduler and a local dashboard:
 ```bash
 jobcopilot serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
 ```
+
+The launch mode defaults to `none`, preserving the existing foreground-server behavior. To open
+the local dashboard automatically, choose a mode in `config.yaml`:
+
+```yaml
+dashboard:
+  launch_mode: "browser"  # none | browser | webview
+```
+
+Or select it for one run: `jobcopilot serve --launch-mode browser`. The optional webview mode
+requires `pip install -e ".[desktop]"` and can be selected with
+`jobcopilot serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
+Windows installer packaging, runtime bundling, shortcuts, Ollama/model installation, update
+services, and signing remain planned work.
 
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are
@@ -189,6 +207,8 @@ cover the prefilter and the rule-based fallback scorer.
 - [x] Run `python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
 - [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
   review-first submission and a rejected upload.
+- [ ] Validate `jobcopilot serve --launch-mode browser` and `--launch-mode webview` on a real
+  machine. Webview mode is currently an optional launch path, not an installed desktop product.
 - [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;
   those remain future blockers.
 

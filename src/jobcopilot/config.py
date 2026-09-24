@@ -148,6 +148,7 @@ class RemindersConfig(BaseModel):
 class DashboardConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8420
+    launch_mode: Literal["none", "browser", "webview"] = "none"
 
 
 class Settings(BaseModel):
