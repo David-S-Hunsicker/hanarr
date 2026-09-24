@@ -35,11 +35,20 @@ from ..models import (
     ProjectTask,
     ProjectTaskStatus,
     Reminder,
+    ResumeProposal,
+    ResumeVersion,
+    ProvenSkill,
     SeenPosting,
 )
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
+from ..resume_loop import (
+    approve_resume_proposal,
+    create_resume_proposal,
+    reject_resume_proposal,
+    resume_status as resume_page_status,
+)
 from ..skill_analysis import analyze_job, saved_job_gap, saved_job_gaps
 from ..submissions import (
     create_local_submission,
@@ -539,11 +548,36 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
             try:
-                evaluate_submission(session, profile.id, submission_id, llm)
+                evaluation = evaluate_submission(session, profile.id, submission_id, llm)
+                proposal = None
+                if evaluation.passed:
+                    project = submission.project
+                    if project.status is not ProjectStatus.COMPLETED:
+                        project.status = ProjectStatus.COMPLETED
+                        project.completed_at = dt.datetime.utcnow()
+                    for project_skill in project.skills:
+                        if session.query(ProvenSkill).filter_by(
+                            profile_id=profile.id, skill_id=project_skill.skill_id
+                        ).first() is None:
+                            session.add(ProvenSkill(
+                                profile_id=profile.id, skill_id=project_skill.skill_id,
+                                project_id=project.id, evaluation_id=evaluation.id,
+                                evidence=evaluation.feedback or project.target_outcome,
+                            ))
+                    proposal = session.query(ResumeProposal).filter(
+                        ResumeProposal.profile_id == profile.id,
+                        ResumeProposal.project_id == project.id,
+                        ResumeProposal.status == "pending",
+                    ).order_by(ResumeProposal.id.desc()).first()
+                    if proposal is None:
+                        proposal = create_resume_proposal(session, profile.id, project, evaluation, llm)
                 session.commit()
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
-            return JSONResponse(submission_status(submission))
+            result = submission_status(submission)
+            if proposal is not None:
+                result["resume_proposal_id"] = proposal.id
+            return JSONResponse(result)
 
     @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/resubmit")
     def resubmit_project_submission(project_id: int, submission_id: int):
@@ -594,7 +628,61 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 context={"projects": project_cards, "suggestions": suggestions},
             )
 
-    @app.get("/{section:resume|skills|applications}")
+    @app.get("/api/resume")
+    def get_resume():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return JSONResponse(resume_page_status(profile))
+
+    @app.post("/api/resume/proposals/{proposal_id}/approve")
+    def approve_proposal(proposal_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                result = approve_resume_proposal(session, settings, profile.id, proposal_id, llm)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(result)
+
+    @app.post("/api/resume/proposals/{proposal_id}/reject")
+    def reject_proposal(proposal_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                proposal = reject_resume_proposal(session, profile.id, proposal_id)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse({"id": proposal.id, "status": proposal.status.value})
+
+    @app.post("/api/resume/versions/{version_id}/rollback")
+    def rollback_resume(version_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            version = session.get(ResumeVersion, version_id)
+            if version is None or version.profile_id != profile.id:
+                return JSONResponse({"error": "Resume version not found."}, status_code=404)
+            pending = ResumeProposal(
+                profile_id=profile.id,
+                base_version_id=next((v.id for v in profile.resume_versions if v.is_active), None),
+                proposed_content=version.content,
+                diff="Rollback proposal to version %s." % version.id,
+                rationale="Explicit rollback; approve to activate this prior version.",
+            )
+            session.add(pending)
+            session.commit()
+            return JSONResponse({"id": pending.id, "status": pending.status.value})
+
+    @app.get("/resume")
+    def resume_page(request: Request):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return templates.TemplateResponse(
+                request=request, name="resume.html", context={"resume": resume_page_status(profile)}
+            )
+
+    @app.get("/{section:skills|applications}")
     def future_section(request: Request, section: str):
         labels = {"resume": "Resume", "skills": "Skills", "applications": "Applications"}
         return templates.TemplateResponse(

@@ -474,6 +474,26 @@ read the before/after explanations and trace the impact back to project evidence
   The next handoff is to add review/diff presentation and a GitHub-ready adapter without
   granting unattended external submission.
 
+  #### Progress — project-completion resume loop
+
+  The project-completion milestone is complete. A passing evaluation now marks the project
+  completed, records proven-skill evidence, and creates one pending, versioned resume proposal
+  through the configured LLM abstraction. Invalid or unavailable model output uses a
+  deterministic evidence-only proposal and never replaces the active resume.
+
+  The Resume page and API expose readable active contents, proposal diffs and decisions,
+  version history, and explicit rollback proposals. Approval is required before activation;
+  approval re-parses the stored approved content, refreshes normalized profile skills, and
+  re-scores affected project jobs (or all saved jobs for an explicit rollback). Each result
+  is stored as an immutable `ScoreSnapshot` with before/after metadata and an explanation.
+  Existing apply/status behavior and historical snapshots remain unchanged.
+
+  **Validation:** `python -m pytest -q tests/test_resume_loop.py
+  tests/test_coaching_projects.py tests/test_career_schema.py tests/test_migrations.py` and
+  `python -m compileall -q src`. The next handoff is review/diff presentation polish and a
+  GitHub-ready adapter; unattended external delivery and automatic proposal approval remain
+  deferred.
+
   #### Progress — deterministic evaluator stage
 
   Commit `7efb28c` established the explicit submission boundary. This milestone adds

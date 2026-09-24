@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Resume · Hannar</title>
+<style>
+body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem; background: #f9f9f7; color: #0b0b0b; font-family: system-ui, sans-serif; }
+.tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin:1rem 0 2rem; border-bottom:1px solid #ddd; }
+.tabs a { padding:.5rem .7rem; color:#555; text-decoration:none; }.tabs a.active { color:#1765ad; border-bottom:2px solid #1765ad; font-weight:650; }
+.card { padding:1.2rem; border:1px solid #ddd; border-radius:10px; background:#fff; margin:.8rem 0; }
+pre { white-space:pre-wrap; font:inherit; line-height:1.45; } .muted { color:#666; } button { padding:.35rem .6rem; }
+</style></head>
+<body>
+<h1>Resume</h1>
+<nav class="tabs"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a class="active" href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
+<section class="card"><h2>Active resume</h2><pre>{{ resume.active.content }}</pre></section>
+<section><h2>Proposals</h2>
+{% for proposal in resume.proposals %}
+<article class="card"><h3>Proposal {{ proposal.id }} · {{ proposal.status }}</h3><p class="muted">{{ proposal.rationale }}</p><pre>{{ proposal.diff }}</pre>
+{% if proposal.status == "pending" %}<button onclick="decide({{ proposal.id }}, 'approve')">Approve and re-score jobs</button> <button onclick="decide({{ proposal.id }}, 'reject')">Reject</button>{% endif %}</article>
+{% else %}<p class="muted">No resume proposals yet. A passed project will create one for review.</p>{% endfor %}
+</section>
+<section><h2>Version history</h2>{% for version in resume.versions %}<div class="card"><strong>Version {{ version.id }}{% if version.active %} · active{% endif %}</strong><p class="muted">{{ version.created_at }}</p><details><summary>Read contents</summary><pre>{{ version.content }}</pre></details>{% if not version.active %}<button onclick="rollback({{ version.id }})">Prepare rollback proposal</button>{% endif %}</div>{% endfor %}</section>
+<script>
+async function decide(id, action) { const r = await fetch(`/api/resume/proposals/${id}/${action}`, {method:"POST"}); if (!r.ok) alert((await r.json()).error); else location.reload(); }
+async function rollback(id) { const r = await fetch(`/api/resume/versions/${id}/rollback`, {method:"POST"}); if (!r.ok) alert((await r.json()).error); else location.reload(); }
+</script>
+</body></html>
