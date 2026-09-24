@@ -1,4 +1,5 @@
 import datetime as dt
+import sys
 import threading
 import time
 
@@ -396,6 +397,44 @@ def test_suggest_keywords_failure_shows_actual_error_not_a_generic_guess(tmp_pat
 
     assert "simulated 404 Not Found" in status["error"]
     assert "is the LLM reachable" not in status["error"]
+
+
+def test_restart_route_spawns_a_real_process_instead_of_execv(tmp_path, monkeypatch):
+    """Regression test for a real reported hang: os.execv does not provide
+    true process replacement on Windows -- the C runtime emulates it by
+    spawning a child that inherits this process's open handles, including
+    the listening socket, then blocks this process until that child exits.
+    The child's own bind attempt then collides with this process still
+    holding the port, and neither side recovers: the server hangs,
+    unresponsive to every request, exactly as reported. The restart route
+    must spawn a genuinely independent process (subprocess.Popen does not
+    inherit handles by default) and exit immediately instead."""
+    settings = _make_isolated_settings(tmp_path)
+    app = create_app(settings)
+    client = TestClient(app)
+
+    popen_calls = []
+    exit_calls = []
+    monkeypatch.setattr(app_mod.subprocess, "Popen", lambda *a, **k: popen_calls.append((a, k)))
+    monkeypatch.setattr(app_mod.os, "_exit", lambda code: exit_calls.append(code))
+
+    response = client.post("/restart")
+
+    assert response.status_code == 200
+    assert response.json() == {"restarting": True}
+    # The actual shutdown/spawn is deliberately deferred ~0.5s so this
+    # response reaches the client before the process acts on it.
+    assert popen_calls == [] and exit_calls == []
+
+    for _ in range(30):
+        if popen_calls and exit_calls:
+            break
+        time.sleep(0.05)
+
+    args, kwargs = popen_calls[0]
+    assert args[0] == [sys.argv[0], *sys.argv[1:]]
+    assert kwargs.get("close_fds") is True
+    assert exit_calls == [0]
 
 
 def _extract_job_card(html: str, title: str) -> str:

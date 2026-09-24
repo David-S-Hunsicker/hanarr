@@ -5,6 +5,7 @@ registration, runtime bundling, and Ollama setup remain separate milestones.
 """
 from __future__ import annotations
 
+import socket
 import threading
 import time
 import webbrowser
@@ -14,6 +15,28 @@ from typing import Any, Literal, cast
 import uvicorn
 
 LaunchMode = Literal["none", "browser", "webview"]
+
+
+def _wait_for_port_available(host: str, port: int, timeout_seconds: float = 10.0) -> None:
+    """Best-effort wait for a just-vacated port to actually become bindable
+    before starting the real server.
+
+    A server restart (see dashboard/app.py's _shutdown_and_reexec) spawns
+    the replacement process before the old one has necessarily finished
+    releasing the socket yet -- probing like this absorbs that brief race
+    instead of the new process's real bind attempt failing outright and
+    leaving the app down. Silently returns once the port binds, or once
+    the timeout elapses (the real bind attempt below will then raise its
+    own clear error rather than hang)."""
+    probe_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind((probe_host, port))
+            return
+        except OSError:
+            time.sleep(0.2)
 
 
 @dataclass(frozen=True)
@@ -45,6 +68,7 @@ def launch_dashboard(app: Any, config: DashboardLaunchConfig) -> None:
     webview modes run the same ASGI app and stop the server when their UI exits.
     """
     mode = validate_launch_mode(config.mode)
+    _wait_for_port_available(config.host, config.port)
     if mode == "none":
         uvicorn.run(app, host=config.host, port=config.port, log_level="warning")
         return

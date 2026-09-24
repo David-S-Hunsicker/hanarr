@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -1171,12 +1172,25 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 scheduler.shutdown(wait=False)
             except Exception:  # noqa: BLE001
                 logger.exception("Scheduler shutdown failed during restart")
-        # Re-exec sys.argv[0] directly rather than routing through
-        # sys.executable: on Windows, an installed console script
-        # (hanarr.exe) is itself a runnable launcher, not a .py file
-        # python.exe can take as an argument, so it needs to be the program
-        # being executed, not a value passed to the interpreter.
-        os.execv(sys.argv[0], sys.argv)
+        # os.execv does NOT provide true process replacement on Windows,
+        # despite its docstring: there is no exec syscall, so the C runtime
+        # emulates it by spawning a child that inherits this process's open
+        # handles -- including the listening socket -- and then blocking
+        # this process until that child exits. The child's own bind attempt
+        # then collides with this process still holding the port, and
+        # neither side recovers: this process hangs inside the emulated
+        # exec forever, unresponsive to every request, which is exactly
+        # what happened when this was reported as a hung server.
+        #
+        # subprocess.Popen does not inherit handles by default, so it
+        # spawns a genuinely independent process instead. Exit immediately
+        # afterward (os._exit, not sys.exit -- skip Python's normal
+        # shutdown sequence entirely rather than risk it blocking on a
+        # non-daemon thread) so the port is actually released; the new
+        # process's own startup absorbs the brief remaining gap by
+        # retrying its bind (see launch.py's _wait_for_port_available).
+        subprocess.Popen([sys.argv[0], *sys.argv[1:]], close_fds=True)
+        os._exit(0)
 
     @app.post("/restart")
     def restart_server():
