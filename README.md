@@ -138,8 +138,10 @@ requires `pip install -e ".[desktop]"` and can be selected with
 The Windows packaging foundation is documented in [`docs/windows-installer.md`](docs/windows-installer.md).
 It uses PyInstaller plus Inno Setup, keeps user data in `%LOCALAPPDATA%\Hanarr`, provides Start
 Menu shortcuts and an optional Desktop shortcut, and preserves data on uninstall. Run
-`.\scripts\build_windows.ps1` on Windows to produce an unsigned installer when PyInstaller and
-Inno Setup are available. This is a buildable packaging path, not a signed or released artifact;
+`.\scripts\build_windows.ps1 -ValidateOnly` first to fail clearly if Python, PyInstaller, Inno
+Setup, or packaging inputs are unavailable, then run `.\scripts\build_windows.ps1` to produce an
+unsigned installer. The script verifies that the expected non-empty artifact exists. This is a
+buildable packaging path, not a signed or released artifact;
 the installer never installs Ollama and the existing explicit-consent setup flow remains in charge
 of optional provider actions.
 
@@ -224,6 +226,10 @@ cover the prefilter and the rule-based fallback scorer.
   review-first submission and a rejected upload.
 - [ ] Validate `jobcopilot serve --launch-mode browser` and `--launch-mode webview` on a real
   machine. Webview mode is currently an optional launch path, not an installed desktop product.
+- [ ] On Windows, run `.\scripts\build_windows.ps1 -ValidateOnly`, then build the unsigned
+  installer and record the artifact hash and tool versions.
+- [ ] Sign and verify the installer and packaged executables with Authenticode, then validate
+  install, shortcuts, launch, upgrade, uninstall, and data preservation on a clean machine.
 - [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;
   those remain future blockers.
 

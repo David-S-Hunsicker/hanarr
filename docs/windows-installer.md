@@ -22,12 +22,43 @@ On Windows, install [Inno Setup 6](https://jrsoftware.org/isinfo.php), ensure
 `ISCC.exe` is on `PATH`, and run from a clean checkout:
 
 ```powershell
+# Deterministic tool/input check; does not build or change the checkout.
+.\scripts\build_windows.ps1 -ValidateOnly
+
+# Build the unsigned local installer.
 .\scripts\build_windows.ps1
 ```
 
-The script installs the optional `packaging` dependencies, creates both
+`-ValidateOnly` fails before any install/build step when Python, PyInstaller, Inno
+Setup, or a required packaging input is missing. The full script installs the optional
+`packaging` dependencies, creates both
 PyInstaller executables, then invokes `installer\hanarr.iss`. It writes an
 **unsigned** `installer\output\Hanarr-Setup-0.1.0.exe`; this repository does
 not claim that artifact is signed or released. Release work still requires a
 real Windows clean-machine test, certificate-backed Authenticode signing,
-signature verification, version automation, and publishing.
+signature verification, version automation, and publishing. A successful compiler
+exit is not sufficient: the script also checks that the expected non-empty installer
+artifact exists.
+
+## Release-readiness validation
+
+Before release, retain the exact commit, Python/PyInstaller/Inno versions, and SHA-256
+of the unsigned and signed artifacts. Sign the installer and both packaged executables
+with the release certificate using the organization's approved Authenticode process,
+then verify each signature and timestamp with `Get-AuthenticodeSignature`; do not
+describe an unsigned artifact as released.
+
+On a clean Windows machine or VM with no Python, terminal tooling, or pre-existing
+Hanarr installation:
+
+1. Install the signed installer as a normal user and verify both Start Menu shortcuts.
+2. Select the optional Desktop shortcut and verify it launches the same backend in
+   webview mode; verify the Browser shortcut opens the dashboard in the default browser.
+3. Create representative configuration, resume, and SQLite data under
+   `%LOCALAPPDATA%\Hanarr`, then uninstall and confirm those files remain while the
+   application directory, shortcuts, and Add/Remove Programs entry are removed.
+4. Install the next version over the first installation and verify data, configuration,
+   migrations, launch modes, and both shortcuts remain usable.
+5. Repeat with an existing Ollama installation, no network, cancelled/failed provider
+   setup, and a migration failure. Confirm each failure is explicit and recoverable;
+   the installer itself must never install, start, or silently replace Ollama.

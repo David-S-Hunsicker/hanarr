@@ -21,6 +21,21 @@ def test_packaged_entry_points_use_explicit_launch_modes():
 
 def test_windows_build_script_builds_both_runtimes_before_inno():
     source = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+    assert "Windows packaging preflight failed:" in source
+    assert "$ValidateOnly" in source
+    assert "PyInstaller is unavailable" in source
+    assert "Inno Setup compiler" in source
     assert "--name HanarrBrowser" in source
     assert "--name HanarrDesktop" in source
     assert 'installer\\hanarr.iss' in source
+    assert "expected installer artifact" in source
+
+
+def test_installer_wires_both_launchers_and_preserves_user_data():
+    source = (ROOT / "installer" / "hanarr.iss").read_text(encoding="utf-8")
+    assert 'Source: "..\\dist\\HanarrDesktop.exe"' in source
+    assert 'Source: "..\\dist\\HanarrBrowser.exe"' in source
+    assert 'Filename: "{app}\\HanarrDesktop.exe"' in source
+    assert 'Filename: "{app}\\HanarrBrowser.exe"' in source
+    assert "[UninstallDelete]" in source
+    assert "{localappdata}\\Hanarr" in source

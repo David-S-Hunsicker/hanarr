@@ -2,7 +2,7 @@
 
 **Status:** Phase 10 Windows-first installer and distribution planning is complete; the first
 desktop-launch foundation and Windows packaging foundation are implemented, while signing and
-release validation remain deferred. Phase 6
+clean-machine release validation remain deferred. Phase 6
 submission, evaluator, and local-first provider-routing
 foundations are complete. Alembic migrations, a
 frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
@@ -927,8 +927,11 @@ desktop entry points that run from `%LOCALAPPDATA%\Hanarr`, preserving configura
 SQLite data, and migrations outside replaceable application binaries. `scripts/build_windows.ps1`
 builds both PyInstaller runtimes and invokes `installer/hanarr.iss`, which defines a per-user Inno
 Setup installer, Start Menu shortcuts, an optional Desktop shortcut, Add/Remove Programs
-registration, and an uninstall policy that preserves user data. Static packaging tests cover the
-metadata and launch wiring. The documented build produces an unsigned local artifact only; no
+registration, and an uninstall policy that preserves user data. The script now performs a
+deterministic preflight for Python, PyInstaller, Inno Setup, and all packaging inputs; `-ValidateOnly`
+provides a tool/input check without building, and a full build verifies the expected non-empty
+installer artifact. Static packaging tests cover shortcut, launch, data-preservation, and
+preflight/output wiring. The documented build produces an unsigned local artifact only; no
 signing, release, update service, or clean-machine verification is claimed.
 
 The first-run local-AI foundation and the bounded M4 consent slice are implemented without
@@ -946,7 +949,8 @@ No signed/released installer, update service, or first-run wizard has been added
 runtime includes the application and Python dependencies but does not install or bundle Ollama;
 the existing explicit-consent setup flow remains responsible for optional provider actions.
 
-**Next handoff:** Build and verify the unsigned installer on Windows, then add Authenticode
-signing, clean-machine/upgrade/recovery/uninstall validation, and release automation. Add a
+**Next handoff:** Run the preflight and build on Windows when PyInstaller and Inno Setup are
+available, then add Authenticode signing, clean-machine/upgrade/recovery/uninstall validation,
+and release automation. Add a
 first-run wizard, update services, unattended installation, and macOS/Linux only as separate
 milestones; Ollama must remain detection-first and explicit-consent gated.
