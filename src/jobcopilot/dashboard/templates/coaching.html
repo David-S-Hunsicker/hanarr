@@ -25,6 +25,8 @@
     textarea { width: 100%; min-height: 7rem; font: inherit; padding: .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
     .submission-form { display: grid; gap: .5rem; margin-top: 1rem; }
     .submission-form button { justify-self: start; cursor: pointer; }
+    .evaluation { border-top: 1px solid var(--border); margin-top: .7rem; padding-top: .7rem; }
+    .evaluation ul { margin: .35rem 0; padding-left: 1.1rem; }
   </style>
 </head>
 <body>
@@ -69,7 +71,7 @@
         <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span><span>{{ project.target_outcome }}</span></div>
         <p class="description">{{ project.description }}</p>
         {% if project.affected_jobs %}
-        <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }} · {{ job.company }}</a>{% endfor %}</div>
+        <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.dashboard_url }}">{{ job.title }} · {{ job.company }}</a> <a href="{{ job.url }}" target="_blank" rel="noopener" aria-label="Open {{ job.title }} externally">[open]</a>{% endfor %}</div>
         {% endif %}
         <ol class="tasks">
           {% for task in project.tasks %}
@@ -91,6 +93,11 @@
           {% for submission in project.submissions %}
           <span class="pill">{{ submission.kind|replace("_", " ") }} · {{ submission.status }}{% if submission.manifest %} · {{ submission.manifest|length }} file(s){% endif %}</span>
           {% if submission.status == "draft" %}<button type="button" class="submit-draft" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Submit for review</button>{% endif %}
+          {% if submission.status == "submitted" %}<button type="button" class="evaluate-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Evaluate evidence</button>{% endif %}
+          {% if submission.status == "evaluated" %}<button type="button" class="resubmit-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Revise and resubmit</button>{% endif %}
+          {% for evaluation in submission.evaluations %}
+          <div class="evaluation"><strong>Attempt {{ evaluation.attempt_number }}: {{ evaluation.outcome|replace("_", " ") }} ({{ "%.0f"|format(evaluation.score) }})</strong><br><span class="description">{{ evaluation.feedback }}</span>{% if evaluation.actionable_feedback %}<ul>{% for item in evaluation.actionable_feedback %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div>
+          {% endfor %}
           {% endfor %}
         </div>
         {% endif %}
@@ -131,6 +138,20 @@
       button.addEventListener("click", async () => {
         const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/submit`, {method: "POST"});
         if (!response.ok) window.alert((await response.json()).error || "Could not submit draft.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".evaluate-submission").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/evaluate`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not evaluate submission.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".resubmit-submission").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/resubmit`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not reopen submission.");
         else window.location.reload();
       });
     });

@@ -156,6 +156,8 @@ def test_index_shows_gap_indicator_and_preserves_status_action(tmp_path):
     assert "1 gap" in html
     assert "View fit analysis" in html
     assert f"/jobs/{job_id}/status" in html
+    assert 'document.querySelectorAll(".project-action").forEach' in html
+    assert f'id="job-{job_id}"' in html
 
 
 def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_path):

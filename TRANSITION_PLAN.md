@@ -656,3 +656,28 @@ Validation:
 
 Add review/diff presentation and a GitHub-ready adapter for the existing review-first
 submission model, while preserving explicit approval and local artifact boundaries.
+
+#### Progress — connected coaching and job-impact UX
+
+This bounded integration milestone closes the highest-value links in the local user
+journey. Job cards now have stable dashboard anchors, affected-job links from Coaching
+and Skills return to the relevant card while preserving the external posting link, and
+the Jobs page surfaces the latest approved-resume before/after score impact with a link
+to the detailed explanation on Resume. The existing status selector, apply/posting link,
+and reminders remain unchanged.
+
+The Coaching page now presents evaluator feedback and actionable follow-up for each
+submission, with explicit evaluate and revise/resubmit actions. A regression also fixes
+the project-action event binding so an analyzed gap can always create its opted-in
+project; previously those listeners were nested under the unanalyzed-job action loop.
+No project, resume, or application action is automatic.
+
+**Validation:** `python -m pytest -q tests/test_skill_analysis.py
+tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_app.py`,
+`python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
+
+**Next handoff**
+
+Add review/diff presentation refinements and a GitHub-ready adapter for the existing
+review-first submission model. Keep GitHub delivery explicit and approval-gated; do not
+add unattended submission or automatic proposal approval.

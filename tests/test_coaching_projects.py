@@ -120,6 +120,7 @@ def test_coaching_page_shows_suggestions_projects_jobs_and_updates_task(tmp_path
     assert "Python" in html
     assert "Backend Engineer" in html
     assert "Affected jobs" in html
+    assert f"/#job-{job_id}" in html
 
     task_id = created["tasks"][0]["id"]
     updated = client.post(
@@ -231,6 +232,9 @@ def test_submission_evaluation_persists_structured_result_and_resubmission_histo
     assert result["outcome"] == "passed"
     assert result["scores"]["Build the first version"] == 90
     assert result["attempt_number"] == 1
+    coaching_html = client.get("/coaching").text
+    assert "Attempt 1: passed" in coaching_html
+    assert "Revise and resubmit" in coaching_html
 
     retried = client.post(
         f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/resubmit"

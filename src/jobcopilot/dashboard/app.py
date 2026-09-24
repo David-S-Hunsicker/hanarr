@@ -374,6 +374,11 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 .limit(10)
                 .all()
             )
+            score_impact_by_job = {}
+            for impact in resume_page_status(profile, session)["score_impacts"]:
+                # Resume status returns newest snapshots first; keep that
+                # explanation when a job has been rematched more than once.
+                score_impact_by_job.setdefault(impact["job_id"], impact)
 
             return templates.TemplateResponse(
                 request=request,
@@ -391,6 +396,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "status_counts": status_counts,
                     "gap_by_job": gap_by_job,
                     "projects": [project_status(project) for project in projects],
+                    "score_impact_by_job": score_impact_by_job,
                 },
             )
 
@@ -677,7 +683,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             for project in projects:
                 status = project_status(project)
                 status["affected_jobs"] = [
-                    {"id": link.job.id, "title": link.job.title, "company": link.job.company, "url": link.job.url}
+                    {"id": link.job.id, "title": link.job.title, "company": link.job.company,
+                     "url": link.job.url, "dashboard_url": f"/#job-{link.job.id}"}
                     for link in project.affected_jobs
                 ]
                 project_cards.append(status)

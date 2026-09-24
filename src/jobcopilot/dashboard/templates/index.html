@@ -318,6 +318,8 @@
     }
     .fit-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
     .fit-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .score-impact { margin-top: .45rem; font-size: .8rem; color: var(--text-secondary); }
+    .score-impact strong { color: var(--status-good); }
 
     .job-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
     .status-select {
@@ -429,7 +431,7 @@
   {% endif %}
   <div class="job-list">
     {% for job in jobs %}
-    <div class="job-card">
+    <div class="job-card" id="job-{{ job.id }}">
       {% if job.fit_score is not none %}
         {% if job.fit_score >= 75 %}
         <div class="score-badge score-high">{{ "%.0f"|format(job.fit_score) }}</div>
@@ -448,6 +450,10 @@
           {% if job.posted_at|is_recent_posting %}<span class="pill new-badge">New</span>{% endif %}
         </div>
         <div class="job-company">{{ job.company }}</div>
+        {% set impact = score_impact_by_job.get(job.id) %}
+        {% if impact %}
+        <div class="score-impact">Resume impact: {{ "%.0f"|format(impact.before_score) if impact.before_score is not none else "—" }} → {{ "%.0f"|format(impact.after_score) }}{% if impact.delta is not none %} <strong>({{ "%+.0f"|format(impact.delta) }})</strong>{% endif %} · <a href="/resume">why this changed</a></div>
+        {% endif %}
         <div class="job-meta">
           {% if job.remote %}<span class="pill remote">Remote</span>{% endif %}
           {% if job.location %}<span class="pill">{{ job.location }}</span>{% endif %}
@@ -541,24 +547,24 @@
               button.textContent = "Try fit analysis again";
             });
 
-            document.querySelectorAll(".project-action").forEach((button) => {
-              button.addEventListener("click", function () {
-                button.disabled = true;
-                fetch("/api/coaching-projects", {
-                  method: "POST",
-                  headers: {"Content-Type": "application/json"},
-                  body: JSON.stringify({
-                    mode: "posting_specific",
-                    job_id: Number(button.dataset.jobId),
-                    skill_id: Number(button.dataset.skillId)
-                  })
-                }).then((response) => {
-                  if (!response.ok) throw new Error("project creation failed");
-                  return response.json();
-                }).then(() => window.location.reload())
-                  .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
-              });
-            });
+        });
+      });
+      document.querySelectorAll(".project-action").forEach((button) => {
+        button.addEventListener("click", function () {
+          button.disabled = true;
+          fetch("/api/coaching-projects", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              mode: "posting_specific",
+              job_id: Number(button.dataset.jobId),
+              skill_id: Number(button.dataset.skillId)
+            })
+          }).then((response) => {
+            if (!response.ok) throw new Error("project creation failed");
+            return response.json();
+          }).then(() => window.location.reload())
+            .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
         });
       });
 
