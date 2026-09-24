@@ -20,6 +20,10 @@ skills, projects, resume proposals, and submission workflows are added in later 
 Hannar does not add accounts, hosted tenancy, scraping, automatic project creation, automatic
 resume activation, or unattended application submission.
 
+Database upgrades use Alembic migrations. Existing databases are upgraded in place without
+recreating legacy rows, and a timestamped SQLite backup is written to `data/backups/` before an
+upgrade. Migrations are additive; do not delete the database to resolve a migration error.
+
 ## How it works
 
 1. You write your preferences into `config.yaml` (titles, locations, salary floor, dealbreakers,

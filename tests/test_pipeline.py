@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from jobcopilot.config import Settings
 from jobcopilot.connectors.base import RawJobPosting
 from jobcopilot.llm.base import LLMClient
-from jobcopilot.models import Base, JobPosting, Profile, SeenPosting
+from jobcopilot.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
 from jobcopilot.pipeline import run_search_cycle
 
 
@@ -94,6 +94,9 @@ def test_matched_posting_is_not_readded_or_rescored_on_a_later_search(monkeypatc
     assert first_count == 1
     assert llm.call_count == 1
     assert session.query(JobPosting).count() == 1
+    snapshot = session.query(ScoreSnapshot).one()
+    assert snapshot.fit_score == 85
+    assert snapshot.trigger == "initial"
 
     second_count = run_search_cycle(session, settings, profile, llm)
     assert second_count == 0

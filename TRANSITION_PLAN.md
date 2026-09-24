@@ -1,7 +1,7 @@
 # Hannar transition plan
 
-**Status:** Phase 0 complete. The first bounded branding-and-boundaries increment is
-implemented without changing existing job-search behavior.
+**Status:** Phase 1 foundation complete. Alembic migrations, a frozen compatibility baseline,
+and additive score snapshots are in place without changing existing job-search behavior.
 
 ## 1. Purpose and decisions
 
@@ -236,6 +236,36 @@ Do not begin skills, projects, orchestration, or submission flows in that increm
 
 **Exit:** An existing database upgrades without data loss, and old commands/dashboard
 flows still work.
+
+#### Phase 1 — migrations and foundational models: complete
+
+**Migration tooling and schema decisions**
+
+- Selected Alembic with SQLAlchemy and SQLite; `0001` freezes the pre-migration tables and
+  `0002` adds the additive `score_snapshots` table.
+- Existing databases are detected and stamped at the frozen baseline rather than recreated.
+  Fresh databases run the same baseline migration normally.
+- Before an upgrade, the local database is copied to `data/backups/jobcopilot-<UTC>.db`.
+  Migration errors are raised explicitly; the original database is not deleted or replaced.
+
+**Completed deliverables**
+
+- Added versioned migration configuration and documentation.
+- Added immutable score snapshots with legacy backfill metadata and initial snapshots for
+  newly matched postings.
+- Added focused migration tests covering fresh databases, legacy row preservation, backfill,
+  and backup creation.
+
+**Validation**
+
+- `pytest tests/test_migrations.py tests/test_pipeline.py`
+- Existing dashboard and connector behavior remains covered by the repository test suite.
+
+**Next handoff**
+
+Proceed to Phase 2 only after confirming this migration path in a representative local
+database. Phase 2 may add skills and gap records; it must remain additive and must not yet
+introduce project, orchestration, or submission flows.
 
 ### Phase 2 — skills and gap integration
 

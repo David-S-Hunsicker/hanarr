@@ -129,3 +129,18 @@ class Reminder(Base):
 
     profile: Mapped["Profile"] = relationship(back_populates="reminders")
     job: Mapped["JobPosting | None"] = relationship(back_populates="reminders")
+
+
+class ScoreSnapshot(Base):
+    """Immutable record of a fit score and the explanation shown to the user."""
+
+    __tablename__ = "score_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    job_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"))
+    fit_score: Mapped[float] = mapped_column(Float)
+    fit_rationale: Mapped[str] = mapped_column(Text, default="")
+    trigger: Mapped[str] = mapped_column(String, default="initial")
+    scorer_metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

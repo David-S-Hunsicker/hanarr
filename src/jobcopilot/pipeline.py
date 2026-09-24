@@ -15,7 +15,7 @@ from .config import Settings
 from .connectors import build_enabled_connectors
 from .llm.base import LLMClient
 from .matching import passes_prefilter, score_fit
-from .models import JobPosting, Profile, SeenPosting
+from .models import JobPosting, Profile, ScoreSnapshot, SeenPosting
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,16 @@ def run_search_cycle(
                 fit_rationale=rationale,
             )
             session.add(posting)
+            session.commit()
+            session.add(
+                ScoreSnapshot(
+                    profile_id=profile.id,
+                    job_id=posting.id,
+                    fit_score=score,
+                    fit_rationale=rationale,
+                    trigger="initial",
+                )
+            )
             session.commit()
             new_count += 1
             if on_progress:
