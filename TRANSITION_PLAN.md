@@ -380,6 +380,30 @@ resume activation, or rescoring in this milestone.
 Add a dedicated Coaching surface and explicit task/status updates. Keep submission evaluation,
 resume writing/activation, rescoring, and automatic project recommendations deferred.
 
+#### Phase 3 — dedicated Coaching dashboard: complete
+
+**Completed deliverables**
+
+- Added a dedicated `/coaching` page with focused sections for analyzed missing/partial gaps,
+  opted-in projects, project status/tasks, and affected saved jobs.
+- Added explicit task status updates through
+  `POST /api/coaching-projects/{project_id}/tasks/{task_id}/status`; starting a planned task
+  moves its project to active without changing jobs, applications, or resume content.
+- Added the first-class Jobs, Coaching, Resume, Skills, Applications, and Settings navigation
+  structure. Resume, Skills, and Applications are intentionally reserved placeholders until
+  their respective milestones.
+
+**Validation**
+
+- Added a focused dashboard regression covering suggestions, project/task/job rendering, and
+  task activation.
+- Run the coaching, skill-analysis, dashboard, and full test suites before handoff.
+
+**Next handoff**
+
+Build the first-class Resume surface and proposal/version workflow. Keep submission evaluation,
+resume activation, rescoring, and automatic project recommendations deferred.
+
 ### Phase 3 — dashboard coaching and projects
 
 - Add dashboard coaching panels and a manually invoked coach action.

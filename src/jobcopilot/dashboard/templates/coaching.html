@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Coaching · Hannar</title>
+  <style>
+    :root { color-scheme: light; --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --muted: #5d5b56; --border: rgba(11,11,11,.12); --accent: #2a78d6; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page: #0d0d0d; --surface: #1a1a19; --text: #fff; --muted: #c3c2b7; --border: rgba(255,255,255,.13); --accent: #3987e5; } }
+    * { box-sizing: border-box; }
+    body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem 4rem; background: var(--page); color: var(--text); font-family: system-ui, sans-serif; }
+    .page-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; }
+    h1, h2 { margin: 0; } h1 { font-size: 1.35rem; } h2 { font-size: 1.05rem; margin-bottom: .8rem; }
+    .nav { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .nav a { color: var(--muted); padding: .5rem .7rem; text-decoration: none; font-size: .88rem; }
+    .nav a.active { color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 650; }
+    .intro { color: var(--muted); margin: 0 0 1.4rem; max-width: 680px; }
+    .section { margin: 1.5rem 0; } .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: .7rem 0; }
+    .card h3 { margin: 0 0 .25rem; font-size: .98rem; } .meta, .description { color: var(--muted); font-size: .9rem; }
+    .meta { display: flex; gap: .5rem; flex-wrap: wrap; margin: .45rem 0; } .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .5rem; font-size: .78rem; }
+    .tasks { margin: .8rem 0 0; padding: 0; list-style: none; } .tasks li { display: flex; gap: .6rem; align-items: baseline; border-top: 1px solid var(--border); padding: .55rem 0; }
+    .tasks form { margin-left: auto; } select, button { font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .45rem; background: var(--surface); color: var(--text); }
+    .jobs { display: flex; gap: .4rem; flex-wrap: wrap; } .jobs a, .suggestion button { color: var(--accent); }
+    .suggestion { display: flex; justify-content: space-between; gap: 1rem; align-items: center; } .suggestion p { margin: .25rem 0 0; }
+    .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="page-header"><h1>Coaching</h1><span class="meta">Build evidence before changing your application materials.</span></div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a class="active" href="/coaching">Coaching</a>
+    <a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
+  </nav>
+  <p class="intro">Review suggested gaps, opt into a project, and keep its next task visible. Projects never submit an application or change your resume automatically.</p>
+
+  <section class="section">
+    <h2>Suggested focus areas</h2>
+    {% if suggestions %}
+      {% for suggestion in suggestions %}
+      <div class="card suggestion">
+        <div>
+          <h3>{{ suggestion.skill.name }} <span class="pill">{{ suggestion.status }}</span></h3>
+          <p class="description">{{ suggestion.job.title }} at {{ suggestion.job.company }}{% if suggestion.evidence %} — {{ suggestion.evidence }}{% endif %}</p>
+        </div>
+        <a href="/?status=new">Review in Jobs</a>
+      </div>
+      {% endfor %}
+    {% else %}<div class="empty">Analyze a saved job's fit to see coaching suggestions here.</div>{% endif %}
+  </section>
+
+  <section class="section">
+    <h2>Projects</h2>
+    {% if projects %}
+      {% for project in projects %}
+      <div class="card">
+        <h3>{{ project.title }}</h3>
+        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span><span>{{ project.target_outcome }}</span></div>
+        <p class="description">{{ project.description }}</p>
+        {% if project.affected_jobs %}
+        <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }} · {{ job.company }}</a>{% endfor %}</div>
+        {% endif %}
+        <ol class="tasks">
+          {% for task in project.tasks %}
+          <li><span>{{ task.position }}. {{ task.title }}</span><form method="post" action="/api/coaching-projects/{{ project.id }}/tasks/{{ task.id }}/status" class="task-status"><select name="status" aria-label="Status for {{ task.title }}" data-project-id="{{ project.id }}" data-task-id="{{ task.id }}"><option value="todo" {% if task.status == "todo" %}selected{% endif %}>To do</option><option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>In progress</option><option value="done" {% if task.status == "done" %}selected{% endif %}>Done</option></select></form></li>
+          {% endfor %}
+        </ol>
+      </div>
+      {% endfor %}
+    {% else %}<div class="empty">No projects yet. Start one from an analyzed gap on the <a href="/">Jobs</a> page.</div>{% endif %}
+  </section>
+  <script>
+    document.querySelectorAll(".task-status select").forEach((select) => {
+      select.addEventListener("change", async () => {
+        const response = await fetch(`/api/coaching-projects/${select.dataset.projectId}/tasks/${select.dataset.taskId}/status`, {
+          method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: select.value})
+        });
+        if (!response.ok) window.location.reload();
+      });
+    });
+  </script>
+</body>
+</html>

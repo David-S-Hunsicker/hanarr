@@ -6,7 +6,15 @@ from sqlalchemy import select
 from jobcopilot.config import Settings
 from jobcopilot.dashboard.app import create_app
 from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.models import JobPosting, JobSkill, JobSkillRequirement, Skill, SkillGapStatus, Project
+from jobcopilot.models import (
+    JobPosting,
+    JobSkill,
+    JobSkillRequirement,
+    Project,
+    ProjectTaskStatus,
+    Skill,
+    SkillGapStatus,
+)
 
 
 class FakeLLM:
@@ -92,3 +100,35 @@ def test_reusable_skill_project_covers_all_affected_jobs_and_status_api(tmp_path
     assert set(body["affected_job_ids"]) == {job_one_id, job_two_id}
     assert client.get("/api/coaching-projects").json()["projects"][0]["id"] == body["id"]
     assert client.get(f"/api/coaching-projects/{body['id']}").json()["status"] == "planned"
+
+
+def test_coaching_page_shows_suggestions_projects_jobs_and_updates_task(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+
+    created = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()
+    html = client.get("/coaching").text
+    assert "Coaching" in html
+    assert "Python" in html
+    assert "Backend Engineer" in html
+    assert "Affected jobs" in html
+
+    task_id = created["tasks"][0]["id"]
+    updated = client.post(
+        f"/api/coaching-projects/{created['id']}/tasks/{task_id}/status",
+        json={"status": "in_progress"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["tasks"][0]["status"] == "in_progress"
+
+    with factory() as session:
+        project = session.get(Project, created["id"])
+        assert project.status.value == "active"
+        assert project.tasks[0].status is ProjectTaskStatus.IN_PROGRESS

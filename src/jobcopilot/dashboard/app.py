@@ -24,7 +24,17 @@ from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
 from ..coaching_projects import create_coaching_project, project_status
-from ..models import ApplicationStatus, JobPosting, Project, ProjectMode, Reminder, SeenPosting
+from ..models import (
+    ApplicationStatus,
+    JobPosting,
+    Project,
+    ProjectMode,
+    ProjectStatus,
+    ProjectTask,
+    ProjectTaskStatus,
+    Reminder,
+    SeenPosting,
+)
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
@@ -434,6 +444,69 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if project is None or project.profile_id != profile.id:
                 return JSONResponse({"error": "Coaching project not found."}, status_code=404)
             return JSONResponse(project_status(project))
+
+    @app.post("/api/coaching-projects/{project_id}/tasks/{task_id}/status")
+    async def update_project_task_status(project_id: int, task_id: int, request: Request):
+        payload = await request.json()
+        try:
+            task_status = ProjectTaskStatus(str(payload.get("status", "")))
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "status must be todo, in_progress, or done."}, status_code=400)
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            project = session.get(Project, project_id)
+            task = session.get(ProjectTask, task_id)
+            if project is None or project.profile_id != profile.id or task is None or task.project_id != project.id:
+                return JSONResponse({"error": "Coaching task not found."}, status_code=404)
+            task.status = task_status
+            if task_status is ProjectTaskStatus.IN_PROGRESS and project.status is ProjectStatus.PLANNED:
+                project.status = ProjectStatus.ACTIVE
+            session.commit()
+            return JSONResponse(project_status(project))
+
+    @app.get("/coaching")
+    def coaching(request: Request):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            projects = (
+                session.query(Project)
+                .filter(Project.profile_id == profile.id)
+                .order_by(Project.id.desc())
+                .all()
+            )
+            suggestions = []
+            for item in saved_job_gaps(session, profile):
+                job = item["job"]
+                for gap in item["gaps"]:
+                    if gap["status"] in ("missing", "partial"):
+                        suggestions.append({
+                            "job": job,
+                            "skill": gap["skill"],
+                            "status": gap["status"],
+                            "evidence": gap.get("evidence", ""),
+                        })
+            project_cards = []
+            for project in projects:
+                status = project_status(project)
+                status["affected_jobs"] = [
+                    {"id": link.job.id, "title": link.job.title, "company": link.job.company, "url": link.job.url}
+                    for link in project.affected_jobs
+                ]
+                project_cards.append(status)
+            return templates.TemplateResponse(
+                request=request,
+                name="coaching.html",
+                context={"projects": project_cards, "suggestions": suggestions},
+            )
+
+    @app.get("/{section:resume|skills|applications}")
+    def future_section(request: Request, section: str):
+        labels = {"resume": "Resume", "skills": "Skills", "applications": "Applications"}
+        return templates.TemplateResponse(
+            request=request,
+            name="placeholder.html",
+            context={"section": labels[section]},
+        )
 
     @app.post("/jobs/clear")
     def clear_jobs():
