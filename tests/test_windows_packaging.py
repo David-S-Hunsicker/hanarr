@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 ROOT = Path(__file__).parents[1]
@@ -29,6 +30,28 @@ def test_windows_build_script_builds_both_runtimes_before_inno():
     assert "--name HanarrDesktop" in source
     assert 'installer\\hanarr.iss' in source
     assert "expected installer artifact" in source
+    assert "release-metadata.json" in source
+    assert "Get-FileHash" in source
+    assert "unsigned-success" in source
+
+
+def test_release_metadata_requires_signing_before_release():
+    metadata = json.loads((ROOT / "packaging" / "release-metadata.json").read_text(encoding="utf-8"))
+    assert metadata["product"] == "Hanarr"
+    assert metadata["platform"] == "windows"
+    assert metadata["signing"]["required_for_release"] is True
+    assert metadata["signing"]["status"] == "not-configured"
+
+
+def test_windows_workflow_tests_preflights_builds_and_only_uploads_success():
+    source = (ROOT / ".github" / "workflows" / "windows-installer.yml").read_text(encoding="utf-8")
+    assert "python -m pytest -q" in source
+    assert "build_windows.ps1 -ValidateOnly" in source
+    assert "Inno Setup 6\\ISCC.exe" in source
+    assert "build_windows.ps1 -InnoSetup" in source
+    assert "actions/upload-artifact@v4" in source
+    assert "if: ${{ success() }}" in source
+    assert "installer/output/*.sha256" in source
 
 
 def test_installer_wires_both_launchers_and_preserves_user_data():

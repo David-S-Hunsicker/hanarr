@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "product": "Hanarr",
+  "version": "0.1.0",
+  "platform": "windows",
+  "artifact": "Hanarr-Setup-{version}.exe",
+  "signing": {
+    "format": "Authenticode",
+    "required_for_release": true,
+    "status": "not-configured"
+  },
+  "notarization": {
+    "required": false,
+    "status": "not-applicable"
+  }
+}

@@ -949,8 +949,15 @@ No signed/released installer, update service, or first-run wizard has been added
 runtime includes the application and Python dependencies but does not install or bundle Ollama;
 the existing explicit-consent setup flow remains responsible for optional provider actions.
 
-**Next handoff:** Run the preflight and build on Windows when PyInstaller and Inno Setup are
-available, then add Authenticode signing, clean-machine/upgrade/recovery/uninstall validation,
-and release automation. Add a
+The next bounded release-automation milestone is now implemented:
+`.github/workflows/windows-installer.yml` runs the full tests, installs the Windows packaging
+tools, runs the deterministic preflight, and builds the installer on `windows-latest`.
+`packaging/release-metadata.json` is the checked-in version and release-gate contract. A
+successful build emits the unsigned installer, SHA-256 sidecar, and output metadata; artifact
+upload is conditional on the real build succeeding and missing tools fail the workflow. The
+workflow does not publish a GitHub release and does not claim signing or notarization.
+
+**Next handoff:** Add Authenticode signing and clean-machine/upgrade/recovery/uninstall validation
+before release publication. Add a
 first-run wizard, update services, unattended installation, and macOS/Linux only as separate
 milestones; Ollama must remain detection-first and explicit-consent gated.

@@ -145,6 +145,12 @@ buildable packaging path, not a signed or released artifact;
 the installer never installs Ollama and the existing explicit-consent setup flow remains in charge
 of optional provider actions.
 
+The Windows installer workflow runs the test suite and packaging preflight on a Windows runner,
+then builds and uploads the unsigned installer only after a real PyInstaller/Inno Setup build
+produces a non-empty executable. Successful builds also include a SHA-256 sidecar and release
+metadata. The workflow does not claim a release: Authenticode signing remains an explicit
+release gate, and no silent Ollama installation or update service is part of this pipeline.
+
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are
 written in chunks to a staging path and moved into place only after validation; rejected or

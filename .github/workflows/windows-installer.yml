@@ -1,0 +1,54 @@
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test and packaging dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[dev,packaging]"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest -q
+
+      - name: Run packaging preflight
+        shell: pwsh
+        run: .\scripts\build_windows.ps1 -ValidateOnly -InnoSetup "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - name: Build unsigned installer and checksums
+        shell: pwsh
+        run: .\scripts\build_windows.ps1 -InnoSetup "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - name: Upload verified unsigned installer
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanarr-windows-unsigned
+          path: |
+            installer/output/*.exe
+            installer/output/*.sha256
+            installer/output/*.json
+          if-no-files-found: error
+          retention-days: 14
