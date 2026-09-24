@@ -78,9 +78,13 @@ back to keyword-overlap scoring only.
 
 The Settings → App config page reports whether the Ollama executable, local service, and
 configured model are detected. It also shows a conservative hardware-based starting model
-recommendation (RAM and free-storage heuristics only). Detection is read-only: this milestone
-does not install Ollama, start services, or download models. If Ollama is unavailable, choose
-`anthropic` explicitly or use `none` for deterministic keyword-overlap scoring.
+recommendation (RAM and free-storage heuristics only). The optional setup actions always detect
+first and show source, license, size, and destination before asking for confirmation. Confirming
+the Ollama action only downloads a bounded installer into `data/setup/`; Hanarr never executes it
+or starts a service. Confirming the model action asks the existing local Ollama service to pull
+the configured model. Declining, cancelling, or failing leaves the provider configuration and
+local data unchanged. If Ollama is unavailable, choose `anthropic` explicitly or use `none` for
+deterministic keyword-overlap scoring.
 
 ### 2. Configure
 
@@ -131,8 +135,9 @@ dashboard:
 Or select it for one run: `jobcopilot serve --launch-mode browser`. The optional webview mode
 requires `pip install -e ".[desktop]"` and can be selected with
 `jobcopilot serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
-Windows installer packaging, runtime bundling, shortcuts, unattended Ollama/model installation,
-explicit-consent download flows, update services, and signing remain planned work.
+Windows installer packaging, runtime bundling, shortcuts, unattended installation, update
+services, and signing remain planned work. The current setup action is intentionally a dashboard
+download/staging flow, not an installer or unattended installation.
 
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are

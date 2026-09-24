@@ -922,19 +922,22 @@ cover URL construction, supported-mode validation, and config loading. Validatio
 handoff: `python -m pytest -q tests/test_launch.py tests/test_dashboard_app.py`, the full test
 suite, `python -m compileall -q src`, and `git diff --check`.
 
-The first-run local-AI foundation is now implemented without crossing the consent boundary:
-typed, read-only Ollama diagnostics inspect the executable on PATH, local `/api/tags` service,
-installed models, configured-model readiness, and best-effort RAM/free-storage facts. Conservative
-3B/7B/14B recommendations explain their RAM/storage heuristic. Settings exposes the same status
-and `/config/provider/status` provides a secret-free JSON diagnostic API. Anthropic remains
-optional and deterministic `none` fallback behavior is unchanged. Focused tests cover
-recommendations, model parsing, unavailable services, and the dashboard-facing diagnostic shape.
+The first-run local-AI foundation and the bounded M4 consent slice are implemented without
+crossing the installation boundary: typed diagnostics inspect the executable on PATH, local
+`/api/tags` service, installed models, configured-model readiness, and best-effort RAM/free-storage
+facts. Settings now detects first and presents source, license, size, and destination before an
+explicit confirmation. A confirmed Ollama download is streamed to a bounded staging file and is
+never executed; a confirmed model action calls the existing local Ollama pull API. Declined,
+cancelled, interrupted, over-limit, unavailable, and failed actions clean up partial staging and
+leave provider configuration unchanged. Anthropic remains optional and deterministic `none`
+fallback behavior is unchanged. Focused tests cover recommendations, parsing, unavailable
+services, dashboard no-op/decline behavior, and setup failure/interruption paths.
 
 No installer artifact, packaged runtime, Python/Ollama bundling, shortcut registration, first-run
-wizard, update service, signing configuration, or Ollama/model installation or download has been
-added. Detection never starts a service or changes machine state.
+wizard, update service, or signing configuration has been added. The staged executable requires
+the user to review and run it separately; Hanarr does not install software or start services.
 
-**Next handoff:** Build the explicit-consent M4 setup flow on top of these diagnostics: present
-source/license/size/destination before any optional Ollama or model download, keep cancellation
-usable, and add actionable non-destructive recovery. Installer packaging, unattended downloads,
+**Next handoff:** Add a real Windows first-run/installer experience around this consent boundary:
+package the runtime, provide shortcuts and uninstall/upgrade behavior, preserve user data, and
+validate clean-machine and recovery flows. Unattended installation, update services, signing,
 and macOS/Linux remain deferred.

@@ -24,7 +24,14 @@ from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..agent_orchestration import AgentOrchestrator
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
-from ..ollama_setup import detect_ollama
+from ..ollama_setup import (
+    SetupError,
+    detect_ollama,
+    installer_offer,
+    model_offer,
+    pull_model,
+    stage_ollama_installer,
+)
 from ..coaching_projects import create_coaching_project, project_status
 from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
@@ -898,6 +905,45 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     def provider_status():
         """Read-only local provider diagnostics; never includes API secrets."""
         return JSONResponse(_provider_diagnostics().to_dict())
+
+    @app.post("/config/provider/setup")
+    async def provider_setup(request: Request):
+        """Offer or perform one explicitly consented, bounded setup action."""
+        form = await request.form()
+        action = str(form.get("action", "")).strip()
+        consent = str(form.get("consent", "")).lower() in {"1", "true", "yes", "on"}
+        diagnostics = _provider_diagnostics()
+
+        if action == "ollama_installer":
+            if diagnostics.executable_path:
+                return JSONResponse({"status": "already_installed", "diagnostics": diagnostics.to_dict()})
+            destination = settings.data_dir / "setup" / "OllamaSetup.exe"
+            offer = installer_offer(destination)
+            if not consent:
+                return JSONResponse({"status": "consent_required", "offer": offer.to_dict()})
+            try:
+                staged = stage_ollama_installer(destination, consent=True)
+            except SetupError as exc:
+                logger.warning("Ollama installer staging failed: %s", exc)
+                return JSONResponse({"status": "error", "error": str(exc), "offer": offer.to_dict()}, status_code=502)
+            return JSONResponse({"status": "staged", "destination": str(staged), "message": "Installer staged but not started. Run it yourself after reviewing it."})
+
+        if action == "model":
+            if diagnostics.configured_model_available:
+                return JSONResponse({"status": "already_available", "model": settings.llm.model})
+            if not diagnostics.service_reachable:
+                return JSONResponse({"status": "unavailable", "error": "Ollama is not reachable; start Ollama yourself and try again."}, status_code=409)
+            offer = model_offer(settings.llm.model, settings.llm.base_url)
+            if not consent:
+                return JSONResponse({"status": "consent_required", "offer": offer.to_dict()})
+            try:
+                events = pull_model(settings.llm.model, settings.llm.base_url, consent=True)
+            except SetupError as exc:
+                logger.warning("Ollama model pull failed: %s", exc)
+                return JSONResponse({"status": "error", "error": str(exc), "offer": offer.to_dict()}, status_code=502)
+            return JSONResponse({"status": "downloaded", "model": settings.llm.model, "events": events[-1:]})
+
+        return JSONResponse({"status": "error", "error": "Unknown setup action."}, status_code=400)
 
     async def _handle_config_post(request: Request, tab: str, apply_fn):
         form = await request.form()

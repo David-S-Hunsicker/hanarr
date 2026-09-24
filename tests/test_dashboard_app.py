@@ -12,6 +12,7 @@ from jobcopilot.dashboard.app import create_app, format_posting_age, is_recent_p
 from jobcopilot.db import get_or_create_profile, make_session_factory
 from jobcopilot.llm.base import LLMClient
 from jobcopilot.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
+from jobcopilot.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
 
 
 def test_task_is_stuck_false_when_not_running():
@@ -25,6 +26,55 @@ def test_dashboard_uses_hanarr_product_name(tmp_path):
 
     assert app.title == "Hanarr"
     assert "Hanarr" in TestClient(app).get("/").text
+
+
+def test_provider_setup_decline_returns_offer_without_download(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.model = "qwen2.5:7b"
+    diagnostics = OllamaDiagnostics(
+        executable_path=None,
+        executable_version=None,
+        service_reachable=False,
+        service_error="offline",
+        installed_models=(),
+        configured_model=settings.llm.model,
+        configured_model_available=False,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation("qwen2.5:7b", "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *args: diagnostics)
+    response = TestClient(create_app(settings)).post(
+        "/config/provider/setup",
+        data={"action": "ollama_installer"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "consent_required"
+    assert response.json()["offer"]["license_url"]
+    assert not (settings.data_dir / "setup").exists()
+
+
+def test_provider_setup_is_no_op_when_model_is_already_available(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    diagnostics = OllamaDiagnostics(
+        executable_path=r"C:\Ollama\ollama.exe",
+        executable_version="ollama version test",
+        service_reachable=True,
+        service_error=None,
+        installed_models=(),
+        configured_model=settings.llm.model,
+        configured_model_available=True,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *args: diagnostics)
+    response = TestClient(create_app(settings)).post(
+        "/config/provider/setup",
+        data={"action": "model"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "already_available", "model": settings.llm.model}
 
 
 def test_resume_upload_enforces_streamed_size_limit(tmp_path, monkeypatch):

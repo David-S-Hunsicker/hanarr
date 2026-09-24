@@ -451,6 +451,13 @@
             Detection is read-only; Hanarr never installs Ollama or downloads models silently.
           </div>
         </div>
+        <div class="field">
+          <strong>Optional local setup</strong>
+          <div class="hint">Hanarr checks first. It will not install software, start Ollama, or change providers automatically.</div>
+          <button type="button" class="suggest-btn" data-setup-action="ollama_installer">Check for Ollama / stage installer</button>
+          <button type="button" class="suggest-btn" data-setup-action="model">Check / download configured model</button>
+          <div class="suggest-status" id="ollama-setup-status" hidden></div>
+        </div>
         <div class="row">
           <div class="field">
             <label for="llm_provider">Provider</label>
@@ -713,6 +720,64 @@
             showStatus("Couldn't upload the file.", true);
           });
       });
+    })();
+  </script>
+  <script>
+    (function () {
+      const status = document.getElementById("ollama-setup-status");
+      const buttons = document.querySelectorAll("[data-setup-action]");
+      if (!status || !buttons.length) return;
+
+      function show(text, error) {
+        status.hidden = false;
+        status.textContent = text;
+        status.className = "suggest-status" + (error ? " error" : "");
+      }
+
+      function request(action, consent) {
+        const body = new URLSearchParams({ action: action });
+        if (consent) body.set("consent", "true");
+        return fetch("/config/provider/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body
+        }).then((response) => response.json().then((data) => ({ ok: response.ok, data })));
+      }
+
+      function offerText(offer) {
+        return "Source: " + offer.source + " | License: " + offer.license_url +
+          " | Size: " + offer.size + " | Destination: " + offer.destination;
+      }
+
+      buttons.forEach((button) => button.addEventListener("click", function () {
+        const action = button.dataset.setupAction;
+        button.disabled = true;
+        show("Checking local Ollama state…", false);
+        request(action, false).then(({ ok, data }) => {
+          if (!ok || data.status === "error" || data.status === "unavailable") {
+            show(data.error || "Setup is unavailable.", true);
+            return;
+          }
+          if (data.status === "already_installed" || data.status === "already_available") {
+            show(action === "model" ? "The configured model is already available." : "Ollama is already installed; no download is needed.", false);
+            return;
+          }
+          const text = offerText(data.offer);
+          if (!window.confirm(text + "\n\nProceed with this download?")) {
+            show("No changes made. Setup was declined.", false);
+            return;
+          }
+          show("Downloading with the confirmed limits…", false);
+          return request(action, true).then(({ ok: confirmed, data: result }) => {
+            if (!confirmed || result.status === "error") {
+              show(result.error || "Setup failed; no silent retry was attempted.", true);
+            } else {
+              show(result.message || "Setup completed. Review any staged files before running them.", false);
+            }
+          });
+        }).catch(() => show("Lost connection during setup; no silent retry was attempted.", true))
+          .finally(() => { button.disabled = false; });
+      }));
     })();
   </script>
   {% endif %}
