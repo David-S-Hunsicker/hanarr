@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -13,7 +14,9 @@ from jobcopilot.models import (
     JobSkillRequirement,
     Project,
     ProjectStatus,
+    Profile,
     ResumeProposal,
+    ResumeProposalStatus,
     ScoreSnapshot,
     Skill,
     SkillGapStatus,
@@ -85,6 +88,35 @@ def test_pass_generates_pending_proposal_and_approval_rescores_affected_job(tmp_
         assert session.get(ResumeProposal, proposal_id).status.value == "approved"
     assert client.get("/resume").status_code == 200
     assert client.get("/api/resume").json()["active"]["content"]
+
+
+def test_stale_resume_proposal_cannot_replace_new_active_version(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.llm.provider = "none"
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Original resume"
+        first = ResumeVersion(profile_id=profile.id, content="Original resume", is_active=True)
+        session.add(first)
+        session.flush()
+        session.add(ResumeVersion(profile_id=profile.id, content="New active resume", is_active=True))
+        stale = ResumeProposal(
+            profile_id=profile.id,
+            base_version_id=first.id,
+            proposed_content="Stale proposal",
+            status=ResumeProposalStatus.PENDING,
+        )
+        session.add(stale)
+        session.commit()
+        profile_id = profile.id
+        stale_id = stale.id
+
+    from jobcopilot.resume_loop import approve_resume_proposal
+
+    with factory() as session:
+        with pytest.raises(ValueError, match="stale"):
+            approve_resume_proposal(session, settings, profile_id, stale_id, PassingLLM())
 
 
 def test_resume_page_explains_matcher_source_profile_and_score_impact(tmp_path):

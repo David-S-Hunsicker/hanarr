@@ -702,3 +702,46 @@ tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_a
 Add review/diff presentation refinements and a GitHub-ready adapter for the existing
 review-first submission model. Keep GitHub delivery explicit and approval-gated; do not
 add unattended submission or automatic proposal approval.
+
+### Phase 8 — production hardening review
+
+#### Findings and fixes
+
+The integrated transition was reviewed across migration startup, provider fallback,
+submission storage, resume activation/rematching, authorization boundaries, and the
+server-rendered dashboard:
+
+- Resume proposals could be approved after a different proposal had already activated a
+  newer resume. Approval now requires the proposal's base version to still be the active
+  version, preventing stale content from replacing the current resume and triggering an
+  inconsistent rematch.
+- Local submissions accepted duplicate artifact paths and had no aggregate byte limit.
+  Validation now rejects duplicate names, rejects `.`/`..` path components, enforces a
+  50 MiB aggregate limit in addition to the per-file limit, and verifies resolved
+  destinations remain inside the configured submission directory.
+- Migration backups used a timestamp that could collide when upgrades were started in the
+  same second. Backups now include microseconds and a deterministic suffix collision guard.
+- Invalid application status input raised an unhandled enum error. The dashboard now
+  returns a user-visible HTTP 400 response.
+- Provider failures for resume proposals remain local/deterministic and now leave a
+  durable rationale indicating that the model output was unavailable; no provider is
+  allowed to silently activate content.
+
+The single-user authorization assumption remains intentional and documented: the app is
+local-only by default, routes scope records to the single profile, and submission
+evaluation/GitHub adapters do not fetch, execute, or deliver external content. Exposing
+the dashboard beyond localhost still requires an explicit future authentication boundary.
+
+#### Validation
+
+- `python -m pytest -q tests/test_migrations.py tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_app.py` — 38 passed
+- `python -m compileall -q src`
+- `git diff --check`
+- Full-suite validation remains to be run before this milestone is pushed.
+
+#### Remaining blockers
+
+Authentication/CSRF protection for non-local deployment, streaming upload limits at the
+HTTP layer, and actual GitHub fetch/diff review remain intentionally deferred. The
+current GitHub adapter stores a validated reference only and performs no network or
+execution action.

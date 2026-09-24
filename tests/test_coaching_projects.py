@@ -191,6 +191,14 @@ def test_local_submission_stores_manifest_and_rejects_traversal(tmp_path):
         files=[("files", ("../secret.txt", b"nope", "text/plain"))],
     )
     assert rejected.status_code == 400
+    rejected = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/files",
+        files=[
+            ("files", ("same.txt", b"one", "text/plain")),
+            ("files", ("same.txt", b"two", "text/plain")),
+        ],
+    )
+    assert rejected.status_code == 400
 
 
 def test_github_submission_persists_safe_reference_without_fetching(tmp_path):

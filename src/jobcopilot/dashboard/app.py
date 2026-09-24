@@ -407,7 +407,10 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             profile = get_or_create_profile(session, settings)
             job = session.get(JobPosting, job_id)
             if job and job.profile_id == profile.id:
-                job.status = ApplicationStatus(new_status)
+                try:
+                    job.status = ApplicationStatus(new_status)
+                except ValueError:
+                    return JSONResponse({"error": "Invalid application status."}, status_code=400)
                 session.commit()
         return RedirectResponse("/", status_code=303)
 

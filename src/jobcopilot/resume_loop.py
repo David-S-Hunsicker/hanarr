@@ -75,8 +75,8 @@ def create_resume_proposal(
         fallback_content = proposed
         rationale = str(value.get("rationale") or rationale).strip()
         source = "llm"
-    except Exception:
-        pass
+    except Exception as exc:
+        rationale = f"{rationale} Model proposal unavailable; deterministic fallback used ({type(exc).__name__})."
     proposal = ResumeProposal(
         profile_id=profile_id,
         base_version_id=base.id,
@@ -124,6 +124,9 @@ def approve_resume_proposal(
         raise ValueError("Only pending resume proposals can be approved.")
     profile = session.get(Profile, profile_id)
     assert profile is not None
+    active = _active_version(session, profile)
+    if proposal.base_version_id != active.id:
+        raise ValueError("Resume proposal is stale; review a new proposal based on the current resume.")
     old_content = profile.resume_text or ""
     for version in profile.resume_versions:
         version.is_active = False

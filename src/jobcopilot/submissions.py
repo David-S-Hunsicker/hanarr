@@ -14,6 +14,7 @@ from .models import Project, ProjectSubmission, ProjectSubmissionKind, ProjectSu
 MAX_RESPONSE_LENGTH = 100_000
 MAX_FILES = 100
 MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_TOTAL_FILE_BYTES = 50 * 1024 * 1024
 MAX_GITHUB_REFERENCE_LENGTH = 2048
 
 
@@ -27,7 +28,7 @@ def _project_for_profile(session: Session, project_id: int, profile_id: int) -> 
 def _safe_name(name: str) -> str:
     normalized = name.replace("\\", "/")
     path = PurePosixPath(normalized)
-    if not normalized or path.is_absolute() or ".." in path.parts:
+    if not normalized or path.is_absolute() or ".." in path.parts or "." in path.parts:
         raise ValueError("artifact filenames must be relative and stay within the submission folder.")
     return str(path)
 
@@ -65,10 +66,18 @@ def create_local_submission(
     if not entries or len(entries) > MAX_FILES:
         raise ValueError(f"local submission must contain between 1 and {MAX_FILES} files.")
     normalized: list[tuple[str, bytes]] = []
+    seen_names: set[str] = set()
+    total_bytes = 0
     for name, data in entries:
         safe_name = _safe_name(name)
+        if safe_name in seen_names:
+            raise ValueError(f"artifact path {safe_name} is duplicated.")
         if len(data) > MAX_FILE_BYTES:
             raise ValueError(f"artifact {safe_name} exceeds the {MAX_FILE_BYTES} byte limit.")
+        total_bytes += len(data)
+        if total_bytes > MAX_TOTAL_FILE_BYTES:
+            raise ValueError(f"local submission cannot exceed {MAX_TOTAL_FILE_BYTES} bytes in total.")
+        seen_names.add(safe_name)
         normalized.append((safe_name, data))
 
     submission = ProjectSubmission(
@@ -78,11 +87,16 @@ def create_local_submission(
     )
     session.add(submission)
     session.flush()
-    artifact_dir = storage_root / str(project_id) / str(submission.id)
+    artifact_dir = (storage_root / str(project_id) / str(submission.id)).resolve()
+    storage_root = storage_root.resolve()
+    if storage_root not in artifact_dir.parents:
+        raise ValueError("submission storage path is outside the configured storage root.")
     artifact_dir.mkdir(parents=True, exist_ok=False)
     manifest = []
     for name, data in normalized:
-        destination = artifact_dir / Path(name)
+        destination = (artifact_dir / Path(name)).resolve()
+        if artifact_dir not in destination.parents:
+            raise ValueError(f"artifact path {name} escapes the submission folder.")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
         manifest.append({"path": name, "bytes": len(data)})

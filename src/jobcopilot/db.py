@@ -55,8 +55,12 @@ def _backup_database(db_path: Path, data_dir: Path) -> None:
         return
     backup_dir = data_dir / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    timestamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
     backup_path = backup_dir / f"jobcopilot-{timestamp}.db"
+    suffix = 1
+    while backup_path.exists():
+        backup_path = backup_dir / f"jobcopilot-{timestamp}-{suffix}.db"
+        suffix += 1
     shutil.copy2(db_path, backup_path)
 
 

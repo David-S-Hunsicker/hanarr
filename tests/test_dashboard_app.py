@@ -27,6 +27,29 @@ def test_dashboard_uses_hannar_product_name(tmp_path):
     assert "Hannar" in TestClient(app).get("/").text
 
 
+def test_invalid_job_status_is_a_client_error(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id,
+            source="test",
+            external_id="status",
+            company="Acme",
+            title="Engineer",
+            url="https://example.test/status",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    response = TestClient(create_app(settings)).post(
+        f"/jobs/{job_id}/status", data={"new_status": "not-a-status"}
+    )
+    assert response.status_code == 400
+
+
 def test_task_is_stuck_false_when_started_at_missing():
     assert task_is_stuck({"running": True, "started_at": None}, 60.0, now=99999.0) is False
 

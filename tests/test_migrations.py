@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from jobcopilot.config import Settings
-from jobcopilot.db import make_session_factory
+from jobcopilot.db import _backup_database, make_session_factory
 from jobcopilot.models import Base, JobPosting, Profile, ScoreSnapshot
 
 
@@ -60,3 +60,24 @@ def test_new_database_has_migrated_schema(tmp_path):
 
     with factory() as session:
         assert session.execute(select(ScoreSnapshot)).all() == []
+
+
+def test_backup_names_do_not_collide_with_same_timestamp(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    db_path = data_dir / "jobcopilot.db"
+    db_path.write_bytes(b"database")
+    fixed_now = dt.datetime(2025, 1, 1, 0, 0, 0)
+    fixed = type(
+        "FixedDateTime",
+        (),
+        {"utcnow": staticmethod(lambda: fixed_now)},
+    )
+    monkeypatch.setattr("jobcopilot.db.dt.datetime", fixed)
+
+    _backup_database(db_path, data_dir)
+    _backup_database(db_path, data_dir)
+
+    backups = sorted((data_dir / "backups").glob("jobcopilot-*.db"))
+    assert len(backups) == 2
+    assert {path.read_bytes() for path in backups} == {b"database"}
