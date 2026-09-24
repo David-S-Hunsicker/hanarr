@@ -1,7 +1,8 @@
 # Hanarr transition plan
 
-**Status:** Phase 6 submission, evaluator, and local-first provider-routing foundations are
-complete. Alembic migrations, a
+**Status:** Phase 10 Windows-first installer and distribution planning is complete; implementation
+remains intentionally deferred. Phase 6 submission, evaluator, and local-first provider-routing
+foundations are complete. Alembic migrations, a
 frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
 skills, resume proposal storage, review-first submissions, and structured evaluation
 attempts are in place without changing existing job-search behavior.
@@ -802,4 +803,121 @@ Future work may add the two deferred capabilities only as separate, reviewed inc
 first define and test the authentication/CSRF boundary for any non-local deployment, then design
 an explicit, approval-gated GitHub fetch/diff workflow. Preserve the current local-only default,
 review-first submission model, additive migrations, upload limits, and explicit provider consent.
-No further local-first release-blocking issues were found in this validation pass.
+No further local-first release-blocking issues were found in this validation pass. The next
+handoff is the Windows installer implementation only after the plan below is approved for
+execution; this document change itself adds no installer code.
+
+### Phase 10 — Windows-first installer and distribution plan (planning only)
+
+This phase records the approved distribution plan. It is documentation and sequencing only:
+do not implement installer scripts, packaging hooks, runtime bundling, update services, or
+platform-specific launch code as part of this transition-plan update.
+
+#### Product and launch shape
+
+- Keep one Hanarr backend and one application surface. A packaged desktop shell should host
+  the existing web UI in a desktop webview; the same backend must also support a deliberate
+  browser-launch mode for users who prefer a normal browser.
+- Treat Windows as the first supported packaged platform. macOS and Linux packaging are
+  explicitly deferred until the Windows flow, recovery behavior, and data-preservation
+  guarantees have been proven.
+- Use a conventional, signed Inno Setup-style installer first. The installer must provide
+  Start Menu and optional Desktop shortcuts, a normal uninstaller, and standard Windows
+  Add/Remove Programs registration. Do not require Python, a terminal, or a separately
+  installed developer toolchain.
+- Ship a packaged Hanarr runtime with the application. Installation and launch must work
+  for a normal user account according to the supported install-destination policy, while
+  preserving the user's existing local data outside the application binaries.
+
+#### First-run setup and local-first provider behavior
+
+- On first launch, show a setup wizard before the main dashboard. It should explain the local
+  data location, local-first privacy behavior, optional Anthropic use, and the choices that
+  affect downloads or provider configuration.
+- Detect an existing Ollama installation and usable local service before attempting any
+  Ollama installation. If it is already available, reuse it and show the detected status;
+  never overwrite or silently replace an existing installation.
+- Any proposed Ollama or model download requires explicit consent. The consent screen must
+  state the download size (or a clearly labeled estimate), applicable license/source, the
+  destination, and what will remain on the machine. Cancellation must leave the app usable
+  in a documented setup-incomplete state.
+- Recommend models using detected hardware and available resources (including memory and
+  storage where available), explain the recommendation, and let the user choose a different
+  compatible model. Model download during setup is optional rather than mandatory.
+- If Ollama installation, service startup, model download, or model readiness fails, provide
+  a clear recovery path: preserve existing data, show the actionable failure, allow retry,
+  allow the user to select or configure an existing provider, and allow the wizard to finish
+  without destructive cleanup. Do not leave a success-shaped partial setup.
+- Keep local inference as the default. Anthropic remains optional and must be explicitly
+  configured/consented to; setup must not transmit local resume, job, or profile data to
+  Anthropic without the existing provider and user-approval rules.
+- Add provider diagnostics to Settings: detected Ollama/service state, configured model,
+  readiness/error details, Anthropic configuration state, privacy/consent status, and safe
+  retry or reconfiguration actions. Diagnostics must not expose secrets.
+
+#### Updates, data, and migrations
+
+- Provide approved update checks rather than silent replacement. The user must be able to
+  see what is being checked/downloaded and approve installation; checks and update metadata
+  must not upload local application data.
+- Updates must preserve the user's data location, configuration, model choices, and consent
+  records. Run the existing additive migration/backup safeguards before schema changes, fail
+  explicitly with restore guidance, and never treat a failed migration as a successful update.
+- The uninstaller must remove packaged application files and registered shortcuts while
+  clearly preserving user data by default. Any optional data removal must be a separate,
+  explicit user choice with a warning.
+
+#### Phased installer milestones
+
+1. **M1 — packaging contract:** document supported Windows versions, install/data locations,
+   signing identities, runtime inventory, browser versus webview launch contract, and the
+   no-Python/no-terminal requirement.
+2. **M2 — packaged runtime spike:** produce a repeatable signed-build artifact that launches
+   the one backend in desktop webview mode and browser mode without a developer environment;
+   verify logs, shutdown, and port/lifecycle cleanup.
+3. **M3 — installer shell:** add the conventional installer, Start Menu/Desktop shortcuts,
+   Add/Remove Programs registration, uninstaller, upgrade behavior, and code-signing
+   verification. Keep user data outside the replaceable application directory.
+4. **M4 — first-run wizard:** implement detection-before-install for Ollama, explicit
+   download/license/destination consent, hardware-aware recommendations, optional model
+   download, and recoverable incomplete setup.
+5. **M5 — settings and update path:** expose provider diagnostics, privacy/provider consent
+   state, approved update checks, backup/migration handling, and data-preserving upgrades.
+6. **M6 — release validation:** test clean machines, existing Ollama installations, no-network
+   setup, insufficient hardware/storage, cancelled downloads, failed service/model setup,
+   upgrade, rollback/recovery, uninstall, browser launch, and webview launch. Publish only
+   signed artifacts with reproducible release notes.
+
+#### Acceptance criteria
+
+- [ ] A signed Windows installer installs and launches Hanarr for a normal user without
+  Python, a terminal, or a separately prepared runtime.
+- [ ] One backend supports both desktop webview and intentional browser launch modes.
+- [ ] Start Menu/Desktop shortcuts, Add/Remove Programs registration, upgrade, and uninstaller
+  behavior are clear and verified; user data is preserved by default.
+- [ ] First run detects existing Ollama before proposing installation and requires explicit,
+  informed consent for every Ollama/model download, including size, license/source, and
+  destination.
+- [ ] Hardware-aware model recommendations and optional model download work, while setup
+  remains usable when the user declines or setup fails.
+- [ ] Recovery paths are actionable and non-destructive for Ollama, service, model, network,
+  storage, and migration failures.
+- [ ] Settings exposes safe provider diagnostics; local-first behavior is default and
+  Anthropic is optional and consent-gated.
+- [ ] Approved update checks preserve data, configuration, consent records, and migration
+  safeguards; no silent data deletion or silent replacement occurs.
+- [ ] Clean-machine, upgrade, recovery, uninstall, webview, and browser-launch validation is
+  recorded before Windows release. macOS/Linux remain explicitly out of scope for this phase.
+
+#### Progress and next handoff
+
+**Progress:** The Windows-first installer/distribution contract, setup behavior, recovery
+requirements, update/data guarantees, phased milestones, and acceptance criteria are approved
+for planning purposes. No installer code, packaging configuration, runtime bundle, or platform
+integration has been added.
+
+**Next handoff:** Begin M1 as a separate implementation increment. First turn the supported
+Windows/runtime/signing/data-location contract into a reviewed build specification, then
+implement M2 only after the specification is accepted. Preserve the existing local-first
+backend, localhost security boundary, additive migrations, explicit provider consent, and
+browser launch path throughout. macOS and Linux remain deferred.
