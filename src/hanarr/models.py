@@ -35,6 +35,12 @@ class Profile(Base):
     name: Mapped[str] = mapped_column(String, default="Your Name")
     resume_text: Mapped[str] = mapped_column(Text, default="")
     resume_summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    # The filename as uploaded/on disk and when it was last (re-)parsed --
+    # shown to the user as confirmation of what was actually received,
+    # since the file itself is always stored under a fixed internal name
+    # (resumes/resume.pdf) regardless of what it was originally called.
+    resume_original_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    resume_parsed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow

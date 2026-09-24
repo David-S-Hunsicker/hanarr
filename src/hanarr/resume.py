@@ -5,6 +5,7 @@ structured skills/titles/years extraction.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -143,7 +144,7 @@ def suggest_boost_keywords(resume_text: str, target_titles: list[str], llm: LLMC
 
 
 def parse_and_store_resume(
-    session: Session, settings: Settings, llm: LLMClient
+    session: Session, settings: Settings, llm: LLMClient, *, original_filename: str | None = None
 ) -> tuple[Profile, dict, bool]:
     """Reads settings.profile.resume_path, extracts a structured summary via
     the LLM, and stores both the raw text and summary on the profile. Shared
@@ -163,7 +164,16 @@ def parse_and_store_resume(
     was only ever uploaded/parsed here rather than approved through a
     proposal: the page would permanently show "not ready" and version
     history would stay empty no matter how many times a resume was
-    (re-)uploaded."""
+    (re-)uploaded.
+
+    The uploaded file is always stored under a fixed internal name
+    (resumes/resume.pdf, etc. — see ALLOWED_RESUME_EXTENSIONS and the
+    dashboard upload route), so settings.profile.resume_path alone can't
+    tell a user what they actually uploaded. `original_filename` lets the
+    dashboard upload route pass the browser-supplied name (e.g.
+    "David_Resume_2026.pdf") through before it's lost to the rename; it
+    defaults to resume_path's own name for `hanarr init`, where the
+    configured path is the only name there ever was."""
     resume_path = Path(settings.profile.resume_path)
     resume_text = load_resume_text(resume_path)
     summary = extract_profile_summary(resume_text, llm)
@@ -171,6 +181,8 @@ def parse_and_store_resume(
     profile = get_or_create_profile(session, settings)
     profile.resume_text = resume_text
     profile.resume_summary_json = json.dumps(summary)
+    profile.resume_original_filename = original_filename or resume_path.name
+    profile.resume_parsed_at = dt.datetime.utcnow()
 
     active_version = next((v for v in reversed(profile.resume_versions) if v.is_active), None)
     if active_version is None or active_version.content != resume_text:

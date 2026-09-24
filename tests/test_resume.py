@@ -148,6 +148,45 @@ def test_parse_and_store_resume_saves_text_and_summary_and_updates_preferences(t
     assert settings.preferences.keywords_boost == ["pytorch", "kubernetes"]
 
 
+def test_parse_and_store_resume_records_original_filename_and_parsed_time(tmp_path):
+    """Regression test: the file is always stored under a fixed internal
+    name (resumes/resume.pdf), so settings.profile.resume_path alone can't
+    tell a user what they actually uploaded -- the "Current resume" display
+    showed that internal path and nothing else, which told the user
+    nothing. original_filename lets the true browser-supplied name survive
+    the rename."""
+    import datetime as dt
+
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer.")
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    session = _make_session()
+    before = dt.datetime.utcnow()
+
+    profile, _, _ = parse_and_store_resume(
+        session, settings, _FakeLLM({"titles": [], "skills": []}), original_filename="David_Resume_2026.pdf"
+    )
+
+    assert profile.resume_original_filename == "David_Resume_2026.pdf"
+    assert profile.resume_parsed_at is not None
+    assert profile.resume_parsed_at >= before
+
+
+def test_parse_and_store_resume_falls_back_to_path_name_without_explicit_filename(tmp_path):
+    """`hanarr init` never has a separate "original" name -- the configured
+    resume_path is the only name there ever was, so it's used directly."""
+    resume_file = tmp_path / "my-resume.md"
+    resume_file.write_text("Jane Doe.")
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    session = _make_session()
+
+    profile, _, _ = parse_and_store_resume(session, settings, _FakeLLM({"titles": [], "skills": []}))
+
+    assert profile.resume_original_filename == "my-resume.md"
+
+
 def test_parse_and_store_resume_does_not_touch_preferences_on_extraction_failure(tmp_path):
     resume_file = tmp_path / "resume.txt"
     resume_file.write_text("Jane Doe.")

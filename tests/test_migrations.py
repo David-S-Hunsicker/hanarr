@@ -74,6 +74,48 @@ def test_new_database_has_migrated_schema(tmp_path):
         assert session.execute(select(ScoreSnapshot)).all() == []
 
 
+def test_migration_0007_adds_resume_metadata_columns_without_duplicate_error(tmp_path):
+    """Regression test for a real migration bug: 0001 "freezes" the legacy
+    schema by reflecting Base.metadata for the four legacy table names --
+    but that means a brand-new database already gets any new Profile column
+    for free via 0001 itself, since Base.metadata is the live model
+    definition, not a real snapshot. 0007 (the first migration to add a
+    column to one of those four tables) originally assumed it was always
+    the one adding the column and crashed with "duplicate column name" on a
+    fresh database. This test simulates the other, equally real case this
+    fix must also handle: a database that genuinely predates 0007 and is
+    missing the columns, where 0007 must still add them."""
+    from sqlalchemy import text
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    db_path = data_dir / "hanarr.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    with engine.connect() as connection:
+        # Simulate a pre-0007 database by dropping the columns 0007 owns,
+        # then pinning it at the previous head so _upgrade_database treats
+        # it as an existing database to upgrade, not a fresh one.
+        connection.execute(text("ALTER TABLE profiles DROP COLUMN resume_original_filename"))
+        connection.execute(text("ALTER TABLE profiles DROP COLUMN resume_parsed_at"))
+        connection.execute(text(
+            "INSERT INTO profiles (id, name, resume_text, resume_summary_json, created_at, updated_at) "
+            "VALUES (1, 'Existing user', 'resume text', '{}', '2025-01-01', '2025-01-01')"
+        ))
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0006')"))
+        connection.commit()
+    engine.dispose()
+
+    settings = Settings(data_dir=data_dir)
+    make_session_factory(settings)  # must not raise "duplicate column name"
+
+    with make_session_factory(settings)() as session:
+        profile = session.execute(select(Profile)).scalar_one()
+        assert profile.name == "Existing user"
+        assert profile.resume_original_filename is None
+
+
 def test_migration_resolves_bundle_and_ignores_working_directory_when_frozen(tmp_path, monkeypatch):
     """Regression test for a packaged-runtime crash: PyInstaller's ``--onefile``
     build exposes ``sys._MEIPASS`` as the extracted bundle root, and ``__file__``

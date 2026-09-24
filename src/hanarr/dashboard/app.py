@@ -310,7 +310,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         "started_at": None,
     }
 
-    def _reparse_resume_in_background(run_id: int):
+    def _reparse_resume_in_background(run_id: int, original_filename: str | None = None):
         resume_state["running"] = True
         resume_state["run_id"] = run_id
         resume_state["result"] = None
@@ -318,7 +318,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         resume_state["started_at"] = time.time()
         try:
             with session_factory() as session:
-                profile, summary, prefs_changed = parse_and_store_resume(session, settings, profiler_llm)
+                profile, summary, prefs_changed = parse_and_store_resume(
+                    session, settings, profiler_llm, original_filename=original_filename
+                )
 
                 # A previous run may have been declared stuck and superseded
                 # by a newer upload while this one was still blocked on the
@@ -912,11 +914,23 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "saved": saved == "1",
                 "errors": [],
                 "provider_diagnostics": provider_diagnostics,
+                "resume_upload": _resume_upload_status(),
             },
         )
 
     def _provider_diagnostics():
         return detect_ollama(settings.llm.model, settings.llm.base_url, settings.data_dir)
+
+    def _resume_upload_status() -> dict:
+        """For server-rendered template context; parsed_at is a raw datetime
+        here so the template can format it, unlike the JSON-facing
+        /config/resume/status route which sends an ISO string instead."""
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return {
+                "original_filename": profile.resume_original_filename,
+                "parsed_at": profile.resume_parsed_at,
+            }
 
     @app.get("/config/provider/status")
     def provider_status():
@@ -1003,6 +1017,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "saved": False,
                     "errors": errors,
                     "provider_diagnostics": _provider_diagnostics(),
+                    "resume_upload": _resume_upload_status(),
                 },
             )
 
@@ -1088,11 +1103,17 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
 
         next_run_id = resume_state["run_id"] + 1
-        threading.Thread(target=_reparse_resume_in_background, args=(next_run_id,), daemon=True).start()
+        threading.Thread(
+            target=_reparse_resume_in_background, args=(next_run_id, original_name), daemon=True
+        ).start()
         return JSONResponse({"run_id": next_run_id, "saved_as": str(dest)})
 
     @app.get("/config/resume/status")
     def resume_status():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            original_filename = profile.resume_original_filename
+            parsed_at = profile.resume_parsed_at.isoformat() if profile.resume_parsed_at else None
         return JSONResponse(
             {
                 "running": resume_state["running"],
@@ -1100,6 +1121,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "result": resume_state["result"],
                 "error": resume_state["error"],
                 "resume_path": settings.profile.resume_path,
+                "resume_original_filename": original_filename,
+                "resume_parsed_at": parsed_at,
             }
         )
 

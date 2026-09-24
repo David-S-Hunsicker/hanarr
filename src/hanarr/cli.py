@@ -220,6 +220,21 @@ def serve(ctx: click.Context, launch_mode: str | None):
             session.commit()
             console.print("[green]Backfilled a resume version from your already-parsed resume.[/green]")
 
+        # Same self-heal again, for the same underlying reason: a resume
+        # parsed before resume_original_filename/resume_parsed_at existed
+        # left those columns null, so the Settings page would show "No
+        # resume uploaded yet." despite a real, already-parsed resume being
+        # on file -- arguably worse than the old plain-path display, since
+        # it's actively wrong rather than just unhelpful. The true original
+        # filename was never recorded and can't be recovered; the
+        # configured path's own filename and this profile's last-updated
+        # time are the closest honest approximation available.
+        if profile.resume_text and not profile.resume_original_filename:
+            profile.resume_original_filename = Path(settings.profile.resume_path).name
+            profile.resume_parsed_at = profile.updated_at
+            session.commit()
+            console.print("[green]Backfilled the resume filename shown in Settings from your saved profile.[/green]")
+
     from .scheduler import start_scheduler
 
     scheduler = start_scheduler(settings)

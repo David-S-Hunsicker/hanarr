@@ -420,7 +420,15 @@
         <legend>Resume</legend>
         <div class="field">
           <label>Current resume</label>
-          <div class="readonly-value" id="resume-path-display">{{ settings.profile.resume_path }}</div>
+          <div class="readonly-value" id="resume-path-display">
+            {% if resume_upload.original_filename %}
+            Uploaded: <strong>{{ resume_upload.original_filename }}</strong>
+            {% if resume_upload.parsed_at %} · parsed {{ resume_upload.parsed_at.strftime("%b %d, %Y %H:%M UTC") }}{% endif %}
+            {% else %}
+            No resume uploaded yet.
+            {% endif %}
+          </div>
+          <div class="hint" id="resume-path-hint">Stored at <code>{{ settings.profile.resume_path }}</code></div>
           <input type="hidden" id="resume_path" name="resume_path" value="{{ settings.profile.resume_path }}">
         </div>
         <div class="field">
@@ -684,6 +692,7 @@
       const statusEl = document.getElementById("resume-upload-status");
       const resumePathInput = document.getElementById("resume_path");
       const resumePathDisplay = document.getElementById("resume-path-display");
+      const resumePathHint = document.getElementById("resume-path-hint");
       if (!chooseBtn) return;
 
       let pollTimer = null;
@@ -711,7 +720,13 @@
             }
             stopPolling();
             resumePathInput.value = data.resume_path;
-            resumePathDisplay.textContent = data.resume_path;
+            resumePathHint.innerHTML = `Stored at <code>${data.resume_path}</code>`;
+            if (data.resume_original_filename) {
+              const parsed = data.resume_parsed_at ? ` · parsed ${new Date(data.resume_parsed_at + "Z").toLocaleString()}` : "";
+              resumePathDisplay.textContent = `Uploaded: ${data.resume_original_filename}${parsed}`;
+            } else {
+              resumePathDisplay.textContent = "No resume uploaded yet.";
+            }
             if (data.error) {
               showStatus(data.error, true);
             } else if (data.result) {
