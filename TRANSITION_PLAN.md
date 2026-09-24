@@ -761,3 +761,42 @@ performs no network or execution action.
 - [x] Targeted and full tests, byte compilation, and diff checks pass.
 - [ ] Add authentication/CSRF before any non-local deployment.
 - [ ] Design and implement an explicit, approval-gated GitHub fetch/diff workflow.
+
+### Phase 9 — final local-first release validation
+
+#### Validation status
+
+The final bounded local-first pass was completed on 2026-09-24 from the integrated transition
+branch. The setup and migration documentation was checked against the implementation: the
+repository-root startup requirement, Alembic upgrade path, pre-upgrade backup location and
+restore guidance, additive-migration rule, localhost dashboard default, and bounded staged
+upload behavior are documented and wired through the existing entry points.
+
+The release checks passed:
+
+- `python -m pytest -q` — 117 tests passed.
+- `python -m compileall -q src` — clean.
+- `git diff --check` — clean.
+
+The README now records these automated results and separates them from manual/live checks that
+were not claimed: browser dashboard walkthrough, CLI end-to-end use, real Ollama or Anthropic
+model calls, live RemoteOK/Arbeitnow responses, and desktop notifications. The remaining manual
+items in the README checklist should be completed against a real local installation before a
+personal production rollout.
+
+#### Known intentional non-local blockers
+
+Do not widen the release scope to address these items in the local-first transition:
+
+1. Authentication and CSRF protection are not implemented. The dashboard must remain bound to
+   `127.0.0.1`; non-local deployment is unsupported until an explicit security boundary exists.
+2. GitHub fetch/diff review is not implemented. The adapter only validates and stores a
+   GitHub reference, with no network fetch, code execution, or delivery.
+
+#### Future handoff
+
+Future work may add the two deferred capabilities only as separate, reviewed increments:
+first define and test the authentication/CSRF boundary for any non-local deployment, then design
+an explicit, approval-gated GitHub fetch/diff workflow. Preserve the current local-only default,
+review-first submission model, additive migrations, upload limits, and explicit provider consent.
+No further local-first release-blocking issues were found in this validation pass.

@@ -40,17 +40,12 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 
 ## Status: what's actually verified
 
-This was scaffolded in a sandboxed environment with no package-manager or live-internet access,
-so it could not be run end-to-end before landing here. What was verified there: every file
-byte-compiles cleanly, config loading against `config.example.yaml` works, the prefilter/scoring
-logic in `matching.py` produces correct results, and the Greenhouse connector correctly parses a
-(mocked) API response. What was **not** yet exercised, and should be your first pass: the CLI
-commands end-to-end, the dashboard actually rendering in a browser, the Ollama/Anthropic LLM
-clients against a real model, the RemoteOK/Arbeitnow connectors against the live APIs (their
-JSON shape may have drifted from what's coded here), and desktop notifications via `plyer`
-(notoriously inconsistent across OSes). None of this is exotic — it's the normal gap between
-"written carefully" and "run for real" — but budget your first session for `pytest` plus a
-manual walk through each command below, not just a skim.
+The local-first release validation pass completed the automated checks: the full suite passes
+(117 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
+upload-boundary, approval-gate, and localhost-default behaviors are covered by the test suite.
+Still requiring a real local installation or manual walk-through are the CLI commands end to end,
+the dashboard in a browser, Ollama/Anthropic clients against a real model, RemoteOK/Arbeitnow
+against live APIs, and desktop notifications via `plyer`.
 
 ## Setup
 
@@ -191,7 +186,7 @@ cover the prefilter and the rule-based fallback scorer.
 - [ ] Start once from the repository root and confirm migrations complete without warnings.
 - [ ] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized or unsafe uploads.
-- [ ] Run `python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
+- [x] Run `python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
 - [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
   review-first submission and a rejected upload.
 - [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;
