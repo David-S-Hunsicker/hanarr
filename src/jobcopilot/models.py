@@ -344,10 +344,17 @@ class ProjectEvaluation(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     submission_id: Mapped[int] = mapped_column(ForeignKey("project_submissions.id"))
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1)
     evaluator: Mapped[str] = mapped_column(String, default="manual")
     passed: Mapped[bool] = mapped_column(Boolean, default=False)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    outcome: Mapped[str] = mapped_column(String, default="needs_improvement")
+    scores_json: Mapped[str] = mapped_column(Text, default="{}")
+    strengths_json: Mapped[str] = mapped_column(Text, default="[]")
+    improvements_json: Mapped[str] = mapped_column(Text, default="[]")
+    actionable_feedback_json: Mapped[str] = mapped_column(Text, default="[]")
     feedback: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     evaluated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     submission: Mapped["ProjectSubmission"] = relationship(back_populates="evaluations")

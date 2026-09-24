@@ -18,6 +18,7 @@ from .models import (
     Skill,
     SkillGapStatus,
 )
+from .submissions import submission_status
 
 SYSTEM_PROMPT = """Create a concise hands-on coaching project for closing a skill gap.
 Return ONLY JSON in this shape:
@@ -159,15 +160,7 @@ def project_status(project: Project) -> dict:
             for task in sorted(project.tasks, key=lambda item: item.position)
         ],
         "submissions": [
-            {
-                "id": submission.id,
-                "kind": submission.kind.value,
-                "title": submission.title,
-                "status": submission.status.value,
-                "manifest": json.loads(submission.manifest_json or "[]"),
-                "created_at": submission.created_at.isoformat() if submission.created_at else None,
-                "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
-            }
+            submission_status(submission)
             for submission in sorted(project.submissions, key=lambda item: item.id, reverse=True)
         ],
     }

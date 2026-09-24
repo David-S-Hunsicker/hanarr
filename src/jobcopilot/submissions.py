@@ -116,4 +116,22 @@ def submission_status(submission: ProjectSubmission) -> dict:
         "metadata": json.loads(submission.metadata_json or "{}"),
         "created_at": submission.created_at.isoformat() if submission.created_at else None,
         "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
+        "evaluations": [
+            {
+                "id": evaluation.id,
+                "attempt_number": evaluation.attempt_number,
+                "evaluator": evaluation.evaluator,
+                "passed": evaluation.passed,
+                "outcome": evaluation.outcome,
+                "score": evaluation.score,
+                "scores": json.loads(evaluation.scores_json or "{}"),
+                "strengths": json.loads(evaluation.strengths_json or "[]"),
+                "improvements": json.loads(evaluation.improvements_json or "[]"),
+                "actionable_feedback": json.loads(evaluation.actionable_feedback_json or "[]"),
+                "feedback": evaluation.feedback,
+                "error": evaluation.error,
+                "evaluated_at": evaluation.evaluated_at.isoformat() if evaluation.evaluated_at else None,
+            }
+            for evaluation in sorted(submission.evaluations, key=lambda item: item.attempt_number)
+        ],
     }

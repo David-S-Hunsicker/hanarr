@@ -1,8 +1,9 @@
 # Hannar transition plan
 
-**Status:** Phase 2 schema foundation complete. Alembic migrations, a frozen compatibility
-baseline, score snapshots, normalized skills, coaching records, proven skills, and resume
-proposal storage are in place without changing existing job-search behavior.
+**Status:** Phase 6 submission and evaluator foundation is complete. Alembic migrations, a
+frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
+skills, resume proposal storage, review-first submissions, and structured evaluation
+attempts are in place without changing existing job-search behavior.
 
 ## 1. Purpose and decisions
 
@@ -471,7 +472,27 @@ read the before/after explanations and trace the impact back to project evidence
   Validation covers project linking, normalized manifests, draft-to-submitted history, local
   artifact persistence, traversal rejection, migrations, and the existing coaching flow.
   The next handoff is to add review/diff presentation and a GitHub-ready adapter without
-  granting unattended submission or evaluator behavior.
+  granting unattended external submission.
+
+  #### Progress — deterministic evaluator stage
+
+  Commit `7efb28c` established the explicit submission boundary. This milestone adds
+  additive migration `0006` and an evaluator service using the existing configurable LLM
+  abstraction (the configured provider remains local-first by default). Evaluations include
+  attempt history, outcome, overall and rubric scores, strengths, improvements, actionable
+  feedback, provider/fallback identity, and captured model errors. Malformed or unavailable
+  model responses use a deterministic safe fallback and never mark a skill proven.
+
+  `POST /api/coaching-projects/{project_id}/submissions/{submission_id}/evaluate` exposes
+  the evaluator and `.../resubmit` reopens an evaluated submission for another explicit
+  attempt. Project, submission-list, and submission-detail responses include all evaluation
+  results. Focused tests cover a passing structured response, retry attempt numbering, and
+  malformed-model fallback/error persistence.
+
+  **Validation:** `python -m pytest -q tests/test_coaching_projects.py
+  tests/test_career_schema.py tests/test_migrations.py` and `python -m compileall -q src`.
+  The next handoff is review/diff presentation and a GitHub-ready adapter; external delivery,
+  automatic project completion, and automatic proven-skill claims remain deferred.
 
 ### Deferred decisions
 

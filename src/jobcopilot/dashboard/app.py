@@ -24,6 +24,7 @@ from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
 from ..coaching_projects import create_coaching_project, project_status
+from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
     JobPosting,
@@ -525,6 +526,34 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
             try:
                 submission = submit_submission(session, profile.id, submission_id)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission))
+
+    @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/evaluate")
+    def evaluate_project_submission(project_id: int, submission_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            submission = session.get(ProjectSubmission, submission_id)
+            if submission is None or submission.project_id != project_id:
+                return JSONResponse({"error": "Submission not found."}, status_code=404)
+            try:
+                evaluate_submission(session, profile.id, submission_id, llm)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission))
+
+    @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/resubmit")
+    def resubmit_project_submission(project_id: int, submission_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            submission = session.get(ProjectSubmission, submission_id)
+            if submission is None or submission.project_id != project_id:
+                return JSONResponse({"error": "Submission not found."}, status_code=404)
+            try:
+                resubmit_submission(session, profile.id, submission_id)
                 session.commit()
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)

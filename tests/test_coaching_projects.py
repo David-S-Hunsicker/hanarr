@@ -15,6 +15,7 @@ from jobcopilot.models import (
     Skill,
     SkillGapStatus,
 )
+import jobcopilot.dashboard.app as app_module
 
 
 class FakeLLM:
@@ -189,3 +190,86 @@ def test_local_submission_stores_manifest_and_rejects_traversal(tmp_path):
         files=[("files", ("../secret.txt", b"nope", "text/plain"))],
     )
     assert rejected.status_code == 400
+
+
+def test_submission_evaluation_persists_structured_result_and_resubmission_history(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+
+    class EvaluatingLLM:
+        def complete_json(self, system, user):
+            return json.dumps({
+                "outcome": "passed",
+                "score": 88,
+                "scores": {"Build the first version": 90},
+                "strengths": ["Working artifact is described."],
+                "improvements": [],
+                "actionable_feedback": [],
+                "feedback": "Strong evidence.",
+            })
+
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: EvaluatingLLM())
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+    submission = client.post(
+        f"/api/coaching-projects/{project_id}/submissions",
+        json={"title": "Evidence", "content": "Built and tested the artifact."},
+    ).json()
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/submit")
+
+    evaluated = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/evaluate"
+    )
+    assert evaluated.status_code == 200
+    result = evaluated.json()["evaluations"][0]
+    assert result["outcome"] == "passed"
+    assert result["scores"]["Build the first version"] == 90
+    assert result["attempt_number"] == 1
+
+    retried = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/resubmit"
+    )
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "draft"
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/submit")
+    second = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/evaluate"
+    ).json()["evaluations"]
+    assert [item["attempt_number"] for item in second] == [1, 2]
+
+
+def test_malformed_evaluation_uses_safe_fallback_and_records_error(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+
+    class BrokenLLM:
+        def complete_json(self, system, user):
+            return "not json"
+
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: BrokenLLM())
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()
+    submission = client.post(
+        f"/api/coaching-projects/{project['id']}/submissions",
+        json={"content": "A short response."},
+    ).json()
+    client.post(f"/api/coaching-projects/{project['id']}/submissions/{submission['id']}/submit")
+    evaluated = client.post(
+        f"/api/coaching-projects/{project['id']}/submissions/{submission['id']}/evaluate"
+    ).json()
+    evaluation = evaluated["evaluations"][0]
+    assert evaluation["evaluator"] == "deterministic-fallback"
+    assert evaluation["outcome"] == "needs_improvement"
+    assert evaluation["error"]
