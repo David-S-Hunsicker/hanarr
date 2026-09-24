@@ -1,6 +1,6 @@
 # Database migrations
 
-Hannar uses [Alembic](https://alembic.sqlalchemy.org/) with SQLite and SQLAlchemy.
+Hanarr uses [Alembic](https://alembic.sqlalchemy.org/) with SQLite and SQLAlchemy.
 `jobcopilot.db.make_session_factory` runs migrations before returning a session factory.
 
 The `0001` revision is the frozen compatibility baseline for the schema that existed

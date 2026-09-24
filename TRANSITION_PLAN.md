@@ -1,4 +1,4 @@
-# Hannar transition plan
+# Hanarr transition plan
 
 **Status:** Phase 6 submission, evaluator, and local-first provider-routing foundations are
 complete. Alembic migrations, a
@@ -8,15 +8,15 @@ attempts are in place without changing existing job-search behavior.
 
 ## 1. Purpose and decisions
 
-The goal is to evolve `job-search-copilot` into **Hannar**, a unified, local-first
+The goal is to evolve `job-search-copilot` into **Hanarr**, a unified, local-first
 job-search and career-coaching application. `job-search-copilot` is the implementation
-foundation; Hannar is not a parallel rewrite or a hosted multi-user product at this stage.
+foundation; Hanarr is not a parallel rewrite or a hosted multi-user product at this stage.
 
 The following decisions are treated as requirements for the transition:
 
 - Keep the existing dashboard as the first integration surface. Coaching should appear
   where the user already reviews jobs, statuses, reminders, and resume information.
-- Preserve the local SQLite data store and the existing local-only operating model. Hannar
+- Preserve the local SQLite data store and the existing local-only operating model. Hanarr
   is single-user for now; do not introduce accounts, hosted tenancy, or a remote database
   as part of this transition.
 - Preserve the public-API connector policy and scheduler. Do not add ToS-violating
@@ -36,7 +36,7 @@ The following decisions are treated as requirements for the transition:
 - Provide a direct **Improve my fit** action from a job posting. It starts the appropriate
   coaching/project flow for that posting while preserving the existing apply and status
   actions during coaching.
-- Projects are manually opted into. Hannar may recommend a project, but it must not
+- Projects are manually opted into. Hanarr may recommend a project, but it must not
   silently create work, change a resume, or submit an application.
 - Support two project modes:
   - **Posting-specific:** a project is tied to one job and targets that posting's gaps.
@@ -53,11 +53,11 @@ The following decisions are treated as requirements for the transition:
   proposal; user approval makes that proposal the active resume; the approved resume is
   automatically re-parsed and fed back into job matching without requiring a re-upload.
 - Keep capability, evidence, and resume wording distinct. A capability is what the user
-  can do, evidence is why Hannar believes it, and resume wording is the proposed way to
+  can do, evidence is why Hanarr believes it, and resume wording is the proposed way to
   communicate it. Improving one must not silently fabricate or conflate the others.
 - Future submission types include local files/folders, written responses, and GitHub.
   Submission is a later capability and must remain opt-in and reviewable.
-- Defer Anthropic web search and scraping. Hannar should use the existing public
+- Defer Anthropic web search and scraping. Hanarr should use the existing public
   connectors and user-provided/local material until a future decision establishes a
   compliant, useful web-research boundary.
 
@@ -65,7 +65,7 @@ The following decisions are treated as requirements for the transition:
 
 ### `job-search-copilot` (foundation)
 
-The current repository already provides the safest path to a useful Hannar v1:
+The current repository already provides the safest path to a useful Hanarr v1:
 
 - A FastAPI/Jinja server-rendered dashboard with job review, status updates, resume upload,
   configuration, search controls, and reminder views.
@@ -89,7 +89,7 @@ carefully rather than treated as an existing capability.
 
 ### Separate `hanarr` project
 
-The separate Hannar work represents the broader product direction: coaching, a
+The separate Hanarr work represents the broader product direction: coaching, a
 multi-agent loop, skill-building projects, proposal-based resume evolution, and eventual
 submission workflows. It should be treated as product/design input, not as the migration
 authority for job-search data. The transition should avoid a wholesale code transplant:
@@ -104,10 +104,10 @@ behavior merely to match the separate project's structure.
 
 ## 3. Target architecture
 
-Hannar should remain a modular local application with the existing dashboard and pipeline
+Hanarr should remain a modular local application with the existing dashboard and pipeline
 at its center:
 
-1. **Presentation layer:** the dashboard becomes Hannar's primary UI with clear tab
+1. **Presentation layer:** the dashboard becomes Hanarr's primary UI with clear tab
    navigation: Jobs, Coaching, Resume, Skills, Applications, and Settings. The Jobs page
    owns discovery, fit, skill gaps, **Improve my fit**, apply, status, and reminders;
    Coaching owns active guidance and project work; Resume owns readable active content,
@@ -180,7 +180,7 @@ latest explainable analysis.
 3. Backfill one `ScoreSnapshot` from each existing posting's current score/rationale,
    tagged `initial` with legacy metadata where exact inputs are unavailable.
 4. Normalize resume-derived skills lazily: existing resume text and summary remain valid;
-   the first Hannar analysis can populate `ProfileSkill` and `JobSkill`.
+   the first Hanarr analysis can populate `ProfileSkill` and `JobSkill`.
 5. Preserve `SeenPosting` for fetch deduplication, but separate that concern from scoring
    eligibility so a project pass or explicit criteria change can trigger a new score.
 6. Make migration idempotent, report failures clearly, and keep a rollback/backup
@@ -197,13 +197,13 @@ Anthropic without the user's configured consent.
 
 ### Phase 0 — branding and boundaries
 
-- Establish Hannar naming, local application title, navigation language, and README/setup
+- Establish Hanarr naming, local application title, navigation language, and README/setup
   updates without changing behavior.
 - Define provider/agent configuration, privacy promises, approval boundaries, and the
   deferred web-search/scraping decision.
 - Inventory the separate `hanarr` project and record mappings/decisions.
 
-**Exit:** Hannar can be launched as the same local app with clear product language and no
+**Exit:** Hanarr can be launched as the same local app with clear product language and no
 loss of existing job-search functionality.
 
 ### Implementation progress
@@ -212,11 +212,14 @@ loss of existing job-search functionality.
 
 **Completed deliverables**
 
-- Adopted Hannar as the dashboard and product name while retaining the `jobcopilot` Python
+- Adopted Hanarr as the dashboard and product name while retaining the `jobcopilot` Python
   package, CLI command, routes, and local database path for compatibility.
 - Documented the incremental transition, local-only operating model, Ollama-first inference,
   public-API connector policy, and deferred coaching/submission capabilities in the README.
 - Added a dashboard regression test for the product name and FastAPI title.
+- Corrected the product spelling to Hanarr across user-facing docs, dashboard titles/content,
+  migration documentation, and the related regression test; retained the lowercase `hanarr`
+  project identifier because it is a technical reference.
 
 **Validation**
 
@@ -616,7 +619,7 @@ read the before/after explanations and trace the impact back to project evidence
 
 ## 7. Acceptance criteria
 
-The transition is ready for an initial Hannar release when all of the following are true:
+The transition is ready for an initial Hanarr release when all of the following are true:
 
 - Existing users can upgrade a copy of their SQLite database without losing profiles,
   jobs, statuses, reminders, resume text, or connector configuration.
@@ -625,7 +628,7 @@ The transition is ready for an initial Hannar release when all of the following 
   actions, reminders, and direct **Improve my fit** coaching.
 - The Resume page is first-class and readable: it shows active contents, extracted
   profile, proposals, version history, and rollback.
-- Hannar remains single-user and local-first by default; Ollama works without a hosted API
+- Hanarr remains single-user and local-first by default; Ollama works without a hosted API
   key, and Anthropic is optional and configurable per agent.
 - Public connectors and scheduled searches/reminders remain operational, with no scraping
   added as a shortcut.

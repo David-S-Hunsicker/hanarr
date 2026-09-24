@@ -1,6 +1,6 @@
-# Hannar
+# Hanarr
 
-Hannar is the product name for this local-first career companion. The Python package and
+Hanarr is the product name for this local-first career companion. The Python package and
 `jobcopilot` command remain unchanged during the transition so existing installations and
 scripts continue to work.
 
@@ -10,14 +10,14 @@ stated preferences, tracks your application status, and reminds you to follow up
 interviews. You review matches and make the calls — this handles the searching and bookkeeping so
 you can spend your time on interview prep instead.
 
-Hannar runs entirely on your own machine. Your resume, preferences, and match data stay in a local
+Hanarr runs entirely on your own machine. Your resume, preferences, and match data stay in a local
 SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
 LLM provider you configure.
 
 The transition is intentionally incremental. The existing Jobs dashboard, public-API connectors,
 SQLite store, scheduler, and Ollama-first inference remain the source of truth while coaching,
 skills, projects, resume proposals, and submission workflows are added in later milestones.
-Hannar does not add accounts, hosted tenancy, scraping, automatic project creation, automatic
+Hanarr does not add accounts, hosted tenancy, scraping, automatic project creation, automatic
 resume activation, or unattended application submission.
 
 Database upgrades use Alembic migrations. Existing databases are upgraded in place without

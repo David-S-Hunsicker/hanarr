@@ -1,4 +1,4 @@
-"""Create the compatibility schema used before Hannar migrations.
+"""Create the compatibility schema used before Hanarr migrations.
 
 Revision ID: 0001
 Revises:
