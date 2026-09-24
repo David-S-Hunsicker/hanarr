@@ -24,6 +24,7 @@ from .models import (
     Skill,
 )
 from .resume import extract_profile_summary
+from .resume_sections import split_resume_into_sections
 from .connectors.base import RawJobPosting
 
 SYSTEM_PROMPT = """Write a conservative resume proposal based on a passed coaching project.
@@ -216,8 +217,13 @@ def resume_status(profile: Profile, session: Session | None = None) -> dict[str,
                 "created_at": snapshot.created_at.isoformat(),
                 "explanation": metadata.get("explanation", snapshot.fit_rationale),
             })
+    active_content = active.content if active else (profile.resume_text or "")
     return {
-        "active": {"id": active.id, "content": active.content} if active else {"id": None, "content": profile.resume_text or ""},
+        "active": {
+            "id": active.id if active else None,
+            "content": active_content,
+            "sections": [{"heading": s.heading, "body": s.body} for s in split_resume_into_sections(active_content)],
+        },
         "extracted_profile": summary,
         "matcher": {
             "status": "ready" if (active and active.content.strip()) else "not_ready",
