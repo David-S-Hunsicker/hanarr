@@ -4,32 +4,60 @@
   <meta charset="utf-8">
   <title>Coaching · Hanarr</title>
   <style>
-    :root { color-scheme: light; --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --muted: #5d5b56; --border: rgba(11,11,11,.12); --accent: #2a78d6; }
-    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page: #0d0d0d; --surface: #1a1a19; --text: #fff; --muted: #c3c2b7; --border: rgba(255,255,255,.13); --accent: #3987e5; } }
+    :root {
+      color-scheme: light;
+      --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --muted: #5d5b56; --border: rgba(11,11,11,.12); --accent: #2a78d6; --accent-ink: #fff;
+      --good: #1f8a4c; --good-bg: rgba(31,138,76,.12); --bad: #b23b3b; --bad-bg: rgba(178,59,59,.1); --warn: #9a6a1f; --warn-bg: rgba(154,106,31,.1);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #0d0d0d; --surface: #1a1a19; --text: #fff; --muted: #c3c2b7; --border: rgba(255,255,255,.13); --accent: #3987e5; --accent-ink: #fff;
+        --good: #45c17a; --good-bg: rgba(69,193,122,.14); --bad: #e77373; --bad-bg: rgba(231,115,115,.12); --warn: #d7a54a; --warn-bg: rgba(215,165,74,.12);
+      }
+    }
     * { box-sizing: border-box; }
     body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem 4rem; background: var(--page); color: var(--text); font-family: system-ui, sans-serif; }
     .page-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; }
-    h1, h2 { margin: 0; } h1 { font-size: 1.35rem; } h2 { font-size: 1.05rem; margin-bottom: .8rem; }
+    h1, h2 { margin: 0; } h1 { font-size: 1.4rem; font-weight: 750; letter-spacing: -.01em; } h2 { font-size: 1.12rem; font-weight: 700; margin-bottom: .8rem; letter-spacing: -.01em; }
     .nav { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
     .nav a { color: var(--muted); padding: .5rem .7rem; text-decoration: none; font-size: .88rem; }
     .nav a.active { color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 650; }
     .intro { color: var(--muted); margin: 0 0 1.4rem; max-width: 680px; }
     .section { margin: 1.5rem 0; } .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: .7rem 0; }
-    .card h3 { margin: 0 0 .25rem; font-size: .98rem; } .meta, .description { color: var(--muted); font-size: .9rem; }
-    .meta { display: flex; gap: .5rem; flex-wrap: wrap; margin: .45rem 0; } .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .5rem; font-size: .78rem; }
-    .tasks { margin: .8rem 0 0; padding: 0; list-style: none; } .tasks li { display: flex; gap: .6rem; align-items: baseline; border-top: 1px solid var(--border); padding: .55rem 0; }
-    .tasks form { margin-left: auto; } select, button { font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .45rem; background: var(--surface); color: var(--text); }
+    .card h3 { margin: 0 0 .35rem; font-size: 1.15rem; font-weight: 700; } .meta, .description { color: var(--muted); font-size: .9rem; }
+    .meta { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .45rem 0; } .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .5rem; font-size: .76rem; color: var(--muted); }
+    .pill-status-submitted { border-color: var(--accent); color: var(--accent); }
+    .pill-status-evaluated { border-color: var(--good); color: var(--good); }
+    .field-label { display: block; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 1.1rem 0 .4rem; }
+    .tasks { margin: .8rem 0 0; padding: 0; list-style: none; } .tasks li { display: flex; gap: .6rem; align-items: center; border-top: 1px solid var(--border); padding: .55rem 0; }
+    .tasks form { margin-left: auto; } select { font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .45rem; background: var(--surface); color: var(--text); }
     .jobs { display: flex; gap: .4rem; flex-wrap: wrap; } .jobs a, .suggestion button { color: var(--accent); }
     .suggestion { display: flex; justify-content: space-between; gap: 1rem; align-items: center; } .suggestion p { margin: .25rem 0 0; }
     .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1rem; }
     textarea { width: 100%; min-height: 7rem; font: inherit; padding: .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
     .submission-form { display: grid; gap: .5rem; margin-top: 1rem; }
-    .submission-form button { justify-self: start; cursor: pointer; }
+    .btn { font: inherit; font-weight: 600; font-size: .85rem; border-radius: 6px; padding: .42rem .75rem; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); justify-self: start; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .btn-network { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+    .btn .ext { font-weight: 400; opacity: .82; font-size: .92em; }
     .evaluation { border-top: 1px solid var(--border); margin-top: .7rem; padding-top: .7rem; }
     .evaluation ul { margin: .35rem 0; padding-left: 1.1rem; }
-    .github-diff { width: 100%; margin-top: .5rem; }
-    .github-diff details { margin: .35rem 0; }
-    .github-diff pre { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; overflow-x: auto; font-size: .82rem; }
+    .submissions { margin-top: 1.1rem; }
+    .submission-card { border: 1px solid var(--border); border-radius: 8px; padding: .7rem .85rem; margin: .55rem 0; background: var(--page); }
+    .submission-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .submission-actions { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }
+    .file-count { color: var(--muted); font-size: .78rem; }
+    .github-diff { width: 100%; margin-top: .6rem; }
+    .github-diff details { margin: .4rem 0; }
+    .github-diff summary { cursor: pointer; font-size: .88rem; }
+    .diff-lines { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; margin-top: .3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
+    .diff-line { padding: .05rem .6rem; white-space: pre; }
+    .diff-add { background: var(--good-bg); color: var(--good); }
+    .diff-del { background: var(--bad-bg); color: var(--bad); }
+    .diff-hunk { color: var(--accent); opacity: .85; }
+    .diff-ctx { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -81,46 +109,58 @@
           <li><span>{{ task.position }}. {{ task.title }}</span><form method="post" action="/api/coaching-projects/{{ project.id }}/tasks/{{ task.id }}/status" class="task-status"><select name="status" aria-label="Status for {{ task.title }}" data-project-id="{{ project.id }}" data-task-id="{{ task.id }}"><option value="todo" {% if task.status == "todo" %}selected{% endif %}>To do</option><option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>In progress</option><option value="done" {% if task.status == "done" %}selected{% endif %}>Done</option></select></form></li>
           {% endfor %}
         </ol>
+        <span class="field-label">Draft a written response</span>
         <div class="submission-form">
-          <strong>Draft a written response</strong>
           <textarea id="response-{{ project.id }}" placeholder="Describe what you built, the evidence, and tradeoffs."></textarea>
-          <button type="button" data-project-id="{{ project.id }}" class="save-response">Save draft</button>
+          <button type="button" data-project-id="{{ project.id }}" class="btn btn-secondary save-response">Save draft</button>
         </div>
+        <span class="field-label">Add local files or a folder</span>
         <div class="submission-form">
-          <strong>Add local files or a folder</strong>
           <input type="file" multiple data-project-id="{{ project.id }}" class="local-files">
-          <button type="button" data-project-id="{{ project.id }}" class="save-files">Save files as draft</button>
+          <button type="button" data-project-id="{{ project.id }}" class="btn btn-secondary save-files">Save files as draft</button>
         </div>
+        <span class="field-label">Add a GitHub repository reference</span>
         <div class="submission-form">
-          <strong>Add a GitHub repository reference</strong>
           <input type="url" placeholder="https://github.com/owner/repository" data-project-id="{{ project.id }}" class="github-reference">
           <input type="text" placeholder="Optional branch, tag, or commit" data-project-id="{{ project.id }}" class="github-ref">
-          <button type="button" data-project-id="{{ project.id }}" class="save-github">Save GitHub reference as draft</button>
+          <button type="button" data-project-id="{{ project.id }}" class="btn btn-secondary save-github">Save GitHub reference as draft</button>
         </div>
         {% if project.submissions %}
-        <div class="meta"><strong>Submission history:</strong>
+        <h4 class="field-label">Submission history</h4>
+        <div class="submissions">
           {% for submission in project.submissions %}
-          <span class="pill">{{ submission.kind|replace("_", " ") }} · {{ submission.status }}{% if submission.manifest %} · {{ submission.manifest|length }} file(s){% endif %}</span>
-          {% if submission.kind == "github_repository" and submission.status == "draft" %}
-          <button type="button" class="fetch-github" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">{% if submission.metadata.fetched %}Refresh fetched diff (contacts github.com){% else %}Fetch for review (contacts github.com){% endif %}</button>
-          {% endif %}
-          {% if submission.status == "draft" %}<button type="button" class="submit-draft" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Submit for review</button>{% endif %}
-          {% if submission.status == "submitted" %}<button type="button" class="evaluate-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Evaluate evidence</button>{% endif %}
-          {% if submission.status == "evaluated" %}<button type="button" class="resubmit-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Revise and resubmit</button>{% endif %}
-          {% if submission.kind == "github_repository" and submission.metadata.fetched %}
-          <div class="github-diff">
-            <p class="description">Commit {{ submission.metadata.commit_sha[:7] if submission.metadata.commit_sha else "unknown" }} on {{ submission.metadata.resolved_ref }} by {{ submission.metadata.commit_author }}: {{ submission.metadata.commit_message }}</p>
-            {% if submission.metadata.files_truncated %}<p class="description">Showing the first {{ submission.manifest|length }} changed files of this commit.</p>{% endif %}
-            {% for file in submission.manifest %}
-            <details><summary>{{ file.status }} · {{ file.path }} (+{{ file.additions }}/-{{ file.deletions }})</summary>
-              {% if file.patch %}<pre>{{ file.patch }}</pre>{% elif file.patch_omitted %}<p class="description">Diff omitted: {{ file.patch_omitted }}.</p>{% else %}<p class="description">No inline diff available for this file.</p>{% endif %}
-            </details>
+          <div class="submission-card">
+            <div class="submission-head">
+              <span class="pill">{{ submission.kind|replace("_", " ") }}</span>
+              <span class="pill pill-status-{{ submission.status }}">{{ submission.status }}</span>
+              {% if submission.manifest %}<span class="file-count">{{ submission.manifest|length }} file(s)</span>{% endif %}
+              <div class="submission-actions">
+                {% if submission.kind == "github_repository" and submission.status == "draft" %}
+                <button type="button" class="btn btn-network fetch-github" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">{% if submission.metadata.fetched %}Refresh diff{% else %}Fetch diff{% endif %} <span class="ext">[contacts github.com]</span></button>
+                {% endif %}
+                {% if submission.status == "draft" %}<button type="button" class="btn btn-primary submit-draft" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Submit for review</button>{% endif %}
+                {% if submission.status == "submitted" %}<button type="button" class="btn btn-primary evaluate-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Evaluate evidence</button>{% endif %}
+                {% if submission.status == "evaluated" %}<button type="button" class="btn btn-secondary resubmit-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Revise and resubmit</button>{% endif %}
+              </div>
+            </div>
+            {% if submission.kind == "github_repository" and submission.metadata.fetched %}
+            <div class="github-diff">
+              <p class="description">Commit {{ submission.metadata.commit_sha[:7] if submission.metadata.commit_sha else "unknown" }} on {{ submission.metadata.resolved_ref }} by {{ submission.metadata.commit_author }}: {{ submission.metadata.commit_message }}</p>
+              {% if submission.metadata.files_truncated %}<p class="description">Showing the first {{ submission.manifest|length }} changed files of this commit.</p>{% endif %}
+              {% for file in submission.manifest %}
+              <details><summary>{{ file.status }} · {{ file.path }} (+{{ file.additions }}/-{{ file.deletions }})</summary>
+                {% if file.patch %}
+                <div class="diff-lines">{% for line in file.patch.split("\n") %}<div class="diff-line {{ "diff-add" if line.startswith("+") and not line.startswith("+++") else "diff-del" if line.startswith("-") and not line.startswith("---") else "diff-hunk" if line.startswith("@@") else "diff-ctx" }}">{{ line }}</div>{% endfor %}</div>
+                {% elif file.patch_omitted %}<p class="description">Diff omitted: {{ file.patch_omitted }}.</p>
+                {% else %}<p class="description">No inline diff available for this file.</p>{% endif %}
+              </details>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% for evaluation in submission.evaluations %}
+            <div class="evaluation"><strong>Attempt {{ evaluation.attempt_number }}: {{ evaluation.outcome|replace("_", " ") }} ({{ "%.0f"|format(evaluation.score) }})</strong><br><span class="description">{{ evaluation.feedback }}</span>{% if evaluation.actionable_feedback %}<ul>{% for item in evaluation.actionable_feedback %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div>
             {% endfor %}
           </div>
-          {% endif %}
-          {% for evaluation in submission.evaluations %}
-          <div class="evaluation"><strong>Attempt {{ evaluation.attempt_number }}: {{ evaluation.outcome|replace("_", " ") }} ({{ "%.0f"|format(evaluation.score) }})</strong><br><span class="description">{{ evaluation.feedback }}</span>{% if evaluation.actionable_feedback %}<ul>{% for item in evaluation.actionable_feedback %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div>
-          {% endfor %}
           {% endfor %}
         </div>
         {% endif %}

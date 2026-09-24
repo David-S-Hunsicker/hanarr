@@ -779,6 +779,17 @@ caught and turned into a clean, actionable `ValueError` rather than a crash. The
 carry full coverage of the parsing/truncation/error-handling logic; a real network validation on
 a normal (non-sandboxed) machine is still worth doing before relying on this in daily use.
 
+A follow-up visual pass on the Coaching page addressed the "review/diff presentation" this
+milestone names: per-file diff lines are now colored (additions/deletions/hunk headers), buttons
+are split into primary/secondary/network-contacting styles instead of one uniform look, each
+submission renders as its own bordered card instead of a flat inline run, and heading/label
+contrast was increased so the page has real visual hierarchy. Verified by rendering the page with
+seeded data (a fetched GitHub diff and an evaluated written submission) and screenshotting both
+the dark and forced-light palettes with headless Edge. This pass was scoped to the Coaching page
+only, since that's the page the "review/diff presentation" deliverable concerns; the rest of the
+dashboard's templates (Jobs, Resume, Skills, Settings) still use the plainer pre-existing style
+and were intentionally left untouched.
+
 #### Explicit release-readiness checklist
 
 - [x] Additive migrations back up the local SQLite database and fail startup explicitly.
