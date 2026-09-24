@@ -52,17 +52,76 @@ matching:
 sources:
   greenhouse:
     enabled: true
-    # Company board tokens, e.g. for boards.greenhouse.io/stripe -> "stripe"
+    # Company board tokens, e.g. for boards.greenhouse.io/stripe -> "stripe".
+    # This list is only two companies by default, which is the single
+    # biggest reason a fresh install sees few postings -- it's not that the
+    # connector or matching logic is broken, it's that only two employers
+    # are actually being asked. The names below are all live and verified
+    # (each one checked directly against boards-api.greenhouse.io before
+    # being added here); add or remove company tokens freely, and verify a
+    # new one the same way: a 200 from
+    # https://boards-api.greenhouse.io/v1/boards/<token>/jobs means it's
+    # real, a 404 means the token is wrong or that company doesn't use
+    # Greenhouse's public board.
     company_boards:
       - "stripe"
       - "airbnb"
+      - "robinhood"
+      - "coinbase"
+      - "discord"
+      - "reddit"
+      - "pinterest"
+      - "figma"
+      - "asana"
+      - "cloudflare"
+      - "databricks"
+      - "anthropic"
+      - "scaleai"
+      - "affirm"
+      - "instacart"
+      - "lyft"
+      - "gitlab"
+      - "elastic"
+      - "mongodb"
+      - "twilio"
+      - "datadog"
+      - "gusto"
+      - "brex"
+      - "chime"
+      - "samsara"
+      - "webflow"
+      - "vercel"
+      - "carta"
+      - "squarespace"
+      - "amplitude"
+      - "mixpanel"
+      - "checkr"
+      - "roblox"
+      - "block"
   lever:
-    enabled: false
-    # Company slugs, e.g. for jobs.lever.co/netflix -> "netflix"
-    companies: []
+    enabled: true
+    # Company slugs, e.g. for jobs.lever.co/netflix -> "netflix". Off by
+    # default upstream, but there's no reason to leave a whole working
+    # connector unused -- verified live the same way as the Greenhouse list
+    # above (a 200 from https://api.lever.co/v0/postings/<slug>?mode=json).
+    # Lever has fewer large public users than Greenhouse these days (several
+    # well-known companies that used to be on Lever have since moved off
+    # it), so this list is shorter -- that's real coverage, not a shortcut.
+    companies:
+      - "palantir"
+      - "ro"
+      - "clari"
+      - "voleon"
+      - "alloy"
+      - "imbue"
   remoteok:
     enabled: true
-    tags: ["python", "backend"]
+    # RemoteOK's own tag taxonomy, sampled live from its API rather than
+    # guessed -- "machine-learning" isn't an actual tag in use there, but
+    # "ai", "cloud", and "python"/"backend" are. Tags are OR'd together (any
+    # one match is enough), so adding more only widens results, never
+    # narrows them.
+    tags: ["python", "backend", "ai", "cloud"]
   arbeitnow:
     enabled: true
 
