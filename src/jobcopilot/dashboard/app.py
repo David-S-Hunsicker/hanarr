@@ -95,7 +95,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     through so the restart route can shut it down cleanly before
     re-executing the process. Optional — tests and other callers that don't
     run the scheduler can omit it; the restart route just skips that step."""
-    app = FastAPI(title="job-search-copilot")
+    app = FastAPI(title="Hannar")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
     templates.env.filters["posting_age"] = format_posting_age

@@ -1,7 +1,7 @@
 # Hannar transition plan
 
-**Status:** Planning document only. This plan does not implement the Hannar product or
-change the current application behavior.
+**Status:** Phase 0 complete. The first bounded branding-and-boundaries increment is
+implemented without changing existing job-search behavior.
 
 ## 1. Purpose and decisions
 
@@ -202,6 +202,31 @@ Anthropic without the user's configured consent.
 
 **Exit:** Hannar can be launched as the same local app with clear product language and no
 loss of existing job-search functionality.
+
+### Implementation progress
+
+#### Phase 0 — branding and boundaries: complete
+
+**Completed deliverables**
+
+- Adopted Hannar as the dashboard and product name while retaining the `jobcopilot` Python
+  package, CLI command, routes, and local database path for compatibility.
+- Documented the incremental transition, local-only operating model, Ollama-first inference,
+  public-API connector policy, and deferred coaching/submission capabilities in the README.
+- Added a dashboard regression test for the product name and FastAPI title.
+
+**Validation**
+
+- Targeted dashboard tests pass: `pytest tests/test_dashboard_app.py`.
+- Existing behavior remains covered by the repository test suite; no schema, connector,
+  scheduler, or command behavior changed in this increment.
+
+**Next handoff**
+
+Proceed to Phase 1 only after selecting and documenting the migration mechanism. The next
+bounded increment should freeze the current schema, add additive/versioned migration support,
+and introduce only the compatibility-safe foundational tables (including score snapshots).
+Do not begin skills, projects, orchestration, or submission flows in that increment.
 
 ### Phase 1 — migrations and foundational models
 

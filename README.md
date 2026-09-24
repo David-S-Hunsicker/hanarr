@@ -1,14 +1,24 @@
-# job-search-copilot
+# Hannar
 
-A configurable, self-hosted job-search agent. It parses your resume, searches job sources that
+Hannar is the product name for this local-first career companion. The Python package and
+`jobcopilot` command remain unchanged during the transition so existing installations and
+scripts continue to work.
+
+A configurable, self-hosted job-search foundation. It parses your resume, searches job sources that
 have legitimate public APIs (no ToS-violating scraping), scores how well each posting fits your
 stated preferences, tracks your application status, and reminds you to follow up or prep for
 interviews. You review matches and make the calls — this handles the searching and bookkeeping so
 you can spend your time on interview prep instead.
 
-Runs entirely on your own machine. Your resume, preferences, and match data stay in a local
+Hannar runs entirely on your own machine. Your resume, preferences, and match data stay in a local
 SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
 LLM provider you configure.
+
+The transition is intentionally incremental. The existing Jobs dashboard, public-API connectors,
+SQLite store, scheduler, and Ollama-first inference remain the source of truth while coaching,
+skills, projects, resume proposals, and submission workflows are added in later milestones.
+Hannar does not add accounts, hosted tenancy, scraping, automatic project creation, automatic
+resume activation, or unattended application submission.
 
 ## How it works
 

@@ -19,6 +19,14 @@ def test_task_is_stuck_false_when_not_running():
     assert task_is_stuck({"running": False, "started_at": 100.0}, 1800.0, now=99999.0) is False
 
 
+def test_dashboard_uses_hannar_product_name(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    app = create_app(settings)
+
+    assert app.title == "Hannar"
+    assert "Hannar" in TestClient(app).get("/").text
+
+
 def test_task_is_stuck_false_when_started_at_missing():
     assert task_is_stuck({"running": True, "started_at": None}, 60.0, now=99999.0) is False
 
