@@ -1,4 +1,8 @@
 import datetime as dt
+import os
+import shutil
+import sys
+from pathlib import Path
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -6,6 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from jobcopilot.config import Settings
 from jobcopilot.db import _backup_database, make_session_factory
 from jobcopilot.models import Base, JobPosting, Profile, ScoreSnapshot
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_existing_database_is_upgraded_without_recreating_legacy_rows(tmp_path):
@@ -60,6 +66,33 @@ def test_new_database_has_migrated_schema(tmp_path):
 
     with factory() as session:
         assert session.execute(select(ScoreSnapshot)).all() == []
+
+
+def test_migration_resolves_bundle_and_ignores_working_directory_when_frozen(tmp_path, monkeypatch):
+    """Regression test for a packaged-runtime crash: PyInstaller's ``--onefile``
+    build exposes ``sys._MEIPASS`` as the extracted bundle root, and ``__file__``
+    no longer points into the source tree, so alembic.ini and migrations/ must be
+    located via ``_MEIPASS`` rather than ``Path(__file__).resolve().parents[2]``.
+    The packaged runtime also changes its working directory to the user data
+    folder before this runs, so resolution must not depend on the CWD either.
+    """
+    bundle = tmp_path / "_MEI_fake_bundle"
+    bundle.mkdir()
+    shutil.copy2(REPO_ROOT / "alembic.ini", bundle / "alembic.ini")
+    shutil.copytree(REPO_ROOT / "migrations", bundle / "migrations")
+
+    unrelated_cwd = tmp_path / "user_data_cwd"
+    unrelated_cwd.mkdir()
+    original_cwd = os.getcwd()
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    try:
+        os.chdir(unrelated_cwd)
+        settings = Settings(data_dir=tmp_path / "data")
+        factory = make_session_factory(settings)
+        with factory() as session:
+            assert session.execute(select(ScoreSnapshot)).all() == []
+    finally:
+        os.chdir(original_cwd)
 
 
 def test_backup_names_do_not_collide_with_same_timestamp(tmp_path, monkeypatch):

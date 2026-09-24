@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import shutil
+import sys
 from pathlib import Path
 
 from alembic import command
@@ -13,6 +14,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 from .models import Base, Profile
+
+
+def _project_root() -> Path:
+    """Resolve the repo root in a source checkout, or the PyInstaller bundle
+    root when frozen. ``Path(__file__)`` points into the ``_MEIPASS`` extraction
+    directory when frozen, not the source tree, so it cannot be used directly.
+    """
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root is not None:
+        return Path(frozen_root)
+    return Path(__file__).resolve().parents[2]
 
 
 def make_session_factory(settings: Settings) -> sessionmaker:
@@ -26,8 +38,14 @@ def make_session_factory(settings: Settings) -> sessionmaker:
 
 def _upgrade_database(engine, db_path: Path, data_dir: Path) -> None:
     """Upgrade safely, recognizing databases created before Alembic existed."""
-    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    root = _project_root()
+    config = Config(str(root / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    # Set script_location as an absolute path rather than relying on the
+    # ini file's relative "migrations" value, which would otherwise resolve
+    # against the current working directory (the packaged runtime changes
+    # its working directory to the user data folder before this runs).
+    config.set_main_option("script_location", str(root / "migrations"))
     head = ScriptDirectory.from_config(config).get_current_head()
     inspector = inspect(engine)
     has_version_table = inspector.has_table("alembic_version")

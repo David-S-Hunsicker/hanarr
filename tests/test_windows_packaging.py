@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import sys
 
 import jobcopilot.packaged as packaged
 
@@ -76,6 +77,35 @@ def test_installer_upgrade_target_is_stable_and_uninstall_does_not_delete_user_d
     assert "{localappdata}\\Hanarr" not in uninstall_section.replace(
         "; Deliberately do not remove {localappdata}\\Hanarr. It contains user data.", ""
     )
+
+
+def test_ensure_standard_streams_replaces_none_streams():
+    """Regression test for a packaged-runtime crash: a PyInstaller ``--windowed``
+    build has no console, so ``sys.stdout``/``sys.stderr`` are ``None``. Uvicorn's
+    default logging formatter calls ``sys.stdout.isatty()`` while configuring
+    itself and crashes with ``AttributeError``/``ValueError`` before the server
+    can start. ``_ensure_standard_streams`` must give both a real stream.
+    """
+    assert sys.stdout is not None
+    assert sys.stderr is not None
+    packaged._ensure_standard_streams()  # no-op with real streams present
+    assert sys.stdout is not None
+    assert sys.stderr is not None
+
+
+def test_ensure_standard_streams_handles_none(monkeypatch):
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    packaged._ensure_standard_streams()
+
+    assert sys.stdout is not None
+    assert sys.stderr is not None
+    # Must not raise, matching what uvicorn's default formatter calls. The
+    # actual isatty() result is platform-dependent (os.devnull reports True
+    # on Windows); only absence of a crash is asserted here.
+    sys.stdout.isatty()
+    sys.stderr.isatty()
 
 
 def test_packaged_runtime_preserves_existing_user_data_on_upgrade(tmp_path, monkeypatch):

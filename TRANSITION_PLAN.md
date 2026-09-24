@@ -989,3 +989,66 @@ walkthroughs. Only after those results are recorded should a separately approved
 certificate-backed Authenticode signing and publication. Keep update installation, silent
 updates, unattended setup, and macOS/Linux packaging as separate future work; do not infer them
 from this local-first foundation.
+
+### Phase 11 — first real-machine validation and two packaged-runtime fixes
+
+**Status:** The above future handoff was executed on a real Windows 11 development machine
+(not a clean VM). Tool versions: Python 3.14.7, PyInstaller 6.22.3, Inno Setup 6.7.3
+(`JRSoftware.InnoSetup` via winget). `-ValidateOnly` preflight passed, and the full build
+produced `Hanarr-Setup-0.1.0.exe` (SHA-256 `b454d98c46a9411e6ae657758c760698fd44036202ba576c6cb836a33c67cf25`
+for the fixed build).
+
+This was the first time the packaged executables were actually launched rather than only
+built. Doing so surfaced two startup crashes that no existing test caught, because every
+prior test ran from a source checkout (`__file__` pointing into `src/`, `sys.stdout`/`stderr`
+present) and never simulated the frozen-bundle, no-console conditions a `--windowed`
+PyInstaller build actually runs under:
+
+1. **Migration path resolution broke when frozen.** `db.py` located `alembic.ini` via
+   `Path(__file__).resolve().parents[2]`, which resolves correctly in a source checkout but
+   points outside the bundle entirely once PyInstaller extracts to `sys._MEIPASS`. The app
+   crashed immediately with `alembic.util.exc.CommandError: No 'script_location' key found in
+   configuration.` A second latent issue sat behind it: `alembic.ini`'s `script_location =
+   migrations` is a bare relative path, and the packaged runtime changes its working directory
+   to the user-data folder (`%LOCALAPPDATA%\Hanarr`) before startup, so even a correctly
+   located `alembic.ini` would have pointed Alembic at a nonexistent `migrations` folder under
+   user data. Fixed by resolving the bundle root via `sys._MEIPASS` when frozen (mirroring the
+   pattern `packaged.py` already used for its own template lookup) and by setting
+   `script_location` on the `Config` object as an absolute path rather than relying on the ini
+   file's relative value.
+2. **Uvicorn's default logging formatter crashed with no console.** A PyInstaller
+   `--windowed` build has `sys.stdout`/`sys.stderr` set to `None` (no attached console).
+   Uvicorn's default log formatter calls `sys.stdout.isatty()` while configuring itself,
+   raising `AttributeError` (`'NoneType' object has no attribute 'isatty'`) which surfaced as
+   `ValueError: Unable to configure formatter 'default'` out of `uvicorn.Config.__init__`.
+   Fixed in `packaged.py` by giving both streams a real (discarding) file object before the
+   CLI is invoked, when they are `None`.
+
+Both fixes have regression tests (`tests/test_migrations.py::test_migration_resolves_bundle_and_ignores_working_directory_when_frozen`,
+`tests/test_windows_packaging.py::test_ensure_standard_streams_handles_none`) that reproduce
+the frozen/no-console conditions with `monkeypatch` rather than requiring an actual build.
+`.gitignore` now excludes PyInstaller's generated `*.spec` files and `installer/output/`.
+
+**Validation performed on this machine (not a clean VM):**
+
+- `python -m pytest -q` — 154 passed (151 prior + 3 new regression tests).
+- `python -m compileall -q src` and `git diff --check` — clean.
+- Silent install (`/VERYSILENT`) creates both Start Menu shortcuts and the Add/Remove Programs
+  entry with the expected display name/publisher/install location.
+- Launching the installed `HanarrBrowser.exe` now serves the dashboard: `GET http://127.0.0.1:8420/`
+  returns `200` with `<title>Hanarr</title>`, and `%LOCALAPPDATA%\Hanarr\config.yaml` and
+  `data\jobcopilot.db` are created on first run, with an initial migration backup recorded.
+- Installing the same version again over an existing install (upgrade-in-place, no prior
+  uninstall) leaves the application binaries in place and leaves `config.yaml` and
+  `jobcopilot.db` byte-for-byte unchanged (verified with a written marker and a file hash).
+- Silent uninstall removes the application directory, both Start Menu shortcuts, and the
+  Add/Remove Programs entry, while `%LOCALAPPDATA%\Hanarr` (config, resumes, database) is left
+  in place untouched, matching the documented uninstall policy.
+
+**Not yet performed (still requires a genuinely clean machine/VM):** install with no prior
+Python/build tooling present at all, no-network setup, an existing separate Ollama
+installation, cancelled/failed provider setup, a forced migration failure, and visual
+confirmation of the desktop webview shortcut (only the browser launcher was exercised end to
+end here; the desktop `HanarrDesktop.exe` shortcut was verified to exist and launch a process
+but its webview rendering was not visually inspected). Certificate-backed Authenticode signing
+and release publication remain deferred and out of scope for this pass.
