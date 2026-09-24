@@ -6,7 +6,16 @@ from sqlalchemy import select
 from jobcopilot.config import Settings
 from jobcopilot.dashboard.app import create_app
 from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.models import JobPosting, ProvenSkill, Skill, SkillGapStatus
+from jobcopilot.models import (
+    JobPosting,
+    ProfileSkill,
+    Project,
+    ProjectMode,
+    ProjectSkill,
+    ProvenSkill,
+    Skill,
+    SkillGapStatus,
+)
 from jobcopilot.skill_analysis import analyze_job
 
 
@@ -144,3 +153,72 @@ def test_index_shows_gap_indicator_and_preserves_status_action(tmp_path):
     assert "1 gap" in html
     assert "View fit analysis" in html
     assert f"/jobs/{job_id}/status" in html
+
+
+def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_summary_json = json.dumps({"skills": ["Python"]})
+        skill = Skill(name="Python", slug="python")
+        session.add(skill)
+        session.flush()
+        session.add(ProfileSkill(
+            profile_id=profile.id, skill_id=skill.id, proficiency=.8,
+            confidence=.6, evidence="Maintained a production API", source="manual",
+        ))
+        project = Project(
+            profile_id=profile.id, title="Python API project",
+            mode=ProjectMode.REUSABLE_SKILL, target_outcome="Working API",
+        )
+        project.skills.append(ProjectSkill(skill_id=skill.id, target_level=.9))
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1",
+            company="Acme", title="Python Engineer", url="https://example.test",
+        )
+        session.add_all([project, job])
+        session.commit()
+        skill_id = skill.id
+        job_id = job.id
+        analyze_job(session, profile, job, FakeLLM('{"requirements": [{"name": "Python"}]}'))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    page = client.get("/skills")
+    assert page.status_code == 200
+    assert "Maintained a production API" in page.text
+    assert "Python API project" in page.text
+    assert "Affected jobs" in page.text
+    assert "Not proven" in page.text
+    assert client.get("/api/skills").json()["skills"][0]["proven"] is None
+
+    updated = client.patch(
+        f"/api/skills/{skill_id}/profile",
+        json={"proficiency": .9, "confidence": .8, "evidence": "Corrected evidence"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["proven"] is False
+
+
+def test_skill_override_requires_evidence_and_never_creates_proof(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="SQL", slug="sql")
+        session.add(skill)
+        session.commit()
+        skill_id = skill.id
+
+    client = TestClient(create_app(settings))
+    missing = client.patch(
+        f"/api/skills/{skill_id}/profile",
+        json={"proficiency": .5, "confidence": .5},
+    )
+    assert missing.status_code == 400
+    invalid = client.patch(
+        f"/api/skills/{skill_id}/profile",
+        json={"proficiency": 2, "confidence": .5, "evidence": "No"},
+    )
+    assert invalid.status_code == 400

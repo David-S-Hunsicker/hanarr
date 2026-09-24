@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Skills · Hannar</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; } }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin-bottom:.75rem; } h3 { font-size:1rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; } .muted, .meta { color:var(--muted); }
+    .nav { display:flex; gap:.35rem; flex-wrap:wrap; margin:1rem 0 1.7rem; border-bottom:1px solid var(--border); } .nav a { color:var(--muted); padding:.5rem .7rem; text-decoration:none; font-size:.88rem; } .nav a.active { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:650; }
+    .section { margin:1.5rem 0; } .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:.7rem 0; } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:.7rem; } .label { font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; } .good { color:var(--good); } .warn { color:var(--warn); } .list { margin:.4rem 0 0; padding-left:1.1rem; } details { margin-top:.7rem; } summary { cursor:pointer; color:var(--accent); } form { display:grid; gap:.45rem; max-width:34rem; margin-top:.8rem; } input, textarea, button { font:inherit; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); } textarea { min-height:4rem; } button { cursor:pointer; justify-self:start; } .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>Skills</h1><span class="meta">Capability, evidence, and wording are tracked separately.</span></div>
+  <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a class="active" href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
+  <p class="muted">A resume mention is not proof. A project becomes proven only after a passing evaluation; corrections below update capability evidence without creating a proven-skill record.</p>
+  <section class="section">
+    {% if skills %}
+      {% for skill in skills %}
+      <article class="card">
+        <h2>{{ skill.name }} {% if skill.proven %}<span class="pill good">Proven</span>{% else %}<span class="pill warn">Not proven</span>{% endif %}</h2>
+        <div class="grid">
+          <div><div class="label">Capability</div><p>{% if skill.capability.proficiency is not none %}Current level: {{ "%.0f"|format(skill.capability.proficiency * 100) }}%{% else %}Current level: not recorded{% endif %}<br>{% if skill.capability.confidence is not none %}Confidence: {{ "%.0f"|format(skill.capability.confidence * 100) }}%{% else %}Confidence: not recorded{% endif %}<br><span class="muted">Source: {{ skill.capability.source }}</span></p><p>{{ skill.capability.evidence or "No capability evidence recorded." }}</p></div>
+          <div><div class="label">Project evidence</div>{% if skill.projects %}<ul class="list">{% for project in skill.projects %}<li><a href="/coaching">{{ project.title }}</a> · {{ project.status }}{% if project.target_level is not none %} · target {{ "%.0f"|format(project.target_level * 100) }}%{% endif %}{% if project.evidence %}<br><span class="muted">{{ project.evidence }}</span>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="muted">No coaching project evidence yet.</p>{% endif %}{% if skill.proven %}<p class="good"><strong>Passed evidence:</strong> {{ skill.proven.evidence }}</p>{% endif %}</div>
+          <div><div class="label">Resume wording</div><p>{% if skill.resume_wording %}Mentioned in the stored resume profile summary.{% else %}No resume wording recorded for this skill.{% endif %}</p><div class="label">Affected jobs</div>{% if skill.jobs %}<ul class="list">{% for job in skill.jobs %}<li><a href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }} · {{ job.company }}</a> · {{ job.status }} ({{ job.requirement }})</li>{% endfor %}</ul>{% else %}<p class="muted">No analyzed jobs yet.</p>{% endif %}</div>
+        </div>
+        <details><summary>Correct capability evidence</summary><form data-skill-id="{{ skill.id }}"><label>Current level (0 to 1)<input name="proficiency" type="number" min="0" max="1" step=".05" value="{{ skill.capability.proficiency if skill.capability.proficiency is not none else '' }}"></label><label>Confidence (0 to 1)<input name="confidence" type="number" min="0" max="1" step=".05" value="{{ skill.capability.confidence if skill.capability.confidence is not none else '' }}"></label><label>Evidence<textarea name="evidence" required>{{ skill.capability.evidence }}</textarea></label><button type="submit">Save correction</button><span class="muted" data-message></span></form></details>
+      </article>
+      {% endfor %}
+    {% else %}<div class="empty">No skills are available yet. Upload or re-parse a resume, or analyze a saved job.</div>{% endif %}
+  </section>
+  <script>
+    document.querySelectorAll("form[data-skill-id]").forEach((form) => form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(form));
+      const response = await fetch(`/api/skills/${form.dataset.skillId}/profile`, {method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+      const message = form.querySelector("[data-message]");
+      message.textContent = response.ok ? "Saved. This remains capability evidence, not proof." : ((await response.json()).error || "Could not save.");
+      if (response.ok) window.setTimeout(() => window.location.reload(), 500);
+    }));
+  </script>
+</body>
+</html>

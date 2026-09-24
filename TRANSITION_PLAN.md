@@ -508,6 +508,23 @@ read the before/after explanations and trace the impact back to project evidence
   adapter and review/diff refinements; unattended external delivery and automatic proposal
   approval remain deferred.
 
+  #### Progress — first-class Skills page and evidence UX
+
+  The Skills milestone is complete. A dedicated Skills page now shows each normalized
+  capability's current level, confidence, source, and evidence alongside separate project
+  evidence, proven-skill status, resume wording, and affected analyzed jobs. The page links
+  project evidence to Coaching and affected jobs to their saved postings, while preserving
+  the distinction that resume wording or capability evidence is not proof. A correction form
+  and `PATCH /api/skills/{skill_id}/profile` endpoint allow a user to replace capability
+  proficiency, confidence, and evidence with bounded values; corrections are stored as
+  manual `ProfileSkill` data and never create a `ProvenSkill` record.
+
+  **Validation:** `python -m pytest -q tests/test_skill_analysis.py tests/test_dashboard_app.py`,
+  `python -m compileall -q src`, `git diff --check`, and the full `python -m pytest -q`
+  suite passed. The next handoff is a GitHub-ready submission adapter and review/diff
+  refinements; automatic proven-skill claims, proposal approval, and external delivery
+  remain explicitly gated.
+
   #### Progress — deterministic evaluator stage
 
   Commit `7efb28c` established the explicit submission boundary. This milestone adds

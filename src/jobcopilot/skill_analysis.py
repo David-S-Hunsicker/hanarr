@@ -21,6 +21,8 @@ from .models import (
     Profile,
     ProfileSkill,
     ProvenSkill,
+    Project,
+    ProjectSkill,
     Skill,
     SkillGapStatus,
 )
@@ -244,3 +246,81 @@ def saved_job_gap(session: Session, profile: Profile, job_id: int) -> dict | Non
         if item["job"]["id"] == job_id:
             return item
     return None
+
+
+def profile_skill_page(session: Session, profile: Profile) -> list[dict]:
+    """Build the evidence view without treating profile claims as proven."""
+    sync_profile_skills(session, profile)
+    rows = session.execute(
+        select(ProfileSkill, Skill)
+        .join(Skill, Skill.id == ProfileSkill.skill_id)
+        .where(ProfileSkill.profile_id == profile.id)
+        .order_by(Skill.name)
+    ).all()
+    proven = {
+        item.skill_id: item
+        for item in session.execute(
+            select(ProvenSkill).where(ProvenSkill.profile_id == profile.id)
+        ).scalars()
+    }
+    projects = session.execute(
+        select(ProjectSkill, Project)
+        .join(Project, Project.id == ProjectSkill.project_id)
+        .where(Project.profile_id == profile.id)
+    ).all()
+    projects_by_skill: dict[int, list[dict]] = {}
+    for project_skill, project in projects:
+        projects_by_skill.setdefault(project_skill.skill_id, []).append(
+            {
+                "id": project.id,
+                "title": project.title,
+                "status": project.status.value,
+                "target_level": project_skill.target_level,
+                "evidence": project_skill.evidence,
+            }
+        )
+    jobs = session.execute(
+        select(JobSkill, JobPosting)
+        .join(JobPosting, JobPosting.id == JobSkill.job_id)
+        .where(JobPosting.profile_id == profile.id)
+    ).all()
+    jobs_by_skill: dict[int, list[dict]] = {}
+    for job_skill, job in jobs:
+        jobs_by_skill.setdefault(job_skill.skill_id, []).append(
+            {
+                "id": job.id,
+                "title": job.title,
+                "company": job.company,
+                "url": job.url,
+                "requirement": job_skill.requirement.value,
+                "status": job_skill.gap_status.value,
+                "evidence": job_skill.evidence,
+                "confidence": job_skill.confidence,
+            }
+        )
+    return [
+        {
+            "id": skill.id,
+            "name": skill.name,
+            "slug": skill.slug,
+            "capability": {
+                "proficiency": row.proficiency,
+                "confidence": row.confidence,
+                "evidence": row.evidence,
+                "source": row.source,
+            },
+            "proven": (
+                {
+                    "evidence": proven[skill.id].evidence,
+                    "project_id": proven[skill.id].project_id,
+                    "proven_at": proven[skill.id].proven_at.isoformat(),
+                }
+                if skill.id in proven
+                else None
+            ),
+            "resume_wording": row.source == "resume",
+            "projects": projects_by_skill.get(skill.id, []),
+            "jobs": jobs_by_skill.get(skill.id, []),
+        }
+        for row, skill in rows
+    ]

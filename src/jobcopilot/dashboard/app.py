@@ -34,11 +34,13 @@ from ..models import (
     ProjectStatus,
     ProjectTask,
     ProjectTaskStatus,
+    ProfileSkill,
     Reminder,
     ResumeProposal,
     ResumeVersion,
     ProvenSkill,
     SeenPosting,
+    Skill,
 )
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
@@ -49,7 +51,7 @@ from ..resume_loop import (
     reject_resume_proposal,
     resume_status as resume_page_status,
 )
-from ..skill_analysis import analyze_job, saved_job_gap, saved_job_gaps
+from ..skill_analysis import analyze_job, profile_skill_page, saved_job_gap, saved_job_gaps
 from ..submissions import (
     create_local_submission,
     create_written_submission,
@@ -421,6 +423,50 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             profile = get_or_create_profile(session, settings)
             return JSONResponse({"jobs": saved_job_gaps(session, profile)})
 
+    @app.get("/api/skills")
+    def get_skills():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return JSONResponse({"skills": profile_skill_page(session, profile)})
+
+    @app.patch("/api/skills/{skill_id}/profile")
+    async def update_profile_skill(skill_id: int, request: Request):
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "skill update must be an object."}, status_code=400)
+        try:
+            proficiency = payload.get("proficiency")
+            confidence = payload.get("confidence")
+            proficiency = None if proficiency in (None, "") else float(proficiency)
+            confidence = None if confidence in (None, "") else float(confidence)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "proficiency and confidence must be numbers from 0 to 1."}, status_code=400)
+        if any(value is not None and not 0 <= value <= 1 for value in (proficiency, confidence)):
+            return JSONResponse({"error": "proficiency and confidence must be numbers from 0 to 1."}, status_code=400)
+        evidence = str(payload.get("evidence", "")).strip()
+        if not evidence:
+            return JSONResponse({"error": "evidence is required for a capability override."}, status_code=400)
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            skill = session.get(Skill, skill_id)
+            if skill is None:
+                return JSONResponse({"error": "Skill not found."}, status_code=404)
+            row = session.query(ProfileSkill).filter_by(
+                profile_id=profile.id, skill_id=skill.id
+            ).one_or_none()
+            if row is None:
+                row = ProfileSkill(profile_id=profile.id, skill_id=skill.id)
+                session.add(row)
+            row.proficiency = proficiency
+            row.confidence = confidence
+            row.evidence = evidence
+            row.source = "manual"
+            session.commit()
+            return JSONResponse({"skill": skill.name, "capability": {
+                "proficiency": row.proficiency, "confidence": row.confidence,
+                "evidence": row.evidence, "source": row.source,
+            }, "proven": False})
+
     @app.post("/api/coaching-projects")
     async def create_project(request: Request):
         payload = await request.json()
@@ -683,13 +729,22 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 context={"resume": resume_page_status(profile, session)}
             )
 
-    @app.get("/{section:skills|applications}")
-    def future_section(request: Request, section: str):
+    @app.get("/skills")
+    def skills_page(request: Request):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            return templates.TemplateResponse(
+                request=request,
+                name="skills.html",
+                context={"skills": profile_skill_page(session, profile)},
+            )
+
+    @app.get("/applications")
+    def future_section(request: Request):
         labels = {"resume": "Resume", "skills": "Skills", "applications": "Applications"}
         return templates.TemplateResponse(
             request=request,
-            name="placeholder.html",
-            context={"section": labels[section]},
+            name="placeholder.html", context={"section": labels["applications"]},
         )
 
     @app.post("/jobs/clear")
