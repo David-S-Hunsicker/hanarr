@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import Preferences, Settings
 from .db import get_or_create_profile
 from .llm.base import LLMClient
-from .models import Profile
+from .models import Profile, ResumeVersion
 
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".txt", ".md"}
 
@@ -154,7 +154,16 @@ def parse_and_store_resume(
     happened, so the caller knows whether to persist config.yaml. Raises
     FileNotFoundError if the resume is missing; LLM extraction failures are
     caught and recorded in the returned summary's _extraction_error, not
-    raised."""
+    raised.
+
+    Also records a ResumeVersion when the content actually changed (or none
+    exists yet). Without this, the Resume page and the project-completion
+    proposal loop — both driven entirely by ResumeVersion rows, not
+    profile.resume_text directly — would have no record of a resume that
+    was only ever uploaded/parsed here rather than approved through a
+    proposal: the page would permanently show "not ready" and version
+    history would stay empty no matter how many times a resume was
+    (re-)uploaded."""
     resume_path = Path(settings.profile.resume_path)
     resume_text = load_resume_text(resume_path)
     summary = extract_profile_summary(resume_text, llm)
@@ -162,6 +171,13 @@ def parse_and_store_resume(
     profile = get_or_create_profile(session, settings)
     profile.resume_text = resume_text
     profile.resume_summary_json = json.dumps(summary)
+
+    active_version = next((v for v in reversed(profile.resume_versions) if v.is_active), None)
+    if active_version is None or active_version.content != resume_text:
+        for version in profile.resume_versions:
+            version.is_active = False
+        session.add(ResumeVersion(profile_id=profile.id, content=resume_text, is_active=True))
+
     session.commit()
 
     prefs_changed = False

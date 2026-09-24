@@ -6,12 +6,13 @@ from sqlalchemy.orm import sessionmaker
 
 from hanarr.config import Preferences, Settings
 from hanarr.llm.base import LLMClient
-from hanarr.models import Base
+from hanarr.models import Base, ResumeVersion
 from hanarr.resume import (
     autopopulate_preferences_from_resume,
     parse_and_store_resume,
     suggest_boost_keywords,
 )
+from hanarr.resume_loop import resume_status
 
 
 def test_autopopulate_fills_blank_preferences():
@@ -170,3 +171,60 @@ def test_parse_and_store_resume_raises_on_missing_file():
 
     with pytest.raises(FileNotFoundError):
         parse_and_store_resume(session, settings, _FakeLLM({}))
+
+
+def test_parse_and_store_resume_creates_a_resume_version_the_resume_page_can_see(tmp_path):
+    """Regression test: the Resume page and the project-completion proposal
+    loop are both driven entirely by ResumeVersion rows, not
+    profile.resume_text directly. Before this fix, uploading a resume (or
+    running `hanarr init`) only ever wrote profile.resume_text/summary_json
+    and never created a ResumeVersion, so the Resume page permanently showed
+    "not ready" no matter how many times a resume was (re-)uploaded."""
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer with PyTorch experience.")
+
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    llm = _FakeLLM({"titles": ["AI Engineer"], "skills": ["pytorch"]})
+    session = _make_session()
+
+    profile, _, _ = parse_and_store_resume(session, settings, llm)
+    session.commit()
+
+    versions = session.query(ResumeVersion).filter_by(profile_id=profile.id).all()
+    assert len(versions) == 1
+    assert versions[0].is_active is True
+    assert "PyTorch" in versions[0].content
+
+    status = resume_status(profile, session)
+    assert status["matcher"]["status"] == "ready"
+    assert status["matcher"]["version_id"] == versions[0].id
+    assert "PyTorch" in status["active"]["content"]
+    assert len(status["versions"]) == 1
+
+
+def test_reparsing_an_unchanged_resume_does_not_pile_up_duplicate_versions(tmp_path):
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer.")
+
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    llm = _FakeLLM({"titles": ["AI Engineer"], "skills": []})
+    session = _make_session()
+
+    profile, _, _ = parse_and_store_resume(session, settings, llm)
+    parse_and_store_resume(session, settings, llm)  # same file content again
+    session.commit()
+
+    versions = session.query(ResumeVersion).filter_by(profile_id=profile.id).all()
+    assert len(versions) == 1
+
+    resume_file.write_text("Jane Doe. AI Engineer. Now with Kubernetes.")
+    parse_and_store_resume(session, settings, llm)  # genuinely new content
+    session.commit()
+
+    versions = session.query(ResumeVersion).filter_by(profile_id=profile.id).all()
+    assert len(versions) == 2
+    active = [v for v in versions if v.is_active]
+    assert len(active) == 1
+    assert "Kubernetes" in active[0].content

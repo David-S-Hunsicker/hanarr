@@ -13,7 +13,7 @@ from rich.table import Table
 from .config import DEFAULT_CONFIG_PATH, load_settings, save_settings_to_yaml
 from .db import get_or_create_profile, make_session_factory
 from .llm import build_llm_client
-from .models import ApplicationStatus, JobPosting
+from .models import ApplicationStatus, JobPosting, ResumeVersion
 from .pipeline import run_search_cycle
 from .reminders import (
     deliver_reminders,
@@ -209,6 +209,16 @@ def serve(ctx: click.Context, launch_mode: str | None):
                 console.print(
                     "[green]Filled in target_titles/keywords_boost from your saved resume profile.[/green]"
                 )
+
+        # Same self-heal, for a different pre-existing gap: a resume parsed
+        # before ResumeVersion tracking existed left profile.resume_text set
+        # with zero ResumeVersion rows, so the Resume page permanently showed
+        # "not ready" despite a real, already-parsed resume being on file.
+        # Backfill one so existing installations don't need to re-upload.
+        if profile.resume_text and not any(v.is_active for v in profile.resume_versions):
+            session.add(ResumeVersion(profile_id=profile.id, content=profile.resume_text, is_active=True))
+            session.commit()
+            console.print("[green]Backfilled a resume version from your already-parsed resume.[/green]")
 
     from .scheduler import start_scheduler
 
