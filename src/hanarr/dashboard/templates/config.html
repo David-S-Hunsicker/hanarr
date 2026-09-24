@@ -73,18 +73,20 @@
     .nav-link { font-size: 0.85rem; font-weight: 550; color: var(--accent); text-decoration: none; }
     .nav-link:hover { text-decoration: underline; }
 
-    .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--gridline); }
+    .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
     .tab {
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       font-weight: 600;
       color: var(--text-secondary);
       text-decoration: none;
-      padding: 0.6rem 0.9rem;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      transition: background .12s ease, color .12s ease, border-color .12s ease;
     }
-    .tab:hover { color: var(--text-primary); }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab:hover { border-color: var(--accent); color: var(--accent); }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     .card {
       background: var(--surface-1);
