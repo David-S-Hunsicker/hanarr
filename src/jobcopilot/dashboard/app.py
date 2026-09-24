@@ -29,6 +29,7 @@ from ..models import (
     JobPosting,
     Project,
     ProjectMode,
+    ProjectSubmission,
     ProjectStatus,
     ProjectTask,
     ProjectTaskStatus,
@@ -39,6 +40,12 @@ from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
 from ..skill_analysis import analyze_job, saved_job_gap, saved_job_gaps
+from ..submissions import (
+    create_local_submission,
+    create_written_submission,
+    submit_submission,
+    submission_status,
+)
 from .config_form import (
     apply_app_config_form,
     apply_preferences_form,
@@ -463,6 +470,65 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 project.status = ProjectStatus.ACTIVE
             session.commit()
             return JSONResponse(project_status(project))
+
+    @app.post("/api/coaching-projects/{project_id}/submissions")
+    async def create_written_project_submission(project_id: int, request: Request):
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "submission payload must be an object."}, status_code=400)
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                submission = create_written_submission(
+                    session, profile.id, project_id, str(payload.get("content", "")), str(payload.get("title", ""))
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission), status_code=201)
+
+    @app.post("/api/coaching-projects/{project_id}/submissions/files")
+    async def create_local_project_submission(
+        project_id: int,
+        files: list[UploadFile] = File(...),
+        title: str = Form(""),
+    ):
+        uploaded = []
+        for file in files:
+            uploaded.append((file.filename or "", await file.read()))
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                submission = create_local_submission(
+                    session, profile.id, project_id, uploaded, Path(settings.data_dir) / "submissions", title
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission), status_code=201)
+
+    @app.get("/api/coaching-projects/{project_id}/submissions")
+    def list_project_submissions(project_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            project = session.get(Project, project_id)
+            if project is None or project.profile_id != profile.id:
+                return JSONResponse({"error": "Coaching project not found."}, status_code=404)
+            return JSONResponse({"submissions": [submission_status(item) for item in project.submissions]})
+
+    @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/submit")
+    def submit_project_submission(project_id: int, submission_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            submission = session.get(ProjectSubmission, submission_id)
+            if submission is None or submission.project_id != project_id:
+                return JSONResponse({"error": "Submission not found."}, status_code=404)
+            try:
+                submission = submit_submission(session, profile.id, submission_id)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(submission_status(submission))
 
     @app.get("/coaching")
     def coaching(request: Request):

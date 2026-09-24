@@ -158,4 +158,16 @@ def project_status(project: Project) -> dict:
             {"id": task.id, "position": task.position, "title": task.title, "description": task.description, "status": task.status.value}
             for task in sorted(project.tasks, key=lambda item: item.position)
         ],
+        "submissions": [
+            {
+                "id": submission.id,
+                "kind": submission.kind.value,
+                "title": submission.title,
+                "status": submission.status.value,
+                "manifest": json.loads(submission.manifest_json or "[]"),
+                "created_at": submission.created_at.isoformat() if submission.created_at else None,
+                "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
+            }
+            for submission in sorted(project.submissions, key=lambda item: item.id, reverse=True)
+        ],
     }

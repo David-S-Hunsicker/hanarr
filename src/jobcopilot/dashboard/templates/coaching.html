@@ -22,6 +22,9 @@
     .jobs { display: flex; gap: .4rem; flex-wrap: wrap; } .jobs a, .suggestion button { color: var(--accent); }
     .suggestion { display: flex; justify-content: space-between; gap: 1rem; align-items: center; } .suggestion p { margin: .25rem 0 0; }
     .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1rem; }
+    textarea { width: 100%; min-height: 7rem; font: inherit; padding: .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+    .submission-form { display: grid; gap: .5rem; margin-top: 1rem; }
+    .submission-form button { justify-self: start; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -63,6 +66,24 @@
           <li><span>{{ task.position }}. {{ task.title }}</span><form method="post" action="/api/coaching-projects/{{ project.id }}/tasks/{{ task.id }}/status" class="task-status"><select name="status" aria-label="Status for {{ task.title }}" data-project-id="{{ project.id }}" data-task-id="{{ task.id }}"><option value="todo" {% if task.status == "todo" %}selected{% endif %}>To do</option><option value="in_progress" {% if task.status == "in_progress" %}selected{% endif %}>In progress</option><option value="done" {% if task.status == "done" %}selected{% endif %}>Done</option></select></form></li>
           {% endfor %}
         </ol>
+        <div class="submission-form">
+          <strong>Draft a written response</strong>
+          <textarea id="response-{{ project.id }}" placeholder="Describe what you built, the evidence, and tradeoffs."></textarea>
+          <button type="button" data-project-id="{{ project.id }}" class="save-response">Save draft</button>
+        </div>
+        <div class="submission-form">
+          <strong>Add local files or a folder</strong>
+          <input type="file" multiple data-project-id="{{ project.id }}" class="local-files">
+          <button type="button" data-project-id="{{ project.id }}" class="save-files">Save files as draft</button>
+        </div>
+        {% if project.submissions %}
+        <div class="meta"><strong>Submission history:</strong>
+          {% for submission in project.submissions %}
+          <span class="pill">{{ submission.kind|replace("_", " ") }} · {{ submission.status }}{% if submission.manifest %} · {{ submission.manifest|length }} file(s){% endif %}</span>
+          {% if submission.status == "draft" %}<button type="button" class="submit-draft" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Submit for review</button>{% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     {% else %}<div class="empty">No projects yet. Start one from an analyzed gap on the <a href="/">Jobs</a> page.</div>{% endif %}
@@ -74,6 +95,33 @@
           method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: select.value})
         });
         if (!response.ok) window.location.reload();
+      });
+    });
+    document.querySelectorAll(".save-response").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const content = document.querySelector(`#response-${button.dataset.projectId}`).value;
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions`, {
+          method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({content})
+        });
+        if (!response.ok) window.alert((await response.json()).error || "Could not save response.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".save-files").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const input = document.querySelector(`.local-files[data-project-id="${button.dataset.projectId}"]`);
+        const form = new FormData();
+        for (const file of input.files) form.append("files", file, file.webkitRelativePath || file.name);
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/files`, {method: "POST", body: form});
+        if (!response.ok) window.alert((await response.json()).error || "Could not save files.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".submit-draft").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/submit`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not submit draft.");
+        else window.location.reload();
       });
     });
   </script>

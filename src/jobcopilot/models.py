@@ -311,12 +311,24 @@ class ProjectSubmissionStatus(str, enum.Enum):
     EVALUATED = "evaluated"
 
 
+class ProjectSubmissionKind(str, enum.Enum):
+    WRITTEN_RESPONSE = "written_response"
+    LOCAL_FILES = "local_files"
+
+
 class ProjectSubmission(Base):
     __tablename__ = "project_submissions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    kind: Mapped[ProjectSubmissionKind] = mapped_column(
+        Enum(ProjectSubmissionKind), default=ProjectSubmissionKind.WRITTEN_RESPONSE
+    )
+    title: Mapped[str] = mapped_column(String, default="")
     content: Mapped[str] = mapped_column(Text, default="")
+    artifact_dir: Mapped[str | None] = mapped_column(String, nullable=True)
+    manifest_json: Mapped[str] = mapped_column(Text, default="[]")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[ProjectSubmissionStatus] = mapped_column(
         Enum(ProjectSubmissionStatus), default=ProjectSubmissionStatus.DRAFT
     )

@@ -132,3 +132,60 @@ def test_coaching_page_shows_suggestions_projects_jobs_and_updates_task(tmp_path
         project = session.get(Project, created["id"])
         assert project.status.value == "active"
         assert project.tasks[0].status is ProjectTaskStatus.IN_PROGRESS
+
+
+def test_submission_api_normalizes_written_history_and_requires_explicit_submit(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    created = client.post(
+        f"/api/coaching-projects/{project_id}/submissions",
+        json={"title": "Reflection", "content": "I built and tested the workflow."},
+    )
+    assert created.status_code == 201
+    assert created.json()["kind"] == "written_response"
+    assert created.json()["status"] == "draft"
+    assert client.get(f"/api/coaching-projects/{project_id}/submissions").json()["submissions"][0]["status"] == "draft"
+
+    submitted = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/{created.json()['id']}/submit"
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["status"] == "submitted"
+
+
+def test_local_submission_stores_manifest_and_rejects_traversal(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    created = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/files",
+        files=[("files", ("nested/README.md", b"evidence", "text/plain"))],
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["kind"] == "local_files"
+    assert body["manifest"] == [{"path": "nested/README.md", "bytes": 8}]
+    assert (tmp_path / "data" / "submissions" / str(project_id) / str(body["id"]) / "nested" / "README.md").read_text() == "evidence"
+
+    rejected = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/files",
+        files=[("files", ("../secret.txt", b"nope", "text/plain"))],
+    )
+    assert rejected.status_code == 400

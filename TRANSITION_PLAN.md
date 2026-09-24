@@ -459,6 +459,20 @@ read the before/after explanations and trace the impact back to project evidence
 **Exit:** Each supported destination has a dry-run/review path, an auditable artifact, and
   a safe failure/retry story.
 
+  #### Progress — local and written submission contract
+
+  Commit `3ab7187` established coaching projects. The next bounded milestone adds normalized,
+  profile-scoped written-response and local-file submission records, additive migration `0005`,
+  local artifact storage under `data/submissions/`, validation for response size, file count,
+  file size, and traversal, draft history, and an explicit submit transition. The project API
+  and Coaching page expose both submission kinds and their history. GitHub delivery, evaluator
+  agents, and resume writing remain intentionally out of scope.
+
+  Validation covers project linking, normalized manifests, draft-to-submitted history, local
+  artifact persistence, traversal rejection, migrations, and the existing coaching flow.
+  The next handoff is to add review/diff presentation and a GitHub-ready adapter without
+  granting unattended submission or evaluator behavior.
+
 ### Deferred decisions
 
 - Anthropic web search, web scraping, and any new source whose access terms are unclear.
