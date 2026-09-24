@@ -177,17 +177,65 @@ def reject_resume_proposal(session: Session, profile_id: int, proposal_id: int) 
     return proposal
 
 
-def resume_status(profile: Profile) -> dict[str, Any]:
+def resume_status(profile: Profile, session: Session | None = None) -> dict[str, Any]:
     active = next((version for version in reversed(profile.resume_versions) if version.is_active), None)
+    summary = {}
+    if profile.resume_summary_json:
+        try:
+            summary = json.loads(profile.resume_summary_json)
+        except json.JSONDecodeError:
+            summary = {}
+    impacts = []
+    if session is not None:
+        snapshots = session.scalars(
+            select(ScoreSnapshot)
+            .where(
+                ScoreSnapshot.profile_id == profile.id,
+                ScoreSnapshot.trigger == "resume_approved",
+            )
+            .order_by(ScoreSnapshot.created_at.desc(), ScoreSnapshot.id.desc())
+        ).all()
+        for snapshot in snapshots:
+            job = session.get(JobPosting, snapshot.job_id)
+            metadata = json.loads(snapshot.scorer_metadata_json or "{}")
+            impacts.append({
+                "job_id": snapshot.job_id,
+                "title": job.title if job else "Saved job",
+                "company": job.company if job else "",
+                "before_score": metadata.get("before_score"),
+                "after_score": metadata.get("after_score", snapshot.fit_score),
+                "delta": (
+                    metadata.get("after_score", snapshot.fit_score)
+                    - metadata["before_score"]
+                    if metadata.get("before_score") is not None
+                    else None
+                ),
+                "created_at": snapshot.created_at.isoformat(),
+                "explanation": metadata.get("explanation", snapshot.fit_rationale),
+            })
     return {
         "active": {"id": active.id, "content": active.content} if active else {"id": None, "content": profile.resume_text or ""},
+        "extracted_profile": summary,
+        "matcher": {
+            "status": "ready" if (active and active.content.strip()) else "not_ready",
+            "source": "active resume",
+            "version_id": active.id if active else None,
+            "message": (
+                "This approved resume is parsed and feeds new job matching and rescoring."
+                if active and active.content.strip()
+                else "Add or approve a resume before job matching can use it."
+            ),
+        },
         "proposals": [
             {"id": p.id, "status": p.status.value, "content": p.proposed_content, "diff": p.diff,
-             "rationale": p.rationale, "project_id": p.project_id, "created_at": p.created_at.isoformat()}
+             "rationale": p.rationale, "project_id": p.project_id,
+             "base_version_id": p.base_version_id, "created_at": p.created_at.isoformat()}
             for p in sorted(profile.resume_proposals, key=lambda item: item.id, reverse=True)
         ],
         "versions": [
-            {"id": v.id, "active": v.is_active, "content": v.content, "created_at": v.created_at.isoformat()}
+            {"id": v.id, "active": v.is_active, "content": v.content,
+             "created_at": v.created_at.isoformat()}
             for v in sorted(profile.resume_versions, key=lambda item: item.id, reverse=True)
         ],
+        "score_impacts": impacts,
     }

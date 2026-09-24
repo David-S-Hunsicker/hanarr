@@ -494,6 +494,20 @@ read the before/after explanations and trace the impact back to project evidence
   GitHub-ready adapter; unattended external delivery and automatic proposal approval remain
   deferred.
 
+  #### Progress — first-class Resume page UI
+
+  The Resume milestone is complete. The dedicated page now presents the active resume as
+  readable source content, the parsed titles/skills/industries/seniority/summary, pending
+  and decided proposals with explicit approve/reject actions, version history, and rollback
+  proposal actions. It clearly identifies the active version as the input to job matching,
+  explains that approval re-parses and rematches, and presents persisted before/after score
+  impacts for rematched jobs without changing Jobs, Coaching, or application actions.
+
+  **Validation:** `python -m pytest -q tests/test_resume_loop.py tests/test_dashboard_app.py`
+  and the full `python -m pytest -q` suite passed. The next handoff is a GitHub-ready
+  adapter and review/diff refinements; unattended external delivery and automatic proposal
+  approval remain deferred.
+
   #### Progress — deterministic evaluator stage
 
   Commit `7efb28c` established the explicit submission boundary. This milestone adds

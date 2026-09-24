@@ -1,26 +1,86 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Resume · Hannar</title>
-<style>
-body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem; background: #f9f9f7; color: #0b0b0b; font-family: system-ui, sans-serif; }
-.tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin:1rem 0 2rem; border-bottom:1px solid #ddd; }
-.tabs a { padding:.5rem .7rem; color:#555; text-decoration:none; }.tabs a.active { color:#1765ad; border-bottom:2px solid #1765ad; font-weight:650; }
-.card { padding:1.2rem; border:1px solid #ddd; border-radius:10px; background:#fff; margin:.8rem 0; }
-pre { white-space:pre-wrap; font:inherit; line-height:1.45; } .muted { color:#666; } button { padding:.35rem .6rem; }
-</style></head>
+<head>
+  <meta charset="utf-8">
+  <title>Resume · Hannar</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; } }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin-bottom:.75rem; } h3 { font-size:.98rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; } .muted { color:var(--muted); }
+    .nav { display:flex; gap:.35rem; flex-wrap:wrap; margin:1rem 0 1.7rem; border-bottom:1px solid var(--border); }
+    .nav a { color:var(--muted); padding:.5rem .7rem; text-decoration:none; font-size:.88rem; } .nav a.active { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:650; }
+    .section { margin:1.5rem 0; } .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:.7rem 0; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:.7rem; } .label { font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+    .status { border-left:4px solid var(--good); } .status.not-ready { border-left-color:var(--warn); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; }
+    pre { white-space:pre-wrap; font:inherit; line-height:1.5; margin:.7rem 0 0; } details { margin-top:.7rem; } summary { cursor:pointer; color:var(--accent); }
+    .actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.8rem; } button { font:inherit; border:1px solid var(--border); border-radius:6px; padding:.35rem .6rem; background:var(--surface); color:var(--text); cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); color:white; }
+    .impact { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; flex-wrap:wrap; } .up { color:var(--good); } .down { color:#a33; }
+    .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+  </style>
+</head>
 <body>
-<h1>Resume</h1>
-<nav class="tabs"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a class="active" href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
-<section class="card"><h2>Active resume</h2><pre>{{ resume.active.content }}</pre></section>
-<section><h2>Proposals</h2>
-{% for proposal in resume.proposals %}
-<article class="card"><h3>Proposal {{ proposal.id }} · {{ proposal.status }}</h3><p class="muted">{{ proposal.rationale }}</p><pre>{{ proposal.diff }}</pre>
-{% if proposal.status == "pending" %}<button onclick="decide({{ proposal.id }}, 'approve')">Approve and re-score jobs</button> <button onclick="decide({{ proposal.id }}, 'reject')">Reject</button>{% endif %}</article>
-{% else %}<p class="muted">No resume proposals yet. A passed project will create one for review.</p>{% endfor %}
-</section>
-<section><h2>Version history</h2>{% for version in resume.versions %}<div class="card"><strong>Version {{ version.id }}{% if version.active %} · active{% endif %}</strong><p class="muted">{{ version.created_at }}</p><details><summary>Read contents</summary><pre>{{ version.content }}</pre></details>{% if not version.active %}<button onclick="rollback({{ version.id }})">Prepare rollback proposal</button>{% endif %}</div>{% endfor %}</section>
-<script>
-async function decide(id, action) { const r = await fetch(`/api/resume/proposals/${id}/${action}`, {method:"POST"}); if (!r.ok) alert((await r.json()).error); else location.reload(); }
-async function rollback(id) { const r = await fetch(`/api/resume/versions/${id}/rollback`, {method:"POST"}); if (!r.ok) alert((await r.json()).error); else location.reload(); }
-</script>
-</body></html>
+  <div class="header"><h1>Resume</h1><span class="muted">Your source material and reviewable changes</span></div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a href="/coaching">Coaching</a><a class="active" href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
+  </nav>
+
+  <section class="section">
+    <h2>Matching source</h2>
+    <div class="card status {% if resume.matcher.status != 'ready' %}not-ready{% endif %}">
+      <strong>{{ resume.matcher.message }}</strong>
+      {% if resume.matcher.version_id %}<p class="muted">Version {{ resume.matcher.version_id }} is the active matcher input.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Active resume</h2>
+    <div class="card"><pre>{{ resume.active.content }}</pre></div>
+  </section>
+
+  <section class="section">
+    <h2>Extracted profile</h2>
+    <div class="card">
+      {% if resume.extracted_profile.summary %}<p>{{ resume.extracted_profile.summary }}</p>{% endif %}
+      <div class="grid">
+        <div><div class="label">Titles</div><p>{{ resume.extracted_profile.titles|join(", ") or "Not extracted" }}</p></div>
+        <div><div class="label">Seniority</div><p>{{ resume.extracted_profile.seniority or "Not extracted" }}{% if resume.extracted_profile.years_experience %} · {{ resume.extracted_profile.years_experience }} years{% endif %}</p></div>
+        <div><div class="label">Skills</div><p>{{ resume.extracted_profile.skills|join(", ") or "Not extracted" }}</p></div>
+        <div><div class="label">Industries</div><p>{{ resume.extracted_profile.industries|join(", ") or "Not extracted" }}</p></div>
+      </div>
+      {% if resume.extracted_profile._extraction_error %}<p class="muted">Extraction fallback: {{ resume.extracted_profile._extraction_error }}</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Resume proposals</h2>
+    {% for proposal in resume.proposals %}
+    <article class="card">
+      <h3>Proposal {{ proposal.id }} <span class="pill">{{ proposal.status }}</span></h3>
+      <p class="muted">{{ proposal.rationale }}</p>
+      <details><summary>Review proposed content and diff</summary><pre>{{ proposal.content }}</pre><pre>{{ proposal.diff }}</pre></details>
+      {% if proposal.status == "pending" %}<div class="actions"><button class="primary" onclick="decide({{ proposal.id }}, 'approve')">Approve and re-parse/rematch</button><button onclick="decide({{ proposal.id }}, 'reject')">Reject proposal</button></div>{% endif %}
+    </article>
+    {% else %}<div class="empty">No resume proposals yet. A passed project creates one for review.</div>{% endfor %}
+  </section>
+
+  <section class="section">
+    <h2>Score impact after approved resume</h2>
+    {% for impact in resume.score_impacts %}
+    <div class="card impact"><span><strong>{{ impact.title }}</strong>{% if impact.company %} · {{ impact.company }}{% endif %}<br><span class="muted">{{ impact.explanation }}</span></span><span>{{ "%.0f"|format(impact.before_score) if impact.before_score is not none else "—" }} → {{ "%.0f"|format(impact.after_score) }} {% if impact.delta is not none %}<strong class="{{ 'up' if impact.delta >= 0 else 'down' }}">({{ "%+.0f"|format(impact.delta) }})</strong>{% endif %}</span></div>
+    {% else %}<div class="empty">No approved resume has been rematched yet.</div>{% endfor %}
+  </section>
+
+  <section class="section">
+    <h2>Version history</h2>
+    {% for version in resume.versions %}
+    <div class="card"><h3>Version {{ version.id }} {% if version.active %}<span class="pill">active</span>{% endif %}</h3><p class="muted">{{ version.created_at }}</p><details><summary>Read contents</summary><pre>{{ version.content }}</pre></details>{% if not version.active %}<div class="actions"><button onclick="rollback({{ version.id }})">Prepare rollback proposal</button></div>{% endif %}</div>
+    {% else %}<div class="empty">No version history is available yet.</div>{% endfor %}
+  </section>
+  <script>
+    async function decide(id, action) { const response = await fetch(`/api/resume/proposals/${id}/${action}`, {method:"POST"}); if (!response.ok) { window.alert((await response.json()).error || "Could not update proposal."); } else { window.location.reload(); } }
+    async function rollback(id) { const response = await fetch(`/api/resume/versions/${id}/rollback`, {method:"POST"}); if (!response.ok) { window.alert((await response.json()).error || "Could not prepare rollback."); } else { window.location.reload(); } }
+  </script>
+</body>
+</html>

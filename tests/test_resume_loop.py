@@ -17,6 +17,7 @@ from jobcopilot.models import (
     ScoreSnapshot,
     Skill,
     SkillGapStatus,
+    ResumeVersion,
 )
 
 
@@ -84,3 +85,33 @@ def test_pass_generates_pending_proposal_and_approval_rescores_affected_job(tmp_
         assert session.get(ResumeProposal, proposal_id).status.value == "approved"
     assert client.get("/resume").status_code == 200
     assert client.get("/api/resume").json()["active"]["content"]
+
+
+def test_resume_page_explains_matcher_source_profile_and_score_impact(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.llm.provider = "none"
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Backend engineer with Python."
+        profile.resume_summary_json = json.dumps({
+            "titles": ["Backend Engineer"], "years_experience": 8,
+            "skills": ["Python", "SQL"], "industries": ["SaaS"],
+            "seniority": "senior", "summary": "Builds reliable services.",
+        })
+        version = ResumeVersion(profile_id=profile.id, content=profile.resume_text, is_active=True)
+        session.add(version)
+        session.flush()
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="impact",
+            company="Acme", title="Platform Engineer", url="https://example.test/impact",
+            fit_score=84,
+        ))
+        session.commit()
+
+    response = TestClient(create_app(settings)).get("/resume")
+    assert response.status_code == 200
+    assert "feeds new job matching and rescoring" in response.text
+    assert "Backend Engineer" in response.text
+    assert "Builds reliable services." in response.text
+    assert "No approved resume has been rematched yet." in response.text

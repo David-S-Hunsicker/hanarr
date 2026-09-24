@@ -632,7 +632,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     def get_resume():
         with session_factory() as session:
             profile = get_or_create_profile(session, settings)
-            return JSONResponse(resume_page_status(profile))
+            return JSONResponse(resume_page_status(profile, session))
 
     @app.post("/api/resume/proposals/{proposal_id}/approve")
     def approve_proposal(proposal_id: int):
@@ -679,7 +679,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         with session_factory() as session:
             profile = get_or_create_profile(session, settings)
             return templates.TemplateResponse(
-                request=request, name="resume.html", context={"resume": resume_page_status(profile)}
+                request=request, name="resume.html",
+                context={"resume": resume_page_status(profile, session)}
             )
 
     @app.get("/{section:skills|applications}")
