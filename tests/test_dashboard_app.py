@@ -77,6 +77,22 @@ def test_provider_setup_is_no_op_when_model_is_already_available(tmp_path, monke
     assert response.json() == {"status": "already_available", "model": settings.llm.model}
 
 
+def test_update_install_requires_explicit_approval(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    response = client.post("/config/update/install", data={})
+    assert response.status_code == 409
+    assert response.json()["status"] == "approval_required"
+
+
+def test_update_install_does_not_claim_to_install_even_after_approval(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    response = client.post("/config/update/install", data={"consent": "true"})
+    assert response.status_code == 501
+    assert response.json()["status"] == "not_implemented"
+
+
 def test_resume_upload_enforces_streamed_size_limit(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     settings.profile.resume_path = str(tmp_path / "resume.md")

@@ -151,6 +151,13 @@ produces a non-empty executable. Successful builds also include a SHA-256 sideca
 metadata. The workflow does not claim a release: Authenticode signing remains an explicit
 release gate, and no silent Ollama installation or update service is part of this pipeline.
 
+Update checks are available in Settings → Updates but are disabled by default. When enabled,
+Hanarr reads either a configured JSON release endpoint or the latest GitHub release, validates
+semver, release-note URLs, asset URLs, and SHA-256 checksums, and displays the current/latest
+version and release notes link. Checks fail clearly when offline. Download and installation are
+not implemented yet; the approval endpoint refuses to change files even after consent, so
+updates cannot silently replace the packaged runtime or affect local data.
+
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are
 written in chunks to a staging path and moved into place only after validation; rejected or

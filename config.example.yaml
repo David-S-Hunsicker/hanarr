@@ -113,3 +113,11 @@ dashboard:
   # none preserves foreground server behavior; browser opens your default
   # browser; webview uses the optional desktop dependency.
   launch_mode: "none"
+
+updates:
+  enabled: false
+  # Optional JSON endpoint with version, release_notes_url, notes, and
+  # checksum-validated assets. Leave blank to use GitHub releases instead.
+  endpoint: ""
+  github_repository: ""
+  timeout_seconds: 10

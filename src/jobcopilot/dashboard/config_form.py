@@ -108,6 +108,17 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     return data
 
 
+def apply_updates_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
+    data = dict(current)
+    updates = dict(data["updates"])
+    updates["enabled"] = "updates_enabled" in form
+    updates["endpoint"] = form.get("updates_endpoint", "").strip()
+    updates["github_repository"] = form.get("updates_github_repository", "").strip()
+    updates["timeout_seconds"] = float(_int_or_none(form.get("updates_timeout_seconds")) or updates["timeout_seconds"])
+    data["updates"] = updates
+    return data
+
+
 def apply_schedule_reminders_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
     data = dict(current)
     schedule = dict(data["schedule"])

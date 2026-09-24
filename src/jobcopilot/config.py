@@ -151,6 +151,13 @@ class DashboardConfig(BaseModel):
     launch_mode: Literal["none", "browser", "webview"] = "none"
 
 
+class UpdatesConfig(BaseModel):
+    enabled: bool = False
+    endpoint: str = ""
+    github_repository: str = ""
+    timeout_seconds: float = 10.0
+
+
 class Settings(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     preferences: Preferences = Field(default_factory=Preferences)
@@ -161,6 +168,7 @@ class Settings(BaseModel):
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     reminders: RemindersConfig = Field(default_factory=RemindersConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
 
     # Where instance data (db, logs) lives; not user-configurable via YAML
     # to keep it out of the way of the gitignore boundary.

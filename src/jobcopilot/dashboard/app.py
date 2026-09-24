@@ -86,10 +86,12 @@ from .config_form import (
     apply_app_config_form,
     apply_preferences_form,
     apply_schedule_reminders_form,
+    apply_updates_form,
     save_settings_to_yaml,
     settings_to_dict,
     validate_and_build,
 )
+from ..update_service import UpdateCheckError, check_for_update
 
 logger = logging.getLogger(__name__)
 
@@ -891,7 +893,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             name="config.html",
             context={
                 "settings": settings,
-                "active_tab": tab if tab in {"preferences", "app", "schedule"} else "preferences",
+                "active_tab": tab if tab in {"preferences", "app", "schedule", "updates"} else "preferences",
                 "saved": saved == "1",
                 "errors": [],
                 "provider_diagnostics": provider_diagnostics,
@@ -944,6 +946,30 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"status": "downloaded", "model": settings.llm.model, "events": events[-1:]})
 
         return JSONResponse({"status": "error", "error": "Unknown setup action."}, status_code=400)
+
+    @app.get("/config/update/check")
+    def update_check():
+        """Check configured release metadata; never downloads or installs."""
+        try:
+            return JSONResponse(check_for_update(settings))
+        except UpdateCheckError as exc:
+            logger.warning("Update check failed: %s", exc)
+            return JSONResponse({"status": "error", "error": str(exc)}, status_code=502)
+
+    @app.post("/config/update/install")
+    async def update_install(request: Request):
+        """Explicit approval boundary for a future download/install flow."""
+        form = await request.form()
+        consent = str(form.get("consent", "")).lower() in {"1", "true", "yes", "on"}
+        if not consent:
+            return JSONResponse(
+                {"status": "approval_required", "message": "Review release metadata and explicitly approve before downloading or installing."},
+                status_code=409,
+            )
+        return JSONResponse(
+            {"status": "not_implemented", "message": "Update download and installation are not implemented; no files were changed."},
+            status_code=501,
+        )
 
     async def _handle_config_post(request: Request, tab: str, apply_fn):
         form = await request.form()
@@ -1073,6 +1099,10 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     @app.post("/config/schedule")
     async def save_schedule_reminders(request: Request):
         return await _handle_config_post(request, "schedule", apply_schedule_reminders_form)
+
+    @app.post("/config/updates")
+    async def save_updates(request: Request):
+        return await _handle_config_post(request, "updates", apply_updates_form)
 
     def _shutdown_and_reexec():
         # A background LLM call (resume re-parse, keyword suggestion) has no

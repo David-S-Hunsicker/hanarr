@@ -229,6 +229,7 @@
     <a class="tab {% if active_tab == 'preferences' %}active{% endif %}" href="/config?tab=preferences">Preferences &amp; matching</a>
     <a class="tab {% if active_tab == 'app' %}active{% endif %}" href="/config?tab=app">App config</a>
     <a class="tab {% if active_tab == 'schedule' %}active{% endif %}" href="/config?tab=schedule">Scheduling &amp; reminders</a>
+    <a class="tab {% if active_tab == 'updates' %}active{% endif %}" href="/config?tab=updates">Updates</a>
   </div>
 
   {% if saved %}
@@ -500,6 +501,40 @@
       </fieldset>
 
       <div class="save-row"><button type="submit" class="save">Save app config</button></div>
+    </form>
+
+    {% elif active_tab == 'updates' %}
+    <form method="post" action="/config/updates">
+      <fieldset>
+        <legend>Release metadata</legend>
+        <div class="banner notice">
+          Checks are opt-in and read release metadata only. Hanarr never silently downloads,
+          replaces application files, installs Ollama, or changes your local data.
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="updates_enabled" name="updates_enabled" {% if settings.updates.enabled %}checked{% endif %}>
+          <label for="updates_enabled">Enable update checks</label>
+        </div>
+        <div class="field">
+          <label for="updates_endpoint">Configured release endpoint (JSON)</label>
+          <input type="url" id="updates_endpoint" name="updates_endpoint" value="{{ settings.updates.endpoint }}">
+          <div class="hint">Metadata must contain version, release_notes_url, and assets with SHA-256 checksums.</div>
+        </div>
+        <div class="field">
+          <label for="updates_github_repository">Or GitHub repository</label>
+          <input type="text" id="updates_github_repository" name="updates_github_repository" value="{{ settings.updates.github_repository }}" placeholder="owner/repository">
+          <div class="hint">GitHub releases must publish SHA-256 asset digests. A configured endpoint takes precedence.</div>
+        </div>
+        <div class="field">
+          <label for="updates_timeout_seconds">Network timeout (seconds)</label>
+          <input type="number" id="updates_timeout_seconds" name="updates_timeout_seconds" value="{{ settings.updates.timeout_seconds|int }}" min="1">
+        </div>
+        <div class="field">
+          <button type="button" class="suggest-btn" id="update-check-btn">Check now</button>
+          <span class="suggest-status" id="update-check-status"></span>
+        </div>
+      </fieldset>
+      <div class="save-row"><button type="submit" class="save">Save update settings</button></div>
     </form>
 
     {% elif active_tab == 'schedule' %}
@@ -779,6 +814,44 @@
           .finally(() => { button.disabled = false; });
       }));
     })();
+  </script>
+  {% endif %}
+  {% if active_tab == 'updates' %}
+  <script>
+    document.getElementById("update-check-btn").addEventListener("click", async () => {
+      const status = document.getElementById("update-check-status");
+      status.textContent = "Checking…";
+      try {
+        const response = await fetch("/config/update/check");
+        const result = await response.json();
+        if (!response.ok || result.status === "error") {
+          status.textContent = result.error || "Update check failed; you may be offline.";
+          status.className = "suggest-status error";
+          return;
+        }
+        if (result.status === "disabled") {
+          status.textContent = "Update checks are disabled.";
+          return;
+        }
+        const release = result.release;
+        status.className = "suggest-status";
+        status.textContent = "";
+        if (result.status === "update_available") {
+          status.append(`Current ${result.current_version}; latest ${release.version}. `);
+          const link = document.createElement("a");
+          link.href = release.release_notes_url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = "Release notes";
+          status.append(link, ". Download/install requires explicit approval and is not available yet.");
+        } else {
+          status.textContent = `Current ${result.current_version}; no newer release found.`;
+        }
+      } catch (error) {
+        status.textContent = "Update check failed; you may be offline.";
+        status.className = "suggest-status error";
+      }
+    });
   </script>
   {% endif %}
 

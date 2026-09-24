@@ -957,7 +957,17 @@ successful build emits the unsigned installer, SHA-256 sidecar, and output metad
 upload is conditional on the real build succeeding and missing tools fail the workflow. The
 workflow does not publish a GitHub release and does not claim signing or notarization.
 
+The M5 update-check slice is now implemented without crossing into installation: Settings →
+Updates is opt-in and supports a configured JSON release endpoint or latest GitHub release.
+Validated metadata includes semver, release-notes URL, asset URL, and SHA-256 checksums; the
+dashboard shows current/latest versions and a release-notes link, and offline/malformed sources
+fail explicitly. A separate update-install API requires explicit approval but returns
+`not_implemented` after approval because download, signature verification, replacement, and
+migration execution are deliberately deferred. No local data, configuration, migrations, or
+Ollama behavior changes during a check.
+
 **Next handoff:** Add Authenticode signing and clean-machine/upgrade/recovery/uninstall validation
-before release publication. Add a
-first-run wizard, update services, unattended installation, and macOS/Linux only as separate
-milestones; Ollama must remain detection-first and explicit-consent gated.
+before release publication. Implement approved, checksum/signature-verified download and
+data-preserving installation as a separate milestone; keep update checks opt-in, never silent,
+and keep Ollama detection-first and explicit-consent gated. Add a first-run wizard, unattended
+installation, and macOS/Linux only as separate milestones.
