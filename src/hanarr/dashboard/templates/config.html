@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hanarr · Preferences</title>
   <style>
     :root {
@@ -412,7 +413,7 @@
       <div class="banner notice">
         <div class="restart-row">
           <span>Changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
-          <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
+          <button type="button" class="restart-btn">Save &amp; restart server</button>
         </div>
       </div>
 
@@ -552,7 +553,7 @@
       <div class="banner notice">
         <div class="restart-row">
           <span>Interval changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
-          <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
+          <button type="button" class="restart-btn">Save &amp; restart server</button>
         </div>
       </div>
 
@@ -874,7 +875,7 @@
 
   <script>
     (function () {
-      const restartBtn = document.getElementById("restart-server-btn");
+      const restartBtn = document.querySelector(".restart-btn");
       if (!restartBtn) return;
 
       function waitForServerAndReload() {
@@ -887,6 +888,9 @@
       }
 
       restartBtn.addEventListener("click", function () {
+        if (!window.confirm("Save these settings and restart the server now? Any in-progress search or upload will be interrupted.")) {
+          return;
+        }
         const form = restartBtn.closest("form");
         restartBtn.disabled = true;
         restartBtn.textContent = "Saving…";

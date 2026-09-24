@@ -5,7 +5,6 @@ structured skills/titles/years extraction.
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 from pathlib import Path
 
@@ -14,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import Preferences, Settings
 from .db import get_or_create_profile
 from .llm.base import LLMClient
-from .models import Profile, ResumeVersion
+from .models import Profile, ResumeVersion, utc_now
 
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".txt", ".md"}
 
@@ -182,7 +181,7 @@ def parse_and_store_resume(
     profile.resume_text = resume_text
     profile.resume_summary_json = json.dumps(summary)
     profile.resume_original_filename = original_filename or resume_path.name
-    profile.resume_parsed_at = dt.datetime.utcnow()
+    profile.resume_parsed_at = utc_now()
 
     active_version = next((v for v in reversed(profile.resume_versions) if v.is_active), None)
     if active_version is None or active_version.content != resume_text:

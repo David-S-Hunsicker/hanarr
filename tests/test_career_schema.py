@@ -61,7 +61,7 @@ def test_normalized_skill_and_gap_records_preserve_evidence():
                     gap_status=SkillGapStatus.SATISFIED,
                     evidence="Python required in the responsibilities",
                     rationale="Profile evidence matches the requirement",
-                    analyzed_at=dt.datetime.utcnow(),
+                    analyzed_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
                 ),
             ]
         )

@@ -149,12 +149,7 @@ def test_backup_names_do_not_collide_with_same_timestamp(tmp_path, monkeypatch):
     db_path = data_dir / "hanarr.db"
     db_path.write_bytes(b"database")
     fixed_now = dt.datetime(2025, 1, 1, 0, 0, 0)
-    fixed = type(
-        "FixedDateTime",
-        (),
-        {"utcnow": staticmethod(lambda: fixed_now)},
-    )
-    monkeypatch.setattr("hanarr.db.dt.datetime", fixed)
+    monkeypatch.setattr("hanarr.db.utc_now", lambda: fixed_now)
 
     _backup_database(db_path, data_dir)
     _backup_database(db_path, data_dir)

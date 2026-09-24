@@ -28,6 +28,17 @@ class Base(DeclarativeBase):
     pass
 
 
+def utc_now() -> dt.datetime:
+    """Naive UTC "now" -- this app's convention (see connectors/base.py's
+    to_naive_utc) is to store every datetime as naive-but-UTC rather than
+    timezone-aware, so values from different sources compare and sort
+    directly without a mix of aware/naive comparisons raising. Used both
+    as a plain call and as a SQLAlchemy column default/onupdate callable.
+    datetime.utcnow() does the same thing but is deprecated as of Python
+    3.12 and scheduled for removal."""
+    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 
@@ -41,9 +52,9 @@ class Profile(Base):
     # (resumes/resume.pdf) regardless of what it was originally called.
     resume_original_filename: Mapped[str | None] = mapped_column(String, nullable=True)
     resume_parsed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     jobs: Mapped[list["JobPosting"]] = relationship(back_populates="profile")
@@ -82,7 +93,7 @@ class JobPosting(Base):
     salary_min: Mapped[float | None] = mapped_column(Float, nullable=True)
     salary_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     posted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     fit_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-100
     fit_rationale: Mapped[str] = mapped_column(Text, default="")
@@ -90,7 +101,7 @@ class JobPosting(Base):
         Enum(ApplicationStatus), default=ApplicationStatus.NEW
     )
     status_changed_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=dt.datetime.utcnow
+        DateTime, default=utc_now
     )
 
     profile: Mapped["Profile"] = relationship(back_populates="jobs")
@@ -116,7 +127,7 @@ class SeenPosting(Base):
     profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
     source: Mapped[str] = mapped_column(String)
     external_id: Mapped[str] = mapped_column(String)
-    seen_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    seen_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class ReminderType(str, enum.Enum):
@@ -136,7 +147,7 @@ class Reminder(Base):
     message: Mapped[str] = mapped_column(Text)
     due_at: Mapped[dt.datetime] = mapped_column(DateTime)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     profile: Mapped["Profile"] = relationship(back_populates="reminders")
     job: Mapped["JobPosting | None"] = relationship(back_populates="reminders")
@@ -154,7 +165,7 @@ class ScoreSnapshot(Base):
     fit_rationale: Mapped[str] = mapped_column(Text, default="")
     trigger: Mapped[str] = mapped_column(String, default="initial")
     scorer_metadata_json: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Skill(Base):
@@ -167,7 +178,7 @@ class Skill(Base):
     name: Mapped[str] = mapped_column(String)
     slug: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     profile_skills: Mapped[list["ProfileSkill"]] = relationship(back_populates="skill")
     job_skills: Mapped[list["JobSkill"]] = relationship(back_populates="skill")
@@ -186,9 +197,9 @@ class ProfileSkill(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     source: Mapped[str] = mapped_column(String, default="manual")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     profile: Mapped["Profile"] = relationship(back_populates="profile_skills")
@@ -253,7 +264,7 @@ class Project(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     target_outcome: Mapped[str] = mapped_column(Text, default="")
     brief_json: Mapped[str] = mapped_column(Text, default="{}")
-    opted_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    opted_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="projects")
@@ -340,7 +351,7 @@ class ProjectSubmission(Base):
         Enum(ProjectSubmissionStatus), default=ProjectSubmissionStatus.DRAFT
     )
     submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="submissions")
     evaluations: Mapped[list["ProjectEvaluation"]] = relationship(back_populates="submission")
@@ -362,7 +373,7 @@ class ProjectEvaluation(Base):
     actionable_feedback_json: Mapped[str] = mapped_column(Text, default="[]")
     feedback: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    evaluated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    evaluated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     submission: Mapped["ProjectSubmission"] = relationship(back_populates="evaluations")
 
@@ -379,7 +390,7 @@ class ProvenSkill(Base):
         ForeignKey("project_evaluations.id"), nullable=True
     )
     evidence: Mapped[str] = mapped_column(Text, default="")
-    proven_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    proven_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     skill: Mapped["Skill"] = relationship(back_populates="proven_skills")
 
@@ -398,7 +409,7 @@ class ResumeVersion(Base):
     content: Mapped[str] = mapped_column(Text)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     profile: Mapped["Profile"] = relationship(back_populates="resume_versions")
     proposals: Mapped[list["ResumeProposal"]] = relationship(
@@ -422,7 +433,7 @@ class ResumeProposal(Base):
         Enum(ResumeProposalStatus), default=ResumeProposalStatus.PENDING
     )
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     profile: Mapped["Profile"] = relationship(back_populates="resume_proposals")
     base_version: Mapped["ResumeVersion | None"] = relationship(

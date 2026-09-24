@@ -51,6 +51,7 @@ from ..models import (
     ProvenSkill,
     SeenPosting,
     Skill,
+    utc_now,
 )
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
@@ -123,7 +124,7 @@ def format_posting_age(posted_at: dt.datetime | None, now: dt.datetime | None = 
     connectors normalize posted_at (see connectors.base.to_naive_utc)."""
     if posted_at is None:
         return None
-    now = now if now is not None else dt.datetime.utcnow()
+    now = now if now is not None else utc_now()
     delta_seconds = (now - posted_at).total_seconds()
     if delta_seconds < 0:
         return "Posted today"  # clock skew between sources; don't show a negative age
@@ -144,7 +145,7 @@ def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = N
     flagged as new, since there's no evidence either way."""
     if posted_at is None:
         return False
-    now = now if now is not None else dt.datetime.utcnow()
+    now = now if now is not None else utc_now()
     delta_seconds = (now - posted_at).total_seconds()
     return 0 <= delta_seconds < within_days * 86400
 
@@ -703,7 +704,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     project = submission.project
                     if project.status is not ProjectStatus.COMPLETED:
                         project.status = ProjectStatus.COMPLETED
-                        project.completed_at = dt.datetime.utcnow()
+                        project.completed_at = utc_now()
                     for project_skill in project.skills:
                         if session.query(ProvenSkill).filter_by(
                             profile_id=profile.id, skill_id=project_skill.skill_id

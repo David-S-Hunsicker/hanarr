@@ -19,7 +19,7 @@ def make_job(**overrides) -> RawJobPosting:
         description="We use python and distributed systems every day.",
         salary_min=None,
         salary_max=None,
-        posted_at=dt.datetime.utcnow(),
+        posted_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
     )
     defaults.update(overrides)
     return RawJobPosting(**defaults)

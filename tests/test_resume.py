@@ -162,7 +162,7 @@ def test_parse_and_store_resume_records_original_filename_and_parsed_time(tmp_pa
     settings = Settings()
     settings.profile.resume_path = str(resume_file)
     session = _make_session()
-    before = dt.datetime.utcnow()
+    before = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
     profile, _, _ = parse_and_store_resume(
         session, settings, _FakeLLM({"titles": [], "skills": []}), original_filename="David_Resume_2026.pdf"

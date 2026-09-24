@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
-from .models import Base, Profile
+from .models import Base, Profile, utc_now
 
 
 def _project_root() -> Path:
@@ -91,7 +91,7 @@ def _backup_database(db_path: Path, data_dir: Path) -> None:
         return
     backup_dir = data_dir / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+    timestamp = utc_now().strftime("%Y%m%dT%H%M%S%fZ")
     backup_path = backup_dir / f"hanarr-{timestamp}.db"
     suffix = 1
     while backup_path.exists():

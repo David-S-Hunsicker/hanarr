@@ -13,7 +13,7 @@ from rich.table import Table
 from .config import DEFAULT_CONFIG_PATH, load_settings, save_settings_to_yaml
 from .db import get_or_create_profile, make_session_factory
 from .llm import build_llm_client
-from .models import ApplicationStatus, JobPosting, ResumeVersion
+from .models import ApplicationStatus, JobPosting, ResumeVersion, utc_now
 from .pipeline import run_search_cycle
 from .reminders import (
     deliver_reminders,
@@ -143,7 +143,7 @@ def set_status(ctx: click.Context, job_id: int, new_status: str, interview_at: s
             raise click.ClickException(f"No job with id {job_id}")
 
         job.status = ApplicationStatus(new_status)
-        job.status_changed_at = dt.datetime.utcnow()
+        job.status_changed_at = utc_now()
         session.commit()
 
         if job.status == ApplicationStatus.APPLIED:

@@ -234,7 +234,7 @@ def test_clear_jobs_wipes_postings_seen_and_related_reminders(tmp_path):
                 job_id=job.id,
                 type=ReminderType.FOLLOW_UP,
                 message="test reminder",
-                due_at=dt.datetime.utcnow(),
+                due_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
         )
         session.commit()
@@ -449,7 +449,7 @@ def _extract_job_card(html: str, title: str) -> str:
 def test_index_shows_new_badge_and_relative_age_for_recent_posting(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     session_factory = make_session_factory(settings)
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
     with session_factory() as session:
         profile = get_or_create_profile(session, settings)
@@ -474,7 +474,7 @@ def test_index_shows_new_badge_and_relative_age_for_recent_posting(tmp_path):
 def test_index_omits_new_badge_for_old_posting(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     session_factory = make_session_factory(settings)
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
     with session_factory() as session:
         profile = get_or_create_profile(session, settings)

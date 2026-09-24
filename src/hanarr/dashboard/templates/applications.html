@@ -2,11 +2,13 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Applications · Hanarr</title>
   <style>
     :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; --bad:#b23b3b; }
     @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; --bad:#e77373; } }
     * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } .app-card { flex-direction: column; } .app-score { align-self: flex-end; } }
     h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin-bottom:.75rem; } h3 { font-size:.98rem; }
     .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; } .muted { color:var(--muted); }
     .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.7rem; }

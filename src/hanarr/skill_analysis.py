@@ -5,7 +5,6 @@ postings after they have been matched and never changes their score or status.
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 import re
 from collections import Counter
@@ -18,7 +17,6 @@ from .models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
-    JobSkillRequirement,
     Profile,
     ProfileSkill,
     ProvenSkill,
@@ -26,6 +24,7 @@ from .models import (
     ProjectSkill,
     Skill,
     SkillGapStatus,
+    utc_now,
 )
 
 SYSTEM_PROMPT = """Extract concrete technical and professional skills required or preferred by
@@ -188,7 +187,7 @@ def analyze_job(session: Session, profile: Profile, job: JobPosting, llm: LLMCli
                 else "No matching resume or proven-skill evidence was found."
             ),
             confidence=float(item.get("confidence", 0.5)),
-            analyzed_at=dt.datetime.utcnow(),
+            analyzed_at=utc_now(),
         )
         session.add(record)
         records.append(record)

@@ -1,7 +1,6 @@
 """Validated, review-first coaching project submissions."""
 from __future__ import annotations
 
-import datetime as dt
 import json
 import shutil
 from pathlib import Path, PurePosixPath
@@ -11,7 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 from sqlalchemy.orm import Session
 
-from .models import Project, ProjectSubmission, ProjectSubmissionKind, ProjectSubmissionStatus
+from .models import Project, ProjectSubmission, ProjectSubmissionKind, ProjectSubmissionStatus, utc_now
 
 MAX_RESPONSE_LENGTH = 100_000
 MAX_FILES = 100
@@ -325,7 +324,7 @@ def fetch_github_submission(
     submission.manifest_json = json.dumps(manifest)
     metadata.update({
         "fetched": True,
-        "fetched_at": dt.datetime.utcnow().isoformat(),
+        "fetched_at": utc_now().isoformat(),
         "resolved_ref": resolved_ref,
         "commit_sha": commit.get("sha"),
         "commit_message": str(commit_info.get("message", ""))[:500],
@@ -350,7 +349,7 @@ def submit_submission(session: Session, profile_id: int, submission_id: int) -> 
     if submission.status is not ProjectSubmissionStatus.DRAFT:
         raise ValueError("Only draft submissions can be submitted.")
     submission.status = ProjectSubmissionStatus.SUBMITTED
-    submission.submitted_at = dt.datetime.utcnow()
+    submission.submitted_at = utc_now()
     session.flush()
     return submission
 

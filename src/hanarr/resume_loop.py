@@ -22,6 +22,7 @@ from .models import (
     ResumeVersion,
     ScoreSnapshot,
     Skill,
+    utc_now,
 )
 from .resume import extract_profile_summary
 from .resume_sections import split_resume_into_sections
@@ -138,7 +139,7 @@ def approve_resume_proposal(
     )
     session.add(version)
     proposal.status = ResumeProposalStatus.APPROVED
-    proposal.decided_at = __import__("datetime").datetime.utcnow()
+    proposal.decided_at = utc_now()
     profile.resume_text = proposal.proposed_content
     summary = extract_profile_summary(proposal.proposed_content, llm)
     profile.resume_summary_json = json.dumps(summary)
@@ -177,7 +178,7 @@ def reject_resume_proposal(session: Session, profile_id: int, proposal_id: int) 
     if proposal.status is not ResumeProposalStatus.PENDING:
         raise ValueError("Only pending resume proposals can be rejected.")
     proposal.status = ResumeProposalStatus.REJECTED
-    proposal.decided_at = __import__("datetime").datetime.utcnow()
+    proposal.decided_at = utc_now()
     return proposal
 
 

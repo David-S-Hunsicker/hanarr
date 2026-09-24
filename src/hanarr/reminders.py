@@ -17,13 +17,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import RemindersConfig
-from .models import JobPosting, Profile, Reminder, ReminderType
+from .models import JobPosting, Profile, Reminder, ReminderType, utc_now
 
 logger = logging.getLogger(__name__)
 
 
 def schedule_follow_up(session: Session, profile: Profile, job: JobPosting, cfg: RemindersConfig) -> Reminder:
-    due = dt.datetime.utcnow() + dt.timedelta(days=cfg.follow_up_after_days)
+    due = utc_now() + dt.timedelta(days=cfg.follow_up_after_days)
     reminder = Reminder(
         profile_id=profile.id,
         job_id=job.id,
@@ -51,7 +51,7 @@ def schedule_interview_prep(session: Session, profile: Profile, job: JobPosting,
 
 
 def get_due_reminders(session: Session, profile: Profile) -> list[Reminder]:
-    now = dt.datetime.utcnow()
+    now = utc_now()
     return list(
         session.execute(
             select(Reminder).where(
