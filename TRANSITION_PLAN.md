@@ -726,6 +726,10 @@ server-rendered dashboard:
 - Provider failures for resume proposals remain local/deterministic and now leave a
   durable rationale indicating that the model output was unavailable; no provider is
   allowed to silently activate content.
+- HTTP resume and local-artifact uploads now stream in bounded chunks, enforce 10 MiB resume,
+  10 MiB per-file, 50 MiB aggregate, and 100-file limits, and return clear 413 errors.
+  Artifacts are staged and atomically moved into their final directory; failed writes clean up
+  both staging files and their database row.
 
 The single-user authorization assumption remains intentional and documented: the app is
 local-only by default, routes scope records to the single profile, and submission
@@ -734,14 +738,26 @@ the dashboard beyond localhost still requires an explicit future authentication 
 
 #### Validation
 
-- `python -m pytest -q tests/test_migrations.py tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_app.py` — 38 passed
+- `python -m pytest -q tests/test_migrations.py tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_app.py` — targeted suite passed
 - `python -m compileall -q src`
 - `git diff --check`
-- Full-suite validation remains to be run before this milestone is pushed.
+- `python -m pytest -q` — full suite passed
+- `python -m compileall -q src` and `git diff --check` — clean
 
 #### Remaining blockers
 
-Authentication/CSRF protection for non-local deployment, streaming upload limits at the
-HTTP layer, and actual GitHub fetch/diff review remain intentionally deferred. The
-current GitHub adapter stores a validated reference only and performs no network or
-execution action.
+Authentication/CSRF protection for non-local deployment and actual GitHub fetch/diff review
+remain intentionally deferred. The current GitHub adapter stores a validated reference only and
+performs no network or execution action.
+
+#### Explicit release-readiness checklist
+
+- [x] Additive migrations back up the local SQLite database and fail startup explicitly.
+- [x] Resume and local-artifact HTTP uploads are streamed, bounded, staged, and safely cleaned
+  up on rejection.
+- [x] User-facing upload and migration errors identify the corrective action without exposing
+  provider or filesystem internals unnecessarily.
+- [x] Local-only default, no GitHub fetch/execute behavior, and approval gates remain intact.
+- [x] Targeted and full tests, byte compilation, and diff checks pass.
+- [ ] Add authentication/CSRF before any non-local deployment.
+- [ ] Design and implement an explicit, approval-gated GitHub fetch/diff workflow.

@@ -16,6 +16,7 @@ from jobcopilot.models import (
     SkillGapStatus,
 )
 import jobcopilot.dashboard.app as app_module
+import jobcopilot.submissions as submissions_module
 
 
 class FakeLLM:
@@ -191,6 +192,30 @@ def test_local_submission_stores_manifest_and_rejects_traversal(tmp_path):
         files=[("files", ("../secret.txt", b"nope", "text/plain"))],
     )
     assert rejected.status_code == 400
+
+
+def test_local_submission_streams_and_rejects_oversized_artifact_without_persisting(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    monkeypatch.setattr(submissions_module, "MAX_FILE_BYTES", 3)
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    rejected = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/files",
+        files=[("files", ("large.txt", b"four", "text/plain"))],
+    )
+
+    assert rejected.status_code == 413
+    with factory() as session:
+        assert session.query(Project).first().submissions == []
+    assert not list((tmp_path / "data" / "submissions").rglob("*.staging"))
     rejected = client.post(
         f"/api/coaching-projects/{project_id}/submissions/files",
         files=[

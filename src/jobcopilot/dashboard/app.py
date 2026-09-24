@@ -45,7 +45,12 @@ from ..models import (
 )
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
-from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
+from ..resume import (
+    ALLOWED_RESUME_EXTENSIONS,
+    MAX_RESUME_BYTES,
+    parse_and_store_resume,
+    suggest_boost_keywords,
+)
 from ..resume_loop import (
     approve_resume_proposal,
     create_resume_proposal,
@@ -66,6 +71,8 @@ from ..submissions import (
     create_written_submission,
     submit_submission,
     submission_status,
+    UPLOAD_CHUNK_BYTES,
+    MAX_FILES,
 )
 from .config_form import (
     apply_app_config_form,
@@ -283,7 +290,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
     # Same background-thread pattern again: saving the upload is instant,
     # but the re-parse is an LLM call.
-    RESUMES_DIR = Path("resumes")
+    RESUMES_DIR = Path(settings.profile.resume_path).parent
     resume_state = {
         "running": False,
         "run_id": 0,
@@ -581,9 +588,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         files: list[UploadFile] = File(...),
         title: str = Form(""),
     ):
-        uploaded = []
-        for file in files:
-            uploaded.append((file.filename or "", await file.read()))
+        if not files or len(files) > MAX_FILES:
+            return JSONResponse({"error": f"local submission must contain between 1 and {MAX_FILES} files."}, status_code=413)
+        uploaded = [(file.filename or "", file.file) for file in files]
         with session_factory() as session:
             profile = get_or_create_profile(session, settings)
             try:
@@ -592,7 +599,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 )
                 session.commit()
             except ValueError as exc:
-                return JSONResponse({"error": str(exc)}, status_code=400)
+                return JSONResponse({"error": str(exc)}, status_code=413 if "exceed" in str(exc) or "bytes" in str(exc) else 400)
             return JSONResponse(submission_status(submission), status_code=201)
 
     @app.post("/api/coaching-projects/{project_id}/submissions/github")
@@ -947,13 +954,36 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             allowed = ", ".join(sorted(ALLOWED_RESUME_EXTENSIONS))
             return JSONResponse({"error": f"Unsupported file type {ext!r} — allowed: {allowed}"}, status_code=400)
 
-        contents = await file.read()
         RESUMES_DIR.mkdir(parents=True, exist_ok=True)
         # Fixed filename per extension rather than keeping the upload's
         # original name — one resume per instance, so each new upload
         # replaces the last rather than accumulating files.
         dest = RESUMES_DIR / f"resume{ext}"
-        dest.write_bytes(contents)
+        staged = RESUMES_DIR / f".resume-upload{ext}.staging"
+        written = 0
+        try:
+            too_large = False
+            with staged.open("wb") as output:
+                while True:
+                    chunk = await file.read(UPLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > MAX_RESUME_BYTES:
+                        too_large = True
+                        break
+                    output.write(chunk)
+            if too_large:
+                staged.unlink(missing_ok=True)
+                return JSONResponse(
+                    {"error": f"resume upload cannot exceed {MAX_RESUME_BYTES} bytes."},
+                    status_code=413,
+                )
+            staged.replace(dest)
+        except OSError as exc:
+            logger.exception("Resume upload could not be saved")
+            staged.unlink(missing_ok=True)
+            return JSONResponse({"error": "Could not save the resume upload; check server logs."}, status_code=400)
 
         settings.profile.resume_path = str(dest)
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))

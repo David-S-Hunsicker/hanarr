@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import shutil
 from pathlib import Path, PurePosixPath
-from typing import Iterable
+from typing import BinaryIO, Iterable
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ MAX_RESPONSE_LENGTH = 100_000
 MAX_FILES = 100
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_FILE_BYTES = 50 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 64 * 1024
 MAX_GITHUB_REFERENCE_LENGTH = 2048
 
 
@@ -57,7 +59,7 @@ def create_local_submission(
     session: Session,
     profile_id: int,
     project_id: int,
-    files: Iterable[tuple[str, bytes]],
+    files: Iterable[tuple[str, bytes | BinaryIO]],
     storage_root: Path,
     title: str = "",
 ) -> ProjectSubmission:
@@ -65,18 +67,19 @@ def create_local_submission(
     entries = list(files)
     if not entries or len(entries) > MAX_FILES:
         raise ValueError(f"local submission must contain between 1 and {MAX_FILES} files.")
-    normalized: list[tuple[str, bytes]] = []
+    normalized: list[tuple[str, bytes | BinaryIO]] = []
     seen_names: set[str] = set()
     total_bytes = 0
     for name, data in entries:
         safe_name = _safe_name(name)
         if safe_name in seen_names:
             raise ValueError(f"artifact path {safe_name} is duplicated.")
-        if len(data) > MAX_FILE_BYTES:
-            raise ValueError(f"artifact {safe_name} exceeds the {MAX_FILE_BYTES} byte limit.")
-        total_bytes += len(data)
-        if total_bytes > MAX_TOTAL_FILE_BYTES:
-            raise ValueError(f"local submission cannot exceed {MAX_TOTAL_FILE_BYTES} bytes in total.")
+        if isinstance(data, bytes):
+            if len(data) > MAX_FILE_BYTES:
+                raise ValueError(f"artifact {safe_name} exceeds the {MAX_FILE_BYTES} byte limit.")
+            total_bytes += len(data)
+            if total_bytes > MAX_TOTAL_FILE_BYTES:
+                raise ValueError(f"local submission cannot exceed {MAX_TOTAL_FILE_BYTES} bytes in total.")
         seen_names.add(safe_name)
         normalized.append((safe_name, data))
 
@@ -85,26 +88,51 @@ def create_local_submission(
         kind=ProjectSubmissionKind.LOCAL_FILES,
         title=title.strip()[:200],
     )
+    storage_root = storage_root.resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
     session.add(submission)
     session.flush()
     artifact_dir = (storage_root / str(project_id) / str(submission.id)).resolve()
-    storage_root = storage_root.resolve()
-    if storage_root not in artifact_dir.parents:
+    staging_dir = artifact_dir.with_name(f".{artifact_dir.name}.staging")
+    if storage_root not in artifact_dir.parents or storage_root not in staging_dir.parents:
         raise ValueError("submission storage path is outside the configured storage root.")
-    artifact_dir.mkdir(parents=True, exist_ok=False)
     manifest = []
-    for name, data in normalized:
-        destination = (artifact_dir / Path(name)).resolve()
-        if artifact_dir not in destination.parents:
-            raise ValueError(f"artifact path {name} escapes the submission folder.")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(data)
-        manifest.append({"path": name, "bytes": len(data)})
-    submission.artifact_dir = str(artifact_dir)
-    submission.manifest_json = json.dumps(manifest)
-    submission.metadata_json = json.dumps({"storage": "local", "file_count": len(manifest)})
-    session.flush()
-    return submission
+    try:
+        staging_dir.mkdir(parents=True, exist_ok=False)
+        for name, data in normalized:
+            destination = (staging_dir / Path(name)).resolve()
+            if staging_dir not in destination.parents:
+                raise ValueError(f"artifact path {name} escapes the submission folder.")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            written = 0
+            with destination.open("wb") as output:
+                if isinstance(data, bytes):
+                    output.write(data)
+                    written = len(data)
+                else:
+                    while True:
+                        chunk = data.read(UPLOAD_CHUNK_BYTES)
+                        if not chunk:
+                            break
+                        written += len(chunk)
+                        total_bytes += len(chunk)
+                        if written > MAX_FILE_BYTES:
+                            raise ValueError(f"artifact {name} exceeds the {MAX_FILE_BYTES} byte limit.")
+                        if total_bytes > MAX_TOTAL_FILE_BYTES:
+                            raise ValueError(f"local submission cannot exceed {MAX_TOTAL_FILE_BYTES} bytes in total.")
+                        output.write(chunk)
+            manifest.append({"path": name, "bytes": written})
+        staging_dir.replace(artifact_dir)
+        submission.artifact_dir = str(artifact_dir)
+        submission.manifest_json = json.dumps(manifest)
+        submission.metadata_json = json.dumps({"storage": "local", "file_count": len(manifest)})
+        session.flush()
+        return submission
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        session.delete(submission)
+        session.flush()
+        raise
 
 
 def _normalize_github_reference(reference: str, ref: str = "") -> tuple[str, str, str]:

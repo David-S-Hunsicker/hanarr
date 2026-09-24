@@ -25,6 +25,7 @@ _EXAMPLE_TARGET_TITLES = ["Software Engineer", "Backend Engineer"]
 _EXAMPLE_KEYWORDS_BOOST = ["python", "distributed systems"]
 
 MAX_AUTO_BOOST_KEYWORDS = 10
+MAX_RESUME_BYTES = 10 * 1024 * 1024
 
 
 def autopopulate_preferences_from_resume(prefs: Preferences, resume_summary: dict) -> bool:

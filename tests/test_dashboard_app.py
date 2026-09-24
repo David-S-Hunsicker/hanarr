@@ -27,6 +27,22 @@ def test_dashboard_uses_hannar_product_name(tmp_path):
     assert "Hannar" in TestClient(app).get("/").text
 
 
+def test_resume_upload_enforces_streamed_size_limit(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.profile.resume_path = str(tmp_path / "resume.md")
+    monkeypatch.setattr(app_mod, "DEFAULT_CONFIG_PATH", tmp_path / "config.yaml")
+    monkeypatch.setattr(app_mod, "MAX_RESUME_BYTES", 3)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/resume",
+        files={"file": ("resume.txt", b"four", "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert not (tmp_path / "resumes" / "resume.txt").exists()
+
+
 def test_invalid_job_status_is_a_client_error(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     factory = make_session_factory(settings)

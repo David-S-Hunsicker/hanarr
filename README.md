@@ -23,6 +23,9 @@ resume activation, or unattended application submission.
 Database upgrades use Alembic migrations. Existing databases are upgraded in place without
 recreating legacy rows, and a timestamped SQLite backup is written to `data/backups/` before an
 upgrade. Migrations are additive; do not delete the database to resolve a migration error.
+At startup, a migration failure stops the process with the database path and the underlying
+error; restore the newest backup in `data/backups/` before retrying. Start the server from the
+repository root so the configured `resumes/` and `data/` paths resolve predictably.
 
 ## How it works
 
@@ -112,6 +115,13 @@ Or run continuously with a background scheduler and a local dashboard:
 jobcopilot serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
 ```
 
+Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
+submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are
+written in chunks to a staging path and moved into place only after validation; rejected or
+failed uploads do not become visible artifacts. Keep the dashboard bound to `127.0.0.1` unless
+you add an authentication and CSRF boundary; non-local exposure is not a supported release
+configuration.
+
 ## Job sources
 
 Only sources with legitimate public APIs are included — this project won't add scrapers for
@@ -173,6 +183,19 @@ pytest
 
 Connector tests mock HTTP responses (via `respx`) — they don't hit real APIs. Matching tests
 cover the prefilter and the rule-based fallback scorer.
+
+## Local release-readiness checklist
+
+- [ ] Copy the production SQLite file before upgrading and confirm a fresh backup appears under
+  `data/backups/`.
+- [ ] Start once from the repository root and confirm migrations complete without warnings.
+- [ ] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
+  reject oversized or unsafe uploads.
+- [ ] Run `python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
+- [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
+  review-first submission and a rejected upload.
+- [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;
+  those remain future blockers.
 
 ## Roadmap ideas
 
