@@ -1044,11 +1044,12 @@ the frozen/no-console conditions with `monkeypatch` rather than requiring an act
 - Silent uninstall removes the application directory, both Start Menu shortcuts, and the
   Add/Remove Programs entry, while `%LOCALAPPDATA%\Hanarr` (config, resumes, database) is left
   in place untouched, matching the documented uninstall policy.
+- The desktop webview shortcut (`HanarrDesktop.exe`) was launched from a fresh install and
+  confirmed to actually render, not just start a process: the resulting window reports title
+  `Hanarr`, `Responding: True`, and a real window handle. Both `HanarrBrowser.exe` and
+  `HanarrDesktop.exe` are now verified end to end on this machine.
 
 **Not yet performed (still requires a genuinely clean machine/VM):** install with no prior
 Python/build tooling present at all, no-network setup, an existing separate Ollama
-installation, cancelled/failed provider setup, a forced migration failure, and visual
-confirmation of the desktop webview shortcut (only the browser launcher was exercised end to
-end here; the desktop `HanarrDesktop.exe` shortcut was verified to exist and launch a process
-but its webview rendering was not visually inspected). Certificate-backed Authenticode signing
-and release publication remain deferred and out of scope for this pass.
+installation, cancelled/failed provider setup, and a forced migration failure. Certificate-backed
+Authenticode signing and release publication remain deferred and out of scope for this pass.
