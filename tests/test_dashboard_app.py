@@ -344,6 +344,60 @@ def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
         time.sleep(0.3)
 
 
+def test_search_failure_shows_actual_error_not_a_generic_guess(tmp_path, monkeypatch):
+    """Regression test: the failure message used to be a generic "check
+    server logs" with a guessed cause, which can point at entirely the
+    wrong thing -- e.g. a reachable LLM that 404s because the configured
+    model was never pulled, not a connectivity problem at all. The actual
+    exception text must reach the user."""
+    settings = _make_isolated_settings(tmp_path)
+
+    def failing_search_cycle(*args, **kwargs):
+        raise RuntimeError("simulated 404 Not Found from the model endpoint")
+
+    monkeypatch.setattr(app_mod, "run_search_cycle", failing_search_cycle)
+
+    app = create_app(settings)
+    client = TestClient(app)
+
+    client.post("/search", follow_redirects=False)
+    for _ in range(50):
+        status = client.get("/search/status").json()
+        if not status["search_running"]:
+            break
+        time.sleep(0.05)
+
+    assert "simulated 404 Not Found" in status["last_search_result"]
+    assert "check server logs" not in status["last_search_result"]
+
+
+def test_suggest_keywords_failure_shows_actual_error_not_a_generic_guess(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+
+    class FailingLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            raise RuntimeError("simulated 404 Not Found from the model endpoint")
+
+    monkeypatch.setattr(app_mod, "build_llm_client", lambda cfg: FailingLLM())
+
+    app = create_app(settings)
+    client = TestClient(app)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Jane Doe. AI Engineer."
+        session.commit()
+
+    client.post("/config/suggest-keywords")
+    for _ in range(50):
+        status = client.get("/config/suggest-keywords/status").json()
+        if not status["running"]:
+            break
+        time.sleep(0.05)
+
+    assert "simulated 404 Not Found" in status["error"]
+    assert "is the LLM reachable" not in status["error"]
+
+
 def _extract_job_card(html: str, title: str) -> str:
     """Splits on the job-card class boundary so assertions check the
     correct posting's markup, not text bleeding in from an adjacent card."""

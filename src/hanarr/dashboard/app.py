@@ -252,10 +252,19 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     state["last_search_result"] = f"Search stopped — {n} new posting(s) kept."
                 else:
                     state["last_search_result"] = f"{n} new posting(s) matched and stored."
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Manual search cycle failed")
-            state["last_search_result"] = "Search failed — check server logs."
-            _log_event({"kind": "error", "text": "Search failed — check server logs."})
+            # Show the actual error rather than a generic "check the logs" --
+            # a bare guess (e.g. "is the LLM reachable?") can point at the
+            # wrong thing entirely, as it did for an LLM that was reachable
+            # but didn't have the configured model pulled (a 404, not a
+            # connection failure). Bounded so a very long exception message
+            # doesn't take over the status line.
+            message = f"Search failed — {exc}"
+            if len(message) > 300:
+                message = message[:300] + "…"
+            state["last_search_result"] = message
+            _log_event({"kind": "error", "text": message})
         finally:
             state["search_running"] = False
             stop_event.clear()
@@ -293,9 +302,15 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     keyword_state["error"] = "The model didn't return any keywords — try again."
                 else:
                     keyword_state["keywords"] = keywords
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Keyword suggestion failed")
-            keyword_state["error"] = "Suggestion failed — check server logs (is the LLM reachable?)."
+            # Show the actual error instead of guessing "is the LLM
+            # reachable?" -- that guess is actively misleading when the
+            # real cause is something else entirely, e.g. Ollama running
+            # fine but returning 404 because the configured model was
+            # never pulled.
+            message = f"Suggestion failed — {exc}"
+            keyword_state["error"] = message if len(message) <= 300 else message[:300] + "…"
         finally:
             keyword_state["running"] = False
 
