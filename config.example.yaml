@@ -73,6 +73,25 @@ llm:
   timeout_seconds: 1800       # seconds to wait for LLM response (increase for slower models like deepseek-r1)
   # api_key: set via ANTHROPIC_API_KEY env var if provider = anthropic
 
+# Specialized agents inherit llm above unless overridden. Task overrides take
+# precedence over the named agent, then agents.default, then llm. Keep
+# Anthropic opt-in and put its key in .env, never in this file.
+agents:
+  profiler: {}          # resume/profile extraction
+  market_analysis: {}   # job matching and skill-gap analysis
+  curriculum: {}        # coaching project planning
+  evaluator: {}         # submitted project evaluation
+  resume_writer: {}     # reviewable resume proposals
+  # Example per-agent override:
+  # evaluator:
+  #   provider: anthropic
+  #   model: claude-3-5-sonnet-latest
+  # Example named-task override:
+  # tasks:
+  #   interview_prep:
+  #     provider: ollama
+  #     model: qwen2.5:7b
+
 schedule:
   search_interval_hours: 6
   reminder_check_interval_hours: 1

@@ -95,6 +95,36 @@ class LLMConfig(BaseModel):
     api_key: Optional[str] = None
 
 
+AgentProvider = Literal["ollama", "anthropic", "none"]
+AgentName = Literal["profiler", "market_analysis", "curriculum", "evaluator", "resume_writer"]
+
+
+class AgentRoute(BaseModel):
+    """Optional overrides for one specialized agent or named task."""
+
+    provider: Optional[AgentProvider] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    timeout_seconds: Optional[float] = None
+    api_key: Optional[str] = None
+
+
+class AgentsConfig(BaseModel):
+    """Local-first defaults plus narrow role/task overrides.
+
+    An unset field inherits from ``llm``. Task names are intentionally free-form
+    so callers can introduce bounded workflows without changing this schema.
+    """
+
+    default: AgentRoute = Field(default_factory=AgentRoute)
+    profiler: AgentRoute = Field(default_factory=AgentRoute)
+    market_analysis: AgentRoute = Field(default_factory=AgentRoute)
+    curriculum: AgentRoute = Field(default_factory=AgentRoute)
+    evaluator: AgentRoute = Field(default_factory=AgentRoute)
+    resume_writer: AgentRoute = Field(default_factory=AgentRoute)
+    tasks: dict[str, AgentRoute] = Field(default_factory=dict)
+
+
 class ScheduleConfig(BaseModel):
     search_interval_hours: int = 6
     reminder_check_interval_hours: int = 1
@@ -126,6 +156,7 @@ class Settings(BaseModel):
     matching: MatchingConfig = Field(default_factory=MatchingConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    agents: AgentsConfig = Field(default_factory=AgentsConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     reminders: RemindersConfig = Field(default_factory=RemindersConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
@@ -161,6 +192,17 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     # minus the personal preferences it already excludes.
     if settings.llm.provider == "anthropic" and not settings.llm.api_key:
         settings.llm.api_key = os.getenv("ANTHROPIC_API_KEY")
+    for route in (
+        settings.agents.default,
+        settings.agents.profiler,
+        settings.agents.market_analysis,
+        settings.agents.curriculum,
+        settings.agents.evaluator,
+        settings.agents.resume_writer,
+        *settings.agents.tasks.values(),
+    ):
+        if route.provider == "anthropic" and not route.api_key:
+            route.api_key = os.getenv("ANTHROPIC_API_KEY")
     if settings.reminders.email.enabled and not settings.reminders.email.smtp_password:
         settings.reminders.email.smtp_password = os.getenv("SMTP_PASSWORD")
 
@@ -175,6 +217,11 @@ def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_
     still-plaintext config file."""
     data = settings.model_dump(mode="json", exclude={"data_dir"})
     data["llm"].pop("api_key", None)
+    data["agents"]["default"].pop("api_key", None)
+    for name in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer"):
+        data["agents"][name].pop("api_key", None)
+    for route in data["agents"]["tasks"].values():
+        route.pop("api_key", None)
     data["reminders"]["email"].pop("smtp_password", None)
     with open(config_path, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

@@ -1,6 +1,7 @@
 # Hannar transition plan
 
-**Status:** Phase 6 submission and evaluator foundation is complete. Alembic migrations, a
+**Status:** Phase 6 submission, evaluator, and local-first provider-routing foundations are
+complete. Alembic migrations, a
 frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
 skills, resume proposal storage, review-first submissions, and structured evaluation
 attempts are in place without changing existing job-search behavior.
@@ -544,6 +545,28 @@ read the before/after explanations and trace the impact back to project evidence
   tests/test_career_schema.py tests/test_migrations.py` and `python -m compileall -q src`.
   The next handoff is review/diff presentation and a GitHub-ready adapter; external delivery,
   automatic project completion, and automatic proven-skill claims remain deferred.
+
+  #### Progress — local-first provider routing foundation
+
+  The provider-routing milestone is complete. `Settings` now supports typed, additive
+  per-agent overrides for profiler, market analysis, curriculum, evaluator, and resume
+  writer roles, plus named task overrides. Routes inherit from the global Ollama-first
+  configuration in a deterministic order: `llm`, `agents.default`, role, then task.
+  Anthropic remains opt-in and all API keys are resolved from the environment and omitted
+  when settings are saved.
+
+  `AgentOrchestrator` is a deliberately small boundary that resolves a role/task into an
+  existing LLM client without rewriting completed services or granting tools. The dashboard
+  now injects role-specific clients into existing resume, matching, coaching, evaluator,
+  and proposal flows. Provider failures and malformed model output continue to use each
+  service's explicit deterministic fallback; no unattended action was added.
+
+  **Validation:** `python -m pytest -q tests/test_agent_orchestration.py
+  tests/test_coaching_projects.py tests/test_resume_loop.py tests/test_dashboard_app.py`
+  and the full `python -m pytest -q` suite passed, with `python -m compileall -q src` and
+  `git diff --check` clean. The next handoff is review/diff presentation and a
+  GitHub-ready adapter; sequencing, durable agent runs, automatic proposal approval, and
+  external delivery remain deferred.
 
 ### Deferred decisions
 

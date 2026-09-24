@@ -139,6 +139,9 @@ See `config.example.yaml` — every field is commented there. Highlights:
   stored.
 - `llm.provider` — `ollama` (default, local, free), `anthropic` (hosted, needs API key, has
   usage costs), or `none` (rule-based keyword scoring only, no LLM calls at all).
+- `agents.*` — specialized roles (`profiler`, `market_analysis`, `curriculum`, `evaluator`,
+  and `resume_writer`) inherit the local-first `llm` settings. Override a role or a named
+  `agents.tasks.*` workflow independently; Anthropic keys still come from `.env`.
 - `schedule.*` — how often `jobcopilot serve` runs searches and checks reminders.
 - `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP.
 

@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 
 from ..config import DEFAULT_CONFIG_PATH, Settings
+from ..agent_orchestration import AgentOrchestrator
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
 from ..coaching_projects import create_coaching_project, project_status
@@ -132,7 +133,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     templates.env.filters["posting_age"] = format_posting_age
     templates.env.filters["is_recent_posting"] = is_recent_posting
     session_factory = make_session_factory(settings)
-    llm = build_llm_client(settings.llm)
+    orchestrator = AgentOrchestrator(settings, client_builder=build_llm_client)
+    market_analysis_llm = orchestrator.client_for("market_analysis")
+    profiler_llm = orchestrator.client_for("profiler")
+    curriculum_llm = orchestrator.client_for("curriculum")
+    evaluator_llm = orchestrator.client_for("evaluator")
+    resume_writer_llm = orchestrator.client_for("resume_writer")
 
     # Simple in-memory state so the page can show live progress without a
     # job queue — this dashboard is single-user, single-process, so a plain
@@ -212,7 +218,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             with session_factory() as session:
                 profile = get_or_create_profile(session, settings)
                 n = run_search_cycle(
-                    session, settings, profile, llm,
+                    session, settings, profile, market_analysis_llm,
                     on_progress=_on_progress,
                     should_stop=stop_event.is_set,
                 )
@@ -255,7 +261,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     keyword_state["error"] = "No resume text on file — run `jobcopilot init` first."
                     return
                 keywords = suggest_boost_keywords(
-                    profile.resume_text, settings.preferences.target_titles, llm
+                    profile.resume_text, settings.preferences.target_titles, profiler_llm
                 )
                 if not keywords:
                     keyword_state["error"] = "The model didn't return any keywords — try again."
@@ -286,7 +292,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         resume_state["started_at"] = time.time()
         try:
             with session_factory() as session:
-                profile, summary, prefs_changed = parse_and_store_resume(session, settings, llm)
+                profile, summary, prefs_changed = parse_and_store_resume(session, settings, profiler_llm)
 
                 # A previous run may have been declared stuck and superseded
                 # by a newer upload while this one was still blocked on the
@@ -398,7 +404,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             job = session.get(JobPosting, job_id)
             if job is None or job.profile_id != profile.id:
                 return JSONResponse({"error": "Saved job not found."}, status_code=404)
-            result = analyze_job(session, profile, job, llm)
+            result = analyze_job(session, profile, job, market_analysis_llm)
             session.commit()
             return JSONResponse(result)
 
@@ -480,7 +486,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             profile = get_or_create_profile(session, settings)
             try:
                 result = create_coaching_project(
-                    session, profile.id, mode, llm, job_id=job_id, skill_id=skill_id
+                    session, profile.id, mode, curriculum_llm, job_id=job_id, skill_id=skill_id
                 )
                 session.commit()
             except ValueError as exc:
@@ -594,7 +600,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
             try:
-                evaluation = evaluate_submission(session, profile.id, submission_id, llm)
+                evaluation = evaluate_submission(session, profile.id, submission_id, evaluator_llm)
                 proposal = None
                 if evaluation.passed:
                     project = submission.project
@@ -616,7 +622,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                         ResumeProposal.status == "pending",
                     ).order_by(ResumeProposal.id.desc()).first()
                     if proposal is None:
-                        proposal = create_resume_proposal(session, profile.id, project, evaluation, llm)
+                        proposal = create_resume_proposal(session, profile.id, project, evaluation, resume_writer_llm)
                 session.commit()
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
@@ -685,7 +691,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         with session_factory() as session:
             profile = get_or_create_profile(session, settings)
             try:
-                result = approve_resume_proposal(session, settings, profile.id, proposal_id, llm)
+                result = approve_resume_proposal(session, settings, profile.id, proposal_id, resume_writer_llm)
                 session.commit()
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
