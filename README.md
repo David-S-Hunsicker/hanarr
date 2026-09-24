@@ -135,9 +135,13 @@ dashboard:
 Or select it for one run: `jobcopilot serve --launch-mode browser`. The optional webview mode
 requires `pip install -e ".[desktop]"` and can be selected with
 `jobcopilot serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
-Windows installer packaging, runtime bundling, shortcuts, unattended installation, update
-services, and signing remain planned work. The current setup action is intentionally a dashboard
-download/staging flow, not an installer or unattended installation.
+The Windows packaging foundation is documented in [`docs/windows-installer.md`](docs/windows-installer.md).
+It uses PyInstaller plus Inno Setup, keeps user data in `%LOCALAPPDATA%\Hanarr`, provides Start
+Menu shortcuts and an optional Desktop shortcut, and preserves data on uninstall. Run
+`.\scripts\build_windows.ps1` on Windows to produce an unsigned installer when PyInstaller and
+Inno Setup are available. This is a buildable packaging path, not a signed or released artifact;
+the installer never installs Ollama and the existing explicit-consent setup flow remains in charge
+of optional provider actions.
 
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are

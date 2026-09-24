@@ -10,6 +10,7 @@ with `--launch-mode`:
   dependency with `pip install -e ".[desktop]"`.
 
 The webview dependency is optional so CLI and browser use do not require desktop
-tooling. This is a launch abstraction for a future packaged Windows runtime,
-not an installer: no installer artifact, runtime bundle, shortcut registration,
-Ollama installation, or update service is implemented yet.
+tooling. The Windows packaging foundation adds packaged browser and desktop entry points
+around this same contract. See [`windows-installer.md`](windows-installer.md)
+for the PyInstaller/Inno Setup build; signing, release automation, and update
+services remain deferred.

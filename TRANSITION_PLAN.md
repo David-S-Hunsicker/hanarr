@@ -1,7 +1,8 @@
 # Hanarr transition plan
 
 **Status:** Phase 10 Windows-first installer and distribution planning is complete; the first
-desktop-launch foundation is implemented, while installer packaging remains deferred. Phase 6
+desktop-launch foundation and Windows packaging foundation are implemented, while signing and
+release validation remain deferred. Phase 6
 submission, evaluator, and local-first provider-routing
 foundations are complete. Alembic migrations, a
 frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
@@ -810,9 +811,8 @@ execution; this document change itself adds no installer code.
 
 ### Phase 10 — Windows-first installer and distribution plan
 
-This phase records the approved distribution plan and the bounded launch work completed against
-it. Installer scripts, packaging hooks, runtime bundling, update services, and Ollama setup remain
-future work.
+This phase records the approved distribution plan and the bounded launch and packaging work
+completed against it. Update services, signing, and Ollama setup remain future work.
 
 #### Product and launch shape
 
@@ -922,6 +922,15 @@ cover URL construction, supported-mode validation, and config loading. Validatio
 handoff: `python -m pytest -q tests/test_launch.py tests/test_dashboard_app.py`, the full test
 suite, `python -m compileall -q src`, and `git diff --check`.
 
+The M2/M3 packaging foundation is now implemented: `jobcopilot.packaged` provides browser and
+desktop entry points that run from `%LOCALAPPDATA%\Hanarr`, preserving configuration, resumes,
+SQLite data, and migrations outside replaceable application binaries. `scripts/build_windows.ps1`
+builds both PyInstaller runtimes and invokes `installer/hanarr.iss`, which defines a per-user Inno
+Setup installer, Start Menu shortcuts, an optional Desktop shortcut, Add/Remove Programs
+registration, and an uninstall policy that preserves user data. Static packaging tests cover the
+metadata and launch wiring. The documented build produces an unsigned local artifact only; no
+signing, release, update service, or clean-machine verification is claimed.
+
 The first-run local-AI foundation and the bounded M4 consent slice are implemented without
 crossing the installation boundary: typed diagnostics inspect the executable on PATH, local
 `/api/tags` service, installed models, configured-model readiness, and best-effort RAM/free-storage
@@ -933,11 +942,11 @@ leave provider configuration unchanged. Anthropic remains optional and determini
 fallback behavior is unchanged. Focused tests cover recommendations, parsing, unavailable
 services, dashboard no-op/decline behavior, and setup failure/interruption paths.
 
-No installer artifact, packaged runtime, Python/Ollama bundling, shortcut registration, first-run
-wizard, update service, or signing configuration has been added. The staged executable requires
-the user to review and run it separately; Hanarr does not install software or start services.
+No signed/released installer, update service, or first-run wizard has been added. The packaged
+runtime includes the application and Python dependencies but does not install or bundle Ollama;
+the existing explicit-consent setup flow remains responsible for optional provider actions.
 
-**Next handoff:** Add a real Windows first-run/installer experience around this consent boundary:
-package the runtime, provide shortcuts and uninstall/upgrade behavior, preserve user data, and
-validate clean-machine and recovery flows. Unattended installation, update services, signing,
-and macOS/Linux remain deferred.
+**Next handoff:** Build and verify the unsigned installer on Windows, then add Authenticode
+signing, clean-machine/upgrade/recovery/uninstall validation, and release automation. Add a
+first-run wizard, update services, unattended installation, and macOS/Linux only as separate
+milestones; Ollama must remain detection-first and explicit-consent gated.
