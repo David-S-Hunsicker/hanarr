@@ -33,6 +33,14 @@ jobs:
         shell: pwsh
         run: python -m pytest -q
 
+      - name: Compile application sources
+        shell: pwsh
+        run: python -m compileall -q src
+
+      - name: Check diff whitespace
+        shell: pwsh
+        run: git diff --check
+
       - name: Run packaging preflight
         shell: pwsh
         run: .\scripts\build_windows.ps1 -ValidateOnly -InnoSetup "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"

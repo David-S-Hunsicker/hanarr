@@ -41,7 +41,7 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 ## Status: what's actually verified
 
 The local-first release validation pass completed the automated checks: the full suite passes
-(117 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
+(151 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
 upload-boundary, approval-gate, and localhost-default behaviors are covered by the test suite.
 The first desktop-launch foundation is now implemented: `jobcopilot serve` can retain the
 foreground server (`none`), open the dashboard in the default browser (`browser`), or host the
@@ -56,8 +56,8 @@ clients against a real model, RemoteOK/Arbeitnow against live APIs, and desktop 
 Requires Python 3.10+.
 
 ```bash
-git clone https://github.com/David-S-Hunsicker/job-search-copilot.git
-cd job-search-copilot
+git clone https://github.com/David-S-Hunsicker/hanarr.git
+cd hanarr
 pip install -e ".[dev]"
 ```
 
@@ -234,13 +234,15 @@ cover the prefilter and the rule-based fallback scorer.
 - [ ] Start once from the repository root and confirm migrations complete without warnings.
 - [ ] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized or unsafe uploads.
-- [x] Run `python -m pytest -q`, `python -m compileall -q src`, and `git diff --check`.
+- [x] Run `python -m pytest -q` (151 tests), `python -m compileall -q src`, and
+  `git diff --check`.
 - [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
   review-first submission and a rejected upload.
 - [ ] Validate `jobcopilot serve --launch-mode browser` and `--launch-mode webview` on a real
   machine. Webview mode is currently an optional launch path, not an installed desktop product.
 - [ ] On Windows, run `.\scripts\build_windows.ps1 -ValidateOnly`, then build the unsigned
-  installer and record the artifact hash and tool versions.
+  installer and record the artifact hash and tool versions. This is the current local
+  packaging milestone; no artifact is claimed here until those tools are available.
 - [ ] Sign and verify the installer and packaged executables with Authenticode, then validate
   install, shortcuts, launch, upgrade, uninstall, and data preservation on a clean machine.
 - [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;

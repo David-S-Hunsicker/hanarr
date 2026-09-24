@@ -966,8 +966,26 @@ fail explicitly. A separate update-install API requires explicit approval but re
 migration execution are deliberately deferred. No local data, configuration, migrations, or
 Ollama behavior changes during a check.
 
-**Next handoff:** Add Authenticode signing and clean-machine/upgrade/recovery/uninstall validation
-before release publication. Implement approved, checksum/signature-verified download and
-data-preserving installation as a separate milestone; keep update checks opt-in, never silent,
-and keep Ollama detection-first and explicit-consent gated. Add a first-run wizard, unattended
-installation, and macOS/Linux only as separate milestones.
+### Phase 11 — final local-first installer readiness
+
+**Status:** The local-first installer foundation is documented and statically/test validated.
+The verified baseline is 151 passing tests, clean source byte-compilation, and clean diff
+whitespace checks. Packaging CI now runs those checks before its Windows preflight and unsigned
+artifact build. Tests cover the stable per-user install target, shortcut/runtime wiring,
+preservation of an existing configuration and SQLite file across the packaged-runtime upgrade
+path, and the uninstall policy that intentionally leaves `%LOCALAPPDATA%\Hanarr` untouched.
+
+The release checklist explicitly distinguishes what is verified in source/CI from what still
+requires a real Windows machine: Inno Setup/PyInstaller availability, clean-machine install,
+upgrade, launch, uninstall, and recovery walkthroughs. The current application still does not
+claim a signed or released artifact. Update checks remain opt-in and read-only; approval-gated
+download/install execution, silent updates, Authenticode signing, and release publication remain
+deferred. Ollama remains detection-first and explicit-consent gated, and the installer never
+installs or starts it.
+
+**Future handoff:** On a Windows validation machine, run the documented preflight and unsigned
+build, record tool versions and hashes, then perform clean-machine and upgrade/data-preservation
+walkthroughs. Only after those results are recorded should a separately approved milestone add
+certificate-backed Authenticode signing and publication. Keep update installation, silent
+updates, unattended setup, and macOS/Linux packaging as separate future work; do not infer them
+from this local-first foundation.
