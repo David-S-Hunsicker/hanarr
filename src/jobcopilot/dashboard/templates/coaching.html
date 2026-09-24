@@ -27,6 +27,9 @@
     .submission-form button { justify-self: start; cursor: pointer; }
     .evaluation { border-top: 1px solid var(--border); margin-top: .7rem; padding-top: .7rem; }
     .evaluation ul { margin: .35rem 0; padding-left: 1.1rem; }
+    .github-diff { width: 100%; margin-top: .5rem; }
+    .github-diff details { margin: .35rem 0; }
+    .github-diff pre { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; overflow-x: auto; font-size: .82rem; }
   </style>
 </head>
 <body>
@@ -98,9 +101,23 @@
         <div class="meta"><strong>Submission history:</strong>
           {% for submission in project.submissions %}
           <span class="pill">{{ submission.kind|replace("_", " ") }} · {{ submission.status }}{% if submission.manifest %} · {{ submission.manifest|length }} file(s){% endif %}</span>
+          {% if submission.kind == "github_repository" and submission.status == "draft" %}
+          <button type="button" class="fetch-github" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">{% if submission.metadata.fetched %}Refresh fetched diff (contacts github.com){% else %}Fetch for review (contacts github.com){% endif %}</button>
+          {% endif %}
           {% if submission.status == "draft" %}<button type="button" class="submit-draft" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Submit for review</button>{% endif %}
           {% if submission.status == "submitted" %}<button type="button" class="evaluate-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Evaluate evidence</button>{% endif %}
           {% if submission.status == "evaluated" %}<button type="button" class="resubmit-submission" data-submission-id="{{ submission.id }}" data-project-id="{{ project.id }}">Revise and resubmit</button>{% endif %}
+          {% if submission.kind == "github_repository" and submission.metadata.fetched %}
+          <div class="github-diff">
+            <p class="description">Commit {{ submission.metadata.commit_sha[:7] if submission.metadata.commit_sha else "unknown" }} on {{ submission.metadata.resolved_ref }} by {{ submission.metadata.commit_author }}: {{ submission.metadata.commit_message }}</p>
+            {% if submission.metadata.files_truncated %}<p class="description">Showing the first {{ submission.manifest|length }} changed files of this commit.</p>{% endif %}
+            {% for file in submission.manifest %}
+            <details><summary>{{ file.status }} · {{ file.path }} (+{{ file.additions }}/-{{ file.deletions }})</summary>
+              {% if file.patch %}<pre>{{ file.patch }}</pre>{% elif file.patch_omitted %}<p class="description">Diff omitted: {{ file.patch_omitted }}.</p>{% else %}<p class="description">No inline diff available for this file.</p>{% endif %}
+            </details>
+            {% endfor %}
+          </div>
+          {% endif %}
           {% for evaluation in submission.evaluations %}
           <div class="evaluation"><strong>Attempt {{ evaluation.attempt_number }}: {{ evaluation.outcome|replace("_", " ") }} ({{ "%.0f"|format(evaluation.score) }})</strong><br><span class="description">{{ evaluation.feedback }}</span>{% if evaluation.actionable_feedback %}<ul>{% for item in evaluation.actionable_feedback %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div>
           {% endfor %}
@@ -139,18 +156,25 @@
         if (!response.ok) window.alert((await response.json()).error || "Could not save files.");
         else window.location.reload();
       });
-      document.querySelectorAll(".save-github").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const projectId = button.dataset.projectId;
-          const reference = document.querySelector(`.github-reference[data-project-id="${projectId}"]`).value;
-          const ref = document.querySelector(`.github-ref[data-project-id="${projectId}"]`).value;
-          const response = await fetch(`/api/coaching-projects/${projectId}/submissions/github`, {
-            method: "POST", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({reference, ref})
-          });
-          if (!response.ok) window.alert((await response.json()).error || "Could not save GitHub reference.");
-          else window.location.reload();
+    });
+    document.querySelectorAll(".save-github").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const projectId = button.dataset.projectId;
+        const reference = document.querySelector(`.github-reference[data-project-id="${projectId}"]`).value;
+        const ref = document.querySelector(`.github-ref[data-project-id="${projectId}"]`).value;
+        const response = await fetch(`/api/coaching-projects/${projectId}/submissions/github`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({reference, ref})
         });
+        if (!response.ok) window.alert((await response.json()).error || "Could not save GitHub reference.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".fetch-github").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/github/fetch`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not fetch this repository.");
+        else window.location.reload();
       });
     });
     document.querySelectorAll(".submit-draft").forEach((button) => {

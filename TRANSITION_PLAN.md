@@ -752,9 +752,32 @@ the dashboard beyond localhost still requires an explicit future authentication 
 
 #### Remaining blockers
 
-Authentication/CSRF protection for non-local deployment and actual GitHub fetch/diff review
-remain intentionally deferred. The current GitHub adapter stores a validated reference only and
-performs no network or execution action.
+Authentication/CSRF protection for non-local deployment remains intentionally deferred.
+
+Actual GitHub fetch/diff review is no longer deferred: `fetch_github_submission` in
+`submissions.py`, wired to `POST /api/coaching-projects/{project_id}/submissions/{submission_id}/github/fetch`,
+is an explicit, user-triggered action (draft submissions only) that calls GitHub's public REST
+API over HTTPS to read the referenced branch/tag/commit's most recent commit — repository
+metadata plus the commit's changed files, statuses, add/delete counts, and patch text (bounded to
+100 files and 100,000 total diff characters so one large commit cannot pull unbounded data into
+the database). It never runs `git`, never clones or checks out a working tree, and never executes
+anything from the repository; the Coaching page renders the fetched commit and a per-file diff
+(`<details>`/`<pre>`) for review before the submission can ever be submitted for evaluation. A
+pre-existing bug was also fixed while touching this template: the GitHub-reference save button's
+event listener was nested inside the local-files save loop, so it registered once per project
+card instead of once — the same class of duplicate-listener bug already fixed once for job
+actions, now fixed here too.
+
+Validation: `python -m pytest -q tests/test_coaching_projects.py` (11 passed, including two new
+tests — one exercising the full fetch → truncation → dashboard-rendering path with a fake GitHub
+client, one covering rejection of non-GitHub/non-draft submissions and a simulated 404) and the
+full `python -m pytest -q` suite (156 passed). A live call against the real GitHub API
+(`octocat/Hello-World`) was attempted for extra confidence beyond the mocked tests, but this
+particular sandboxed environment cannot complete outbound TLS connections at all (no local CA
+trust) — the attempt still confirmed the error path works as intended: the `httpx.HTTPError` was
+caught and turned into a clean, actionable `ValueError` rather than a crash. The mocked tests
+carry full coverage of the parsing/truncation/error-handling logic; a real network validation on
+a normal (non-sandboxed) machine is still worth doing before relying on this in daily use.
 
 #### Explicit release-readiness checklist
 

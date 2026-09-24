@@ -1,5 +1,6 @@
 import json
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -17,6 +18,31 @@ from jobcopilot.models import (
 )
 import jobcopilot.dashboard.app as app_module
 import jobcopilot.submissions as submissions_module
+from jobcopilot.submissions import fetch_github_submission
+
+
+class FakeGitHubClient:
+    """A minimal stand-in for httpx.Client used to test the GitHub
+    fetch-for-review workflow without any real network access. Real
+    httpx.Response objects are returned so response handling (status
+    codes, .json(), .raise_for_status()) behaves exactly as it would
+    against the real API."""
+
+    def __init__(self, responses: dict[str, httpx.Response]):
+        self.responses = responses
+        self.requested: list[str] = []
+        self.closed = False
+
+    def get(self, url: str) -> httpx.Response:
+        self.requested.append(url)
+        for suffix, response in self.responses.items():
+            if url.endswith(suffix):
+                response.request = httpx.Request("GET", url)
+                return response
+        raise AssertionError(f"unexpected GitHub API request: {url}")
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakeLLM:
@@ -265,6 +291,114 @@ def test_github_submission_persists_safe_reference_without_fetching(tmp_path):
         json={"reference": "https://github.com/example/demo?clone=1", "ref": "main"},
     )
     assert rejected.status_code == 400
+
+
+def test_github_fetch_reads_commit_diff_read_only_and_bounds_large_commits(tmp_path):
+    """The fetch-for-review action must call only GitHub's read API (no git,
+    no clone, no execution) and must bound how much diff text a single large
+    commit can pull into the database."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id, profile_id = job.id, skill.id, profile.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+    submission_id = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/github",
+        json={"reference": "https://github.com/example/demo", "ref": "deadbeef"},
+    ).json()["id"]
+
+    many_files = [
+        {"filename": f"src/file{i}.py", "status": "modified", "additions": 1, "deletions": 0, "patch": "@@ -1 +1 @@\n-a\n+b"}
+        for i in range(150)
+    ]
+    fake_client = FakeGitHubClient({
+        "/repos/example/demo": httpx.Response(200, json={
+            "default_branch": "main", "description": "A demo repo", "private": False,
+        }),
+        "/commits/deadbeef": httpx.Response(200, json={
+            "sha": "deadbeef" * 5,
+            "commit": {"message": "Fix the thing", "author": {"name": "Ada", "date": "2026-01-01T00:00:00Z"}},
+            "files": many_files,
+        }),
+    })
+
+    with factory() as session:
+        submission = fetch_github_submission(session, profile_id, submission_id, client=fake_client)
+        session.commit()
+        assert submission.status.value == "draft"  # fetching for review never advances status
+
+    # Only GitHub's REST API was contacted -- no git binary, no clone, no execution.
+    assert all(url.startswith("https://api.github.com/") for url in fake_client.requested)
+    assert not fake_client.closed  # an injected client is not owned/closed by the function
+
+    status = client.get(f"/api/coaching-projects/{project_id}/submissions").json()["submissions"][0]
+    assert status["metadata"]["fetched"] is True
+    assert status["metadata"]["commit_sha"] == "deadbeef" * 5
+    assert status["metadata"]["commit_message"] == "Fix the thing"
+    assert status["metadata"]["commit_author"] == "Ada"
+    assert status["metadata"]["resolved_ref"] == "deadbeef"
+    assert status["metadata"]["execution"] is False
+    assert status["metadata"]["files_truncated"] is True
+    assert len(status["manifest"]) == submissions_module.MAX_DIFF_FILES
+    assert status["manifest"][0]["path"] == "src/file0.py"
+    assert status["manifest"][0]["patch"].startswith("@@ -1 +1 @@")
+
+    coaching_html = client.get("/coaching").text
+    assert "Fix the thing" in coaching_html
+    assert "src/file0.py" in coaching_html
+
+
+def test_github_fetch_requires_draft_github_submission_and_surfaces_not_found(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id, profile_id = job.id, skill.id, profile.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    # A written submission is not a GitHub submission -- fetch must reject it.
+    written_id = client.post(
+        f"/api/coaching-projects/{project_id}/submissions",
+        json={"content": "Built and tested the artifact."},
+    ).json()["id"]
+    with factory() as session:
+        try:
+            fetch_github_submission(session, profile_id, written_id, client=FakeGitHubClient({}))
+            assert False, "expected a ValueError for a non-GitHub submission"
+        except ValueError as exc:
+            assert "GitHub" in str(exc)
+
+    github_id = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/github",
+        json={"reference": "https://github.com/example/missing"},
+    ).json()["id"]
+    missing_repo_client = FakeGitHubClient({
+        "/repos/example/missing": httpx.Response(404, json={"message": "Not Found"}),
+    })
+    with factory() as session:
+        try:
+            fetch_github_submission(session, profile_id, github_id, client=missing_repo_client)
+            assert False, "expected a ValueError for a missing repository"
+        except ValueError as exc:
+            assert "not be found" in str(exc) or "not found" in str(exc).lower()
+
+    # Once submitted (no longer draft), fetch-for-review is no longer allowed.
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{github_id}/submit")
+    with factory() as session:
+        try:
+            fetch_github_submission(session, profile_id, github_id, client=FakeGitHubClient({}))
+            assert False, "expected a ValueError for a non-draft submission"
+        except ValueError as exc:
+            assert "draft" in str(exc)
 
 
 def test_submission_evaluation_persists_structured_result_and_resubmission_history(tmp_path, monkeypatch):

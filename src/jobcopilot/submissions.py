@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable
 from urllib.parse import urlsplit
 
+import httpx
 from sqlalchemy.orm import Session
 
 from .models import Project, ProjectSubmission, ProjectSubmissionKind, ProjectSubmissionStatus
@@ -18,6 +19,12 @@ MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_TOTAL_FILE_BYTES = 50 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 64 * 1024
 MAX_GITHUB_REFERENCE_LENGTH = 2048
+
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_FETCH_TIMEOUT = 15.0
+MAX_DIFF_FILES = 100
+MAX_PATCH_CHARS = 4_000
+MAX_TOTAL_DIFF_CHARS = 100_000
 
 
 def _project_for_profile(session: Session, project_id: int, profile_id: int) -> Project:
@@ -207,6 +214,131 @@ def create_github_submission(
         }),
     )
     session.add(submission)
+    session.flush()
+    return submission
+
+
+def _github_api_get(client: httpx.Client, url: str) -> dict:
+    response = client.get(url)
+    if response.status_code == 404:
+        raise ValueError("GitHub repository or reference was not found (or is private).")
+    if response.status_code == 403:
+        raise ValueError("GitHub API request was rate-limited or forbidden; try again later.")
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, dict):
+        raise ValueError("GitHub API returned an unexpected response.")
+    return data
+
+
+def _build_diff_manifest(files: object) -> tuple[list[dict], bool]:
+    """Turn GitHub's per-file commit diff into the same manifest shape local
+    submissions already use (a list of {"path": ...} entries the evaluator
+    reads), bounded so a large commit cannot pull an unbounded amount of
+    diff text into the database."""
+    if not isinstance(files, list):
+        files = []
+    truncated = len(files) > MAX_DIFF_FILES
+    manifest: list[dict] = []
+    total_patch_chars = 0
+    for entry in files[:MAX_DIFF_FILES]:
+        if not isinstance(entry, dict):
+            continue
+        path = str(entry.get("filename", "")).strip()
+        if not path:
+            continue
+        item = {
+            "path": path,
+            "status": str(entry.get("status") or "modified"),
+            "additions": int(entry.get("additions") or 0),
+            "deletions": int(entry.get("deletions") or 0),
+        }
+        patch = entry.get("patch")
+        if isinstance(patch, str) and patch:
+            remaining = MAX_TOTAL_DIFF_CHARS - total_patch_chars
+            if remaining <= 0:
+                item["patch_omitted"] = "total diff size limit reached"
+            else:
+                snippet = patch[: min(MAX_PATCH_CHARS, remaining)]
+                if len(snippet) < len(patch):
+                    snippet += "\n...[truncated]"
+                item["patch"] = snippet
+                total_patch_chars += len(snippet)
+        manifest.append(item)
+    return manifest, truncated
+
+
+def fetch_github_submission(
+    session: Session,
+    profile_id: int,
+    submission_id: int,
+    client: httpx.Client | None = None,
+) -> ProjectSubmission:
+    """Explicit, opt-in, read-only fetch of the submitted repository's most
+    recent commit at the referenced branch/tag/commit, for review before the
+    submission is ever sent for evaluation.
+
+    This only calls GitHub's public REST API over HTTPS (the same kind of
+    public-API access the job connectors use) to read repository and commit
+    metadata. It never runs `git`, never clones or checks out a working
+    tree, and never executes anything from the repository — the resulting
+    file-level diff is stored as plain text/counts, mirroring the manifest
+    already produced for local file submissions.
+    """
+    submission = session.get(ProjectSubmission, submission_id)
+    if submission is None or submission.project.profile_id != profile_id:
+        raise ValueError("Submission not found.")
+    if submission.kind is not ProjectSubmissionKind.GITHUB_REPOSITORY:
+        raise ValueError("Only GitHub submissions can be fetched for review.")
+    if submission.status is not ProjectSubmissionStatus.DRAFT:
+        raise ValueError("Only a draft submission can be fetched for review.")
+
+    metadata = json.loads(submission.metadata_json or "{}")
+    repository_url = str(metadata.get("repository_url", ""))
+    owner_repo = repository_url.removeprefix("https://github.com/").strip("/")
+    if owner_repo.count("/") != 1:
+        raise ValueError("Submission is missing a valid repository reference.")
+    owner, repository = owner_repo.split("/", 1)
+    ref = str(metadata.get("ref") or "")
+
+    http_client = client or httpx.Client(
+        timeout=GITHUB_FETCH_TIMEOUT,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "hanarr-coaching-review"},
+    )
+    try:
+        try:
+            repo = _github_api_get(http_client, f"{GITHUB_API_BASE}/repos/{owner}/{repository}")
+            resolved_ref = ref or str(repo.get("default_branch") or "HEAD")
+            commit = _github_api_get(
+                http_client, f"{GITHUB_API_BASE}/repos/{owner}/{repository}/commits/{resolved_ref}"
+            )
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Could not reach GitHub to fetch this submission: {exc}") from exc
+    finally:
+        if client is None:
+            http_client.close()
+
+    manifest, truncated = _build_diff_manifest(commit.get("files"))
+    commit_info = commit.get("commit") if isinstance(commit.get("commit"), dict) else {}
+    author_info = commit_info.get("author") if isinstance(commit_info.get("author"), dict) else {}
+
+    submission.manifest_json = json.dumps(manifest)
+    metadata.update({
+        "fetched": True,
+        "fetched_at": dt.datetime.utcnow().isoformat(),
+        "resolved_ref": resolved_ref,
+        "commit_sha": commit.get("sha"),
+        "commit_message": str(commit_info.get("message", ""))[:500],
+        "commit_author": str(author_info.get("name", ""))[:200],
+        "commit_date": str(author_info.get("date", "")),
+        "repository_description": str(repo.get("description") or "")[:500],
+        "repository_default_branch": repo.get("default_branch", ""),
+        "repository_private": bool(repo.get("private")),
+        "files_changed": len(manifest),
+        "files_truncated": truncated,
+        "execution": False,
+    })
+    submission.metadata_json = json.dumps(metadata)
     session.flush()
     return submission
 
