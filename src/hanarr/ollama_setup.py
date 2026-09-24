@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Event
 from typing import Any, Iterator
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -17,6 +18,31 @@ OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe"
 OLLAMA_LICENSE_URL = "https://github.com/ollama/ollama/blob/main/LICENSE"
 OLLAMA_INSTALLER_MAX_BYTES = 512 * 1024 * 1024
 MODEL_PULL_MAX_BYTES = 20 * 1024 * 1024 * 1024
+
+# Windows per-user installer default; used as a fallback when the executable
+# isn't found on PATH, since a process started before installation (or before
+# a fresh login) won't see a PATH change the installer just made -- Ollama
+# itself is still genuinely there and running.
+WINDOWS_DEFAULT_OLLAMA_PATH = Path.home() / "AppData" / "Local" / "Programs" / "Ollama" / "ollama.exe"
+
+
+def _prefer_ipv4_loopback(url: str) -> str:
+    """Rewrite a "localhost" host to 127.0.0.1.
+
+    Ollama's Windows service binds only to the IPv4 loopback. Windows
+    resolves "localhost" to both ::1 and 127.0.0.1 and tries IPv6 first;
+    since nothing answers on ::1, connecting to "http://localhost:PORT"
+    can take several seconds to fall back to the working IPv4 address --
+    long enough to blow past a short reachability-check timeout even
+    though the service is up and would respond immediately on 127.0.0.1.
+    """
+    parsed = urlsplit(url)
+    if parsed.hostname != "localhost":
+        return url
+    netloc = "127.0.0.1" if parsed.port is None else f"127.0.0.1:{parsed.port}"
+    if parsed.username:
+        netloc = f"{parsed.username}@{netloc}"
+    return urlunsplit(parsed._replace(netloc=netloc))
 
 
 class SetupError(RuntimeError):
@@ -178,7 +204,7 @@ def pull_model(
     events: list[dict[str, Any]] = []
     total = 0
     try:
-        with http_client.stream("POST", f"{base_url.rstrip('/')}/api/pull", json={"name": model}) as response:
+        with http_client.stream("POST", f"{_prefer_ipv4_loopback(base_url).rstrip('/')}/api/pull", json={"name": model}) as response:
             response.raise_for_status()
             for line in response.iter_lines():
                 if cancel_event is not None and cancel_event.is_set():
@@ -303,11 +329,13 @@ def detect_ollama(
 ) -> OllamaDiagnostics:
     """Inspect the executable and local service without changing machine state."""
     executable = shutil.which("ollama")
+    if executable is None and platform.system() == "Windows" and WINDOWS_DEFAULT_OLLAMA_PATH.exists():
+        executable = str(WINDOWS_DEFAULT_OLLAMA_PATH)
     models: list[InstalledModel] = []
     service_error: str | None = None
     reachable = False
     try:
-        response = httpx.get(f"{base_url.rstrip('/')}/api/tags", timeout=timeout)
+        response = httpx.get(f"{_prefer_ipv4_loopback(base_url).rstrip('/')}/api/tags", timeout=timeout)
         response.raise_for_status()
         payload = response.json()
         for item in payload.get("models", []):

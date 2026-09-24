@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from ..ollama_setup import _prefer_ipv4_loopback
 from .base import LLMClient
 
 
@@ -12,7 +13,11 @@ class OllamaClient(LLMClient):
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: float = 120.0):
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        # "localhost" resolves to both ::1 and 127.0.0.1 on Windows, which
+        # tries IPv6 first; Ollama's Windows service only binds IPv4, so
+        # every call would otherwise pay a multi-second IPv6-timeout penalty
+        # before falling back. See ollama_setup._prefer_ipv4_loopback.
+        self.base_url = _prefer_ipv4_loopback(base_url).rstrip("/")
         self.timeout = timeout
 
     def complete_json(self, system: str, user: str) -> str:
