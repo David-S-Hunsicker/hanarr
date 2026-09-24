@@ -326,9 +326,32 @@ skill action from the dashboard.
 
 **Next handoff**
 
-Add the first compact job-card/detail presentation for these API results, then proceed to
-manually opted-in project actions. Keep re-analysis explicit; do not couple gap analysis
-to automatic scoring or create coaching projects implicitly.
+The first compact job-card/detail presentation is now complete. Proceed to manually opted-in
+project actions. Keep re-analysis explicit; do not couple gap analysis to automatic scoring
+or create coaching projects implicitly.
+
+#### Phase 2 — Jobs dashboard gap awareness: complete
+
+**Completed deliverables**
+
+- Added a compact analyzed-gap indicator and inline fit-analysis detail surface to each
+  eligible Jobs card.
+- Added a direct **Improve my fit** action that explicitly runs the existing gap analysis
+  API, without changing fit scores, apply links, search, or application status controls.
+- Added `GET /api/jobs/{job_id}/skill-gaps` for a single-job detail surface, including an
+  explicit unanalyzed response.
+
+**Validation**
+
+- Focused skill-analysis and dashboard regression tests cover analyzed/unanalyzed API states,
+  rendered gap indicators/details, and preserved status actions.
+- Targeted and full test commands are recorded in the handoff commit.
+
+**Next handoff**
+
+Add only manually opted-in posting-specific or reusable-skill project creation from a gap
+detail, then define the smallest coaching panel. Do not add automatic project creation,
+resume activation, or rescoring in this milestone.
 
 ### Phase 3 — dashboard coaching and projects
 

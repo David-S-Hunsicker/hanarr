@@ -236,3 +236,11 @@ def saved_job_gaps(session: Session, profile: Profile) -> list[dict]:
             }
         )
     return output
+
+
+def saved_job_gap(session: Session, profile: Profile, job_id: int) -> dict | None:
+    """Return one analyzed saved posting, or None when it has no analysis."""
+    for item in saved_job_gaps(session, profile):
+        if item["job"]["id"] == job_id:
+            return item
+    return None

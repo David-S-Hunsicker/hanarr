@@ -27,7 +27,7 @@ from ..models import ApplicationStatus, JobPosting, Reminder, SeenPosting
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
-from ..skill_analysis import analyze_job, saved_job_gaps
+from ..skill_analysis import analyze_job, saved_job_gap, saved_job_gaps
 from .config_form import (
     apply_app_config_form,
     apply_preferences_form,
@@ -320,6 +320,10 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             status_counts = {s.value: 0 for s in ApplicationStatus}
             for status_value, count in status_counts_rows:
                 status_counts[status_value.value] = count
+            gap_by_job = {
+                item["job"]["id"]: item
+                for item in saved_job_gaps(session, profile)
+            }
 
             return templates.TemplateResponse(
                 request=request,
@@ -335,6 +339,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "considered_count": considered_count,
                     "matched_count": matched_count,
                     "status_counts": status_counts,
+                    "gap_by_job": gap_by_job,
                 },
             )
 
@@ -358,6 +363,21 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             result = analyze_job(session, profile, job, llm)
             session.commit()
             return JSONResponse(result)
+
+    @app.get("/api/jobs/{job_id}/skill-gaps")
+    def get_job_skill_gaps(job_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            job = session.get(JobPosting, job_id)
+            if job is None or job.profile_id != profile.id:
+                return JSONResponse({"error": "Saved job not found."}, status_code=404)
+            result = saved_job_gap(session, profile, job_id)
+            if result is None:
+                return JSONResponse(
+                    {"job": {"id": job.id, "title": job.title, "company": job.company},
+                     "analyzed": False, "gaps": [], "gap_counts": {}}
+                )
+            return JSONResponse({"analyzed": True, **result})
 
     @app.get("/api/skill-gaps")
     def get_skill_gaps():

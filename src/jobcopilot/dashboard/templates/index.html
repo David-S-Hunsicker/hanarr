@@ -265,6 +265,15 @@
       letter-spacing: 0.02em;
       padding: 0.1rem 0.5rem;
     }
+    .pill.gap-indicator {
+      color: var(--status-warning);
+      border-color: var(--status-warning);
+      font-weight: 550;
+    }
+    .pill.gap-indicator.good {
+      color: var(--status-good);
+      border-color: var(--status-good);
+    }
     .job-rationale {
       margin-top: 0.55rem;
       font-size: 0.82rem;
@@ -282,6 +291,33 @@
     .job-rationale summary:before { content: "Why this score \25B8  "; }
     .job-rationale[open] summary:before { content: "Why this score \25BE  "; }
     .job-rationale p { margin: 0.4rem 0 0; }
+    .job-gaps {
+      margin-top: 0.55rem;
+      font-size: 0.82rem;
+      border-top: 1px solid var(--gridline);
+      padding-top: 0.5rem;
+    }
+    .job-gaps summary {
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .job-gaps ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+    .job-gaps li { margin: 0.2rem 0; color: var(--text-secondary); }
+    .job-gaps .missing { color: var(--status-serious); }
+    .job-gaps .partial { color: var(--status-warning); }
+    .job-gaps .satisfied { color: var(--status-good); }
+    .fit-action {
+      font: inherit;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .fit-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .fit-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
 
     .job-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
     .status-select {
@@ -407,6 +443,16 @@
           {% set age = job.posted_at|posting_age %}
           {% if age %}<span class="pill" title="{{ job.posted_at.strftime('%Y-%m-%d') }}">{{ age }}</span>{% endif %}
           <span class="pill">{{ job.source }}</span>
+          {% set gap = gap_by_job.get(job.id) %}
+          {% if gap %}
+            {% set missing = gap.gap_counts.get('missing', 0) %}
+            {% set partial = gap.gap_counts.get('partial', 0) %}
+            {% if missing or partial %}
+            <span class="pill gap-indicator">{{ missing + partial }} gap{% if missing + partial != 1 %}s{% endif %}</span>
+            {% else %}
+            <span class="pill gap-indicator good">Fit analyzed</span>
+            {% endif %}
+          {% endif %}
         </div>
         {% if job.fit_rationale %}
         <details class="job-rationale">
@@ -414,9 +460,22 @@
           <p>{{ job.fit_rationale }}</p>
         </details>
         {% endif %}
+        {% if gap %}
+        <details class="job-gaps">
+          <summary>View fit analysis</summary>
+          <ul>
+            {% for item in gap.gaps %}
+            <li class="{{ item.status }}"><strong>{{ item.skill.name }}</strong> — {{ item.status }}{% if item.evidence %}; {{ item.evidence }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
       </div>
 
       <div class="job-actions">
+        {% if not gap %}
+        <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
+        {% endif %}
         <form method="post" action="/jobs/{{ job.id }}/status">
           <select class="status-select" name="new_status" onchange="this.form.submit()">
             {% for s in statuses %}
@@ -445,6 +504,23 @@
       const countLabel = document.getElementById("progress-count");
       const barFill = document.getElementById("progress-bar-fill");
       const logEl = document.getElementById("progress-log");
+
+      document.querySelectorAll(".fit-action").forEach((button) => {
+        button.addEventListener("click", function () {
+          button.disabled = true;
+          button.textContent = "Analyzing…";
+          fetch("/api/jobs/" + button.dataset.jobId + "/skill-gaps/analyze", { method: "POST" })
+            .then((response) => {
+              if (!response.ok) throw new Error("analysis failed");
+              return response.json();
+            })
+            .then(() => window.location.reload())
+            .catch(() => {
+              button.disabled = false;
+              button.textContent = "Try fit analysis again";
+            });
+        });
+      });
 
       let seenRunId = {{ run_id }};
       let pollTimer = null;
