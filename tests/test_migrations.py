@@ -13,7 +13,8 @@ def test_existing_database_is_upgraded_without_recreating_legacy_rows(tmp_path):
     data_dir.mkdir()
     db_path = data_dir / "jobcopilot.db"
     engine = create_engine(f"sqlite:///{db_path}")
-    legacy_tables = [table for table in Base.metadata.sorted_tables if table.name != "score_snapshots"]
+    legacy_names = {"profiles", "job_postings", "seen_postings", "reminders"}
+    legacy_tables = [table for table in Base.metadata.sorted_tables if table.name in legacy_names]
     Base.metadata.create_all(engine, tables=legacy_tables)
 
     with sessionmaker(bind=engine)() as session:

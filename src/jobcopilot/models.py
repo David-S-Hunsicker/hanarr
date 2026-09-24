@@ -42,6 +42,10 @@ class Profile(Base):
 
     jobs: Mapped[list["JobPosting"]] = relationship(back_populates="profile")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="profile")
+    profile_skills: Mapped[list["ProfileSkill"]] = relationship(back_populates="profile")
+    projects: Mapped[list["Project"]] = relationship(back_populates="profile")
+    resume_versions: Mapped[list["ResumeVersion"]] = relationship(back_populates="profile")
+    resume_proposals: Mapped[list["ResumeProposal"]] = relationship(back_populates="profile")
 
 
 class ApplicationStatus(str, enum.Enum):
@@ -85,6 +89,7 @@ class JobPosting(Base):
 
     profile: Mapped["Profile"] = relationship(back_populates="jobs")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="job")
+    job_skills: Mapped[list["JobSkill"]] = relationship(back_populates="job")
 
 
 class SeenPosting(Base):
@@ -144,3 +149,220 @@ class ScoreSnapshot(Base):
     trigger: Mapped[str] = mapped_column(String, default="initial")
     scorer_metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class Skill(Base):
+    """Canonical capability shared by profile, job, and project records."""
+
+    __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("slug", name="uq_skill_slug"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    slug: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    profile_skills: Mapped[list["ProfileSkill"]] = relationship(back_populates="skill")
+    job_skills: Mapped[list["JobSkill"]] = relationship(back_populates="skill")
+    project_skills: Mapped[list["ProjectSkill"]] = relationship(back_populates="skill")
+    proven_skills: Mapped[list["ProvenSkill"]] = relationship(back_populates="skill")
+
+
+class ProfileSkill(Base):
+    __tablename__ = "profile_skills"
+    __table_args__ = (UniqueConstraint("profile_id", "skill_id", name="uq_profile_skill"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"))
+    proficiency: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String, default="manual")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="profile_skills")
+    skill: Mapped["Skill"] = relationship(back_populates="profile_skills")
+
+
+class JobSkillRequirement(str, enum.Enum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+
+
+class SkillGapStatus(str, enum.Enum):
+    UNKNOWN = "unknown"
+    MISSING = "missing"
+    PARTIAL = "partial"
+    SATISFIED = "satisfied"
+
+
+class JobSkill(Base):
+    __tablename__ = "job_skills"
+    __table_args__ = (UniqueConstraint("job_id", "skill_id", name="uq_job_skill"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"))
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"))
+    requirement: Mapped[JobSkillRequirement] = mapped_column(
+        Enum(JobSkillRequirement), default=JobSkillRequirement.REQUIRED
+    )
+    gap_status: Mapped[SkillGapStatus] = mapped_column(
+        Enum(SkillGapStatus), default=SkillGapStatus.UNKNOWN
+    )
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    analyzed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    job: Mapped["JobPosting"] = relationship(back_populates="job_skills")
+    skill: Mapped["Skill"] = relationship(back_populates="job_skills")
+
+
+class ProjectMode(str, enum.Enum):
+    POSTING_SPECIFIC = "posting_specific"
+    REUSABLE_SKILL = "reusable_skill"
+
+
+class ProjectStatus(str, enum.Enum):
+    PLANNED = "planned"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("job_postings.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String)
+    mode: Mapped[ProjectMode] = mapped_column(Enum(ProjectMode))
+    status: Mapped[ProjectStatus] = mapped_column(Enum(ProjectStatus), default=ProjectStatus.PLANNED)
+    description: Mapped[str] = mapped_column(Text, default="")
+    target_outcome: Mapped[str] = mapped_column(Text, default="")
+    opted_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    profile: Mapped["Profile"] = relationship(back_populates="projects")
+    job: Mapped["JobPosting | None"] = relationship()
+    skills: Mapped[list["ProjectSkill"]] = relationship(back_populates="project")
+    submissions: Mapped[list["ProjectSubmission"]] = relationship(back_populates="project")
+
+
+class ProjectSkill(Base):
+    __tablename__ = "project_skills"
+    __table_args__ = (UniqueConstraint("project_id", "skill_id", name="uq_project_skill"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"))
+    target_level: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+
+    project: Mapped["Project"] = relationship(back_populates="skills")
+    skill: Mapped["Skill"] = relationship(back_populates="project_skills")
+
+
+class ProjectSubmissionStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    EVALUATED = "evaluated"
+
+
+class ProjectSubmission(Base):
+    __tablename__ = "project_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    content: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ProjectSubmissionStatus] = mapped_column(
+        Enum(ProjectSubmissionStatus), default=ProjectSubmissionStatus.DRAFT
+    )
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    project: Mapped["Project"] = relationship(back_populates="submissions")
+    evaluations: Mapped[list["ProjectEvaluation"]] = relationship(back_populates="submission")
+
+
+class ProjectEvaluation(Base):
+    __tablename__ = "project_evaluations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submission_id: Mapped[int] = mapped_column(ForeignKey("project_submissions.id"))
+    evaluator: Mapped[str] = mapped_column(String, default="manual")
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    evaluated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    submission: Mapped["ProjectSubmission"] = relationship(back_populates="evaluations")
+
+
+class ProvenSkill(Base):
+    __tablename__ = "proven_skills"
+    __table_args__ = (UniqueConstraint("profile_id", "skill_id", name="uq_proven_profile_skill"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
+    evaluation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_evaluations.id"), nullable=True
+    )
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    proven_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    skill: Mapped["Skill"] = relationship(back_populates="proven_skills")
+
+
+class ResumeProposalStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ResumeVersion(Base):
+    __tablename__ = "resume_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    content: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    profile: Mapped["Profile"] = relationship(back_populates="resume_versions")
+    proposals: Mapped[list["ResumeProposal"]] = relationship(
+        back_populates="base_version", foreign_keys="ResumeProposal.base_version_id"
+    )
+
+
+class ResumeProposal(Base):
+    __tablename__ = "resume_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    base_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resume_versions.id"), nullable=True
+    )
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
+    proposed_content: Mapped[str] = mapped_column(Text)
+    diff: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ResumeProposalStatus] = mapped_column(
+        Enum(ResumeProposalStatus), default=ResumeProposalStatus.PENDING
+    )
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    profile: Mapped["Profile"] = relationship(back_populates="resume_proposals")
+    base_version: Mapped["ResumeVersion | None"] = relationship(
+        back_populates="proposals", foreign_keys=[base_version_id]
+    )

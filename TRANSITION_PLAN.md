@@ -1,7 +1,8 @@
 # Hannar transition plan
 
-**Status:** Phase 1 foundation complete. Alembic migrations, a frozen compatibility baseline,
-and additive score snapshots are in place without changing existing job-search behavior.
+**Status:** Phase 2 schema foundation complete. Alembic migrations, a frozen compatibility
+baseline, score snapshots, normalized skills, coaching records, proven skills, and resume
+proposal storage are in place without changing existing job-search behavior.
 
 ## 1. Purpose and decisions
 
@@ -264,10 +265,34 @@ flows still work.
 **Next handoff**
 
 Proceed to Phase 2 only after confirming this migration path in a representative local
-database. Phase 2 may add skills and gap records; it must remain additive and must not yet
-introduce project, orchestration, or submission flows.
+database. The Phase 2 schema increment below is complete; the next handoff is behavior and
+dashboard integration, not agent orchestration.
 
 ### Phase 2 — skills and gap integration
+
+#### Phase 2 — skills and gap integration: schema foundation complete
+
+**Completed deliverables**
+
+- Added migration `0003` with normalized `skills`, profile-skill evidence, and job-skill
+  requirement/gap records.
+- Added manually opted-in coaching projects with posting-specific or reusable-skill mode,
+  project skills, submissions, evaluations, and proven-skill evidence.
+- Added immutable resume versions and pending/approved/rejected proposal storage, including
+  provenance links to a project and base version.
+- Kept `0001` explicitly limited to the frozen compatibility tables so future model additions
+  cannot accidentally alter the legacy baseline.
+
+**Validation**
+
+- Model tests persist skill evidence, gap classifications, project submissions/evaluations,
+  proven skills, and pending resume proposals.
+- Migration tests verify fresh and representative legacy databases upgrade through `0003`.
+
+**Next handoff**
+
+Build the explainable skill extraction/gap analysis service and dashboard indicators. Keep
+project creation manually opted-in; defer orchestration and automatic resume activation.
 
 - Extract canonical profile skills and posting requirements using an explainable agent.
 - Persist strengths, gaps, uncertainty, evidence, and analysis timestamps.
