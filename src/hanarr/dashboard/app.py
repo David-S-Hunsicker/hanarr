@@ -835,12 +835,71 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             )
 
     @app.get("/applications")
-    def future_section(request: Request):
-        labels = {"resume": "Resume", "skills": "Skills", "applications": "Applications"}
-        return templates.TemplateResponse(
-            request=request,
-            name="placeholder.html", context={"section": labels["applications"]},
-        )
+    def applications_page(request: Request):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            # "Applications" is deliberately the jobs you've actually acted
+            # on -- everything past the default "new" status -- rather than
+            # Jobs' full discovery list. Same underlying data as the Jobs
+            # page's status filter pills, viewed as a pipeline instead of a
+            # search result: what you're pursuing and where each one stands.
+            jobs = (
+                session.query(JobPosting)
+                .filter(JobPosting.profile_id == profile.id, JobPosting.status != ApplicationStatus.NEW)
+                .order_by(JobPosting.status_changed_at.desc())
+                .all()
+            )
+            pending_reminders = (
+                session.query(Reminder)
+                .filter(Reminder.profile_id == profile.id, Reminder.completed.is_(False))
+                .order_by(Reminder.due_at.asc())
+                .all()
+            )
+            reminders_by_job: dict[int, list[Reminder]] = {}
+            for reminder in pending_reminders:
+                if reminder.job_id is not None:
+                    reminders_by_job.setdefault(reminder.job_id, []).append(reminder)
+
+            status_counts_rows = (
+                session.query(JobPosting.status, func.count(JobPosting.id))
+                .filter(JobPosting.profile_id == profile.id, JobPosting.status != ApplicationStatus.NEW)
+                .group_by(JobPosting.status)
+                .all()
+            )
+            counted = {status_value.value: count for status_value, count in status_counts_rows}
+            # Ordered by how much a status needs your attention --
+            # interviewing/offer first, closed-out rejected/dismissed last
+            # -- and shared between the summary pills and the grouped
+            # sections below them so the two agree on the story they tell,
+            # rather than one following this order and the other the
+            # ApplicationStatus enum's declaration order.
+            ATTENTION_ORDER = ("interviewing", "offer", "applied", "reviewed", "rejected", "dismissed")
+            status_counts = {s: counted.get(s, 0) for s in ATTENTION_ORDER}
+
+            grouped: dict[str, list[dict]] = {s: [] for s in ATTENTION_ORDER}
+            for job in jobs:
+                grouped.setdefault(job.status.value, []).append({
+                    "id": job.id,
+                    "title": job.title,
+                    "company": job.company,
+                    "url": job.url,
+                    "status": job.status.value,
+                    "status_changed_at": job.status_changed_at,
+                    "fit_score": job.fit_score,
+                    "reminders": [
+                        {"type": r.type.value, "message": r.message, "due_at": r.due_at}
+                        for r in reminders_by_job.get(job.id, [])
+                    ],
+                })
+            return templates.TemplateResponse(
+                request=request,
+                name="applications.html",
+                context={
+                    "grouped_applications": {k: v for k, v in grouped.items() if v},
+                    "status_counts": status_counts,
+                    "total_count": len(jobs),
+                },
+            )
 
     @app.post("/jobs/clear")
     def clear_jobs():

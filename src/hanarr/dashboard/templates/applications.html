@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Applications · Hanarr</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; --bad:#b23b3b; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; --bad:#e77373; } }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin-bottom:.75rem; } h3 { font-size:.98rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; } .muted { color:var(--muted); }
+    .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.7rem; }
+    .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color:var(--accent); color:var(--accent); }
+    .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .intro { color:var(--muted); margin:0 0 1.4rem; max-width:640px; }
+    .summary { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+    .summary .pill { font-size:.82rem; padding:.3rem .7rem; }
+    .section { margin:1.7rem 0; } .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:.7rem 0; }
+    .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; color:var(--muted); }
+    .pill-interviewing, .pill-applied { border-color:var(--accent); color:var(--accent); }
+    .pill-offer { border-color:var(--good); color:var(--good); }
+    .pill-rejected { border-color:var(--bad); color:var(--bad); }
+    .pill-dismissed { opacity:.7; }
+    .app-card { display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start; }
+    .app-main a.title { color:var(--text); font-weight:650; text-decoration:none; } .app-main a.title:hover { text-decoration:underline; }
+    .app-meta { color:var(--muted); font-size:.85rem; margin-top:.2rem; }
+    .app-score { color:var(--muted); font-size:.85rem; white-space:nowrap; }
+    .reminders { margin-top:.6rem; padding-top:.6rem; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:.25rem; }
+    .reminder { font-size:.82rem; color:var(--muted); } .reminder strong { color:var(--text); }
+    .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>Applications</h1><span class="muted">Where each job you're pursuing stands</span></div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a class="active" href="/applications">Applications</a><a href="/config">Settings</a>
+  </nav>
+  <p class="intro">
+    Jobs move here once you've made a decision about them on the Jobs page — applied, interviewing,
+    an offer, rejected, or dismissed. New and unreviewed postings stay on Jobs, which is for
+    discovering and scoring; this page is for tracking the ones you're actually pursuing and what's
+    due next, grouped by where they stand.
+  </p>
+
+  {% if grouped_applications %}
+  <div class="summary">
+    {% for status, count in status_counts.items() if count > 0 %}
+    <span class="pill pill-{{ status }}">{{ status|capitalize }} · {{ count }}</span>
+    {% endfor %}
+  </div>
+
+  {% for status, applications in grouped_applications.items() %}
+  <section class="section">
+    <h2>{{ status|capitalize }}</h2>
+    {% for app in applications %}
+    <div class="card app-card">
+      <div class="app-main">
+        <a class="title" href="/#job-{{ app.id }}">{{ app.title }}</a>
+        <div class="app-meta">{{ app.company }} · updated {{ app.status_changed_at.strftime("%b %d, %Y") }}</div>
+        {% if app.reminders %}
+        <div class="reminders">
+          {% for reminder in app.reminders %}
+          <div class="reminder"><strong>{{ reminder.type|replace("_", " ")|capitalize }}</strong> due {{ reminder.due_at.strftime("%b %d, %Y") }} — {{ reminder.message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="app-score">{% if app.fit_score is not none %}Fit {{ "%.0f"|format(app.fit_score) }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+  {% else %}
+  <div class="empty">
+    Nothing here yet. Mark a job's status as applied (or further) on the
+    <a href="/">Jobs</a> page and it'll show up here.
+  </div>
+  {% endif %}
+</body>
+</html>

@@ -571,3 +571,81 @@ def test_search_status_tracks_considered_progress_across_sources(monkeypatch, tm
     assert final["considered_done"] == 5
     assert final["considered_total"] == 5
     assert final["matched_count"] == 5
+
+
+def test_applications_page_excludes_new_jobs_and_groups_the_rest_by_status(tmp_path):
+    """Regression test: the Applications page was an unbuilt placeholder
+    ("reserved for the next transition milestone") even though the status
+    data it needs already existed on JobPosting. It must show jobs the user
+    has actually made a decision about (anything past "new"), grouped by
+    status, and never show "new"/undecided postings -- those stay on Jobs."""
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="new", company="Acme",
+            title="Untouched Posting", url="u", fit_score=80, status=ApplicationStatus.NEW,
+        ))
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="applied", company="Beta",
+            title="Applied Posting", url="u", fit_score=75, status=ApplicationStatus.APPLIED,
+        ))
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="offer", company="Gamma",
+            title="Offer Posting", url="u", fit_score=90, status=ApplicationStatus.OFFER,
+        ))
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    html = client.get("/applications").text
+
+    assert "Untouched Posting" not in html
+    assert "Applied Posting" in html
+    assert "Offer Posting" in html
+    # Interviewing/offer are grouped ahead of applied in the attention-order
+    # this page uses, so Offer's own <section> heading should appear first.
+    assert html.index("Offer") < html.index("Applied") < html.index("Applied Posting")
+
+
+def test_applications_page_shows_pending_reminders_scoped_to_their_job(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Applied Posting", url="u", fit_score=75, status=ApplicationStatus.APPLIED,
+        )
+        session.add(job)
+        session.flush()
+        session.add(Reminder(
+            profile_id=profile.id, job_id=job.id, type=ReminderType.FOLLOW_UP,
+            message="Check in with the recruiter", due_at=dt.datetime(2030, 1, 1), completed=False,
+        ))
+        session.add(Reminder(
+            profile_id=profile.id, job_id=job.id, type=ReminderType.INTERVIEW_PREP,
+            message="Already handled", due_at=dt.datetime(2020, 1, 1), completed=True,
+        ))
+        session.commit()
+
+    app = create_app(settings)
+    client = TestClient(app)
+    html = client.get("/applications").text
+
+    assert "Check in with the recruiter" in html
+    assert "Already handled" not in html  # completed reminders are not shown
+
+
+def test_applications_page_shows_a_helpful_empty_state(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    app = create_app(settings)
+    client = TestClient(app)
+
+    html = client.get("/applications").text
+
+    assert "reserved for the next transition milestone" not in html
+    assert "Jobs" in html
