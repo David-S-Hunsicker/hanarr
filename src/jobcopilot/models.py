@@ -246,12 +246,15 @@ class Project(Base):
     status: Mapped[ProjectStatus] = mapped_column(Enum(ProjectStatus), default=ProjectStatus.PLANNED)
     description: Mapped[str] = mapped_column(Text, default="")
     target_outcome: Mapped[str] = mapped_column(Text, default="")
+    brief_json: Mapped[str] = mapped_column(Text, default="{}")
     opted_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="projects")
     job: Mapped["JobPosting | None"] = relationship()
     skills: Mapped[list["ProjectSkill"]] = relationship(back_populates="project")
+    affected_jobs: Mapped[list["ProjectJob"]] = relationship(back_populates="project")
+    tasks: Mapped[list["ProjectTask"]] = relationship(back_populates="project")
     submissions: Mapped[list["ProjectSubmission"]] = relationship(back_populates="project")
 
 
@@ -267,6 +270,39 @@ class ProjectSkill(Base):
 
     project: Mapped["Project"] = relationship(back_populates="skills")
     skill: Mapped["Skill"] = relationship(back_populates="project_skills")
+
+
+class ProjectJob(Base):
+    __tablename__ = "project_jobs"
+    __table_args__ = (UniqueConstraint("project_id", "job_id", name="uq_project_job"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    job_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"))
+
+    project: Mapped["Project"] = relationship(back_populates="affected_jobs")
+    job: Mapped["JobPosting"] = relationship()
+
+
+class ProjectTaskStatus(str, enum.Enum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+
+class ProjectTask(Base):
+    __tablename__ = "project_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    position: Mapped[int] = mapped_column(Integer, default=1)
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ProjectTaskStatus] = mapped_column(
+        Enum(ProjectTaskStatus), default=ProjectTaskStatus.TODO
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="tasks")
 
 
 class ProjectSubmissionStatus(str, enum.Enum):

@@ -409,6 +409,16 @@
   </div>
 
   {% if jobs %}
+  {% if projects %}
+  <section class="reminders">
+    <h2>Coaching projects</h2>
+    <ul>
+      {% for project in projects %}
+      <li><strong>{{ project.title }}</strong> — {{ project.status }} · {{ project.tasks|length }} tasks</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
   <div class="job-list">
     {% for job in jobs %}
     <div class="job-card">
@@ -466,6 +476,9 @@
           <ul>
             {% for item in gap.gaps %}
             <li class="{{ item.status }}"><strong>{{ item.skill.name }}</strong> — {{ item.status }}{% if item.evidence %}; {{ item.evidence }}{% endif %}</li>
+            {% if item.status in ["missing", "partial"] %}
+            <li><button type="button" class="project-action" data-job-id="{{ job.id }}" data-skill-id="{{ item.skill.id }}">Start project for {{ item.skill.name }}</button></li>
+            {% endif %}
             {% endfor %}
           </ul>
         </details>
@@ -518,6 +531,25 @@
             .catch(() => {
               button.disabled = false;
               button.textContent = "Try fit analysis again";
+            });
+
+            document.querySelectorAll(".project-action").forEach((button) => {
+              button.addEventListener("click", function () {
+                button.disabled = true;
+                fetch("/api/coaching-projects", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                    mode: "posting_specific",
+                    job_id: Number(button.dataset.jobId),
+                    skill_id: Number(button.dataset.skillId)
+                  })
+                }).then((response) => {
+                  if (!response.ok) throw new Error("project creation failed");
+                  return response.json();
+                }).then(() => window.location.reload())
+                  .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
+              });
             });
         });
       });

@@ -353,6 +353,33 @@ Add only manually opted-in posting-specific or reusable-skill project creation f
 detail, then define the smallest coaching panel. Do not add automatic project creation,
 resume activation, or rescoring in this milestone.
 
+#### Phase 3 — first coaching-project flow: complete
+
+**Completed deliverables**
+
+- Added additive migration `0004` for generated project briefs, ordered project tasks, and
+  project-to-affected-job links.
+- Added `POST /api/coaching-projects` with explicit `posting_specific` and `reusable_skill`
+  scope validation from analyzed missing/partial gaps. The existing LLM abstraction generates
+  a structured brief, with a deterministic three-task fallback when no model is configured or
+  the response is invalid.
+- Added `GET /api/coaching-projects` and `GET /api/coaching-projects/{id}` status/detail
+  surfaces, plus a small Jobs dashboard coaching panel and opt-in project action.
+- Preserved search, fit scoring, application status, submission, evaluation, resume, and
+  automatic-project behavior; this increment only creates planned local artifacts.
+
+**Validation**
+
+- Focused coaching-project tests cover fallback persistence, task structure, posting-specific
+  scope, reusable-skill affected-job coverage, and project status APIs.
+- Run `pytest tests/test_coaching_projects.py tests/test_skill_analysis.py tests/test_dashboard_app.py`
+  and the full test suite before handoff.
+
+**Next handoff**
+
+Add a dedicated Coaching surface and explicit task/status updates. Keep submission evaluation,
+resume writing/activation, rescoring, and automatic project recommendations deferred.
+
 ### Phase 3 — dashboard coaching and projects
 
 - Add dashboard coaching panels and a manually invoked coach action.

@@ -23,7 +23,8 @@ from sqlalchemy import func
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
-from ..models import ApplicationStatus, JobPosting, Reminder, SeenPosting
+from ..coaching_projects import create_coaching_project, project_status
+from ..models import ApplicationStatus, JobPosting, Project, ProjectMode, Reminder, SeenPosting
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..resume import ALLOWED_RESUME_EXTENSIONS, parse_and_store_resume, suggest_boost_keywords
@@ -324,6 +325,13 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 item["job"]["id"]: item
                 for item in saved_job_gaps(session, profile)
             }
+            projects = (
+                session.query(Project)
+                .filter(Project.profile_id == profile.id)
+                .order_by(Project.id.desc())
+                .limit(10)
+                .all()
+            )
 
             return templates.TemplateResponse(
                 request=request,
@@ -340,6 +348,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "matched_count": matched_count,
                     "status_counts": status_counts,
                     "gap_by_job": gap_by_job,
+                    "projects": [project_status(project) for project in projects],
                 },
             )
 
@@ -384,6 +393,47 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         with session_factory() as session:
             profile = get_or_create_profile(session, settings)
             return JSONResponse({"jobs": saved_job_gaps(session, profile)})
+
+    @app.post("/api/coaching-projects")
+    async def create_project(request: Request):
+        payload = await request.json()
+        try:
+            mode = ProjectMode(str(payload.get("mode", "")))
+            job_id = int(payload["job_id"]) if payload.get("job_id") is not None else None
+            skill_id = int(payload["skill_id"]) if payload.get("skill_id") is not None else None
+        except (ValueError, TypeError, KeyError):
+            return JSONResponse({"error": "mode, job_id, and skill_id must be valid values."}, status_code=400)
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            try:
+                result = create_coaching_project(
+                    session, profile.id, mode, llm, job_id=job_id, skill_id=skill_id
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(result, status_code=201)
+
+    @app.get("/api/coaching-projects")
+    def list_projects():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            projects = (
+                session.query(Project)
+                .filter(Project.profile_id == profile.id)
+                .order_by(Project.id.desc())
+                .all()
+            )
+            return JSONResponse({"projects": [project_status(project) for project in projects]})
+
+    @app.get("/api/coaching-projects/{project_id}")
+    def get_project(project_id: int):
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            project = session.get(Project, project_id)
+            if project is None or project.profile_id != profile.id:
+                return JSONResponse({"error": "Coaching project not found."}, status_code=404)
+            return JSONResponse(project_status(project))
 
     @app.post("/jobs/clear")
     def clear_jobs():
