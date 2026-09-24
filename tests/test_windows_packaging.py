@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import sys
 
-import jobcopilot.packaged as packaged
+import hanarr.packaged as packaged
 
 
 ROOT = Path(__file__).parents[1]
@@ -17,7 +17,7 @@ def test_inno_setup_preserves_user_data_and_defines_shortcuts():
 
 
 def test_packaged_entry_points_use_explicit_launch_modes():
-    source = (ROOT / "src" / "jobcopilot" / "packaged.py").read_text(encoding="utf-8")
+    source = (ROOT / "src" / "hanarr" / "packaged.py").read_text(encoding="utf-8")
     assert 'cli(["--config", str(config_path), "serve", "--launch-mode", mode]' in source
     assert 'run("browser")' in source
     assert 'run("webview")' in source
@@ -113,7 +113,7 @@ def test_packaged_runtime_preserves_existing_user_data_on_upgrade(tmp_path, monk
     user_data.mkdir()
     (user_data / "config.yaml").write_text("preferences:\n  min_salary: 123\n", encoding="utf-8")
     (user_data / "data").mkdir()
-    (user_data / "data" / "jobcopilot.db").write_bytes(b"existing database")
+    (user_data / "data" / "hanarr.db").write_bytes(b"existing database")
     bundle = tmp_path / "bundle"
     bundle.mkdir()
     (bundle / "config.example.yaml").write_text("preferences: {}\n", encoding="utf-8")
@@ -123,4 +123,4 @@ def test_packaged_runtime_preserves_existing_user_data_on_upgrade(tmp_path, monk
 
     assert packaged.prepare_user_data() == user_data / "config.yaml"
     assert (user_data / "config.yaml").read_text(encoding="utf-8") == "preferences:\n  min_salary: 123\n"
-    assert (user_data / "data" / "jobcopilot.db").read_bytes() == b"existing database"
+    assert (user_data / "data" / "hanarr.db").read_bytes() == b"existing database"

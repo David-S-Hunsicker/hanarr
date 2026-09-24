@@ -1,5 +1,5 @@
-from jobcopilot.config import Settings
-from jobcopilot.dashboard.config_form import apply_preferences_form, settings_to_dict, validate_and_build
+from hanarr.config import Settings
+from hanarr.dashboard.config_form import apply_preferences_form, settings_to_dict, validate_and_build
 
 
 def test_apply_preferences_form_reads_multi_select_seniority_checkboxes():

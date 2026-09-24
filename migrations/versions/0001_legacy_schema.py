@@ -5,7 +5,7 @@ Revises:
 """
 from alembic import op
 
-from jobcopilot.models import Base
+from hanarr.models import Base
 
 revision = "0001"
 down_revision = None

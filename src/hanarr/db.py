@@ -30,10 +30,28 @@ def _project_root() -> Path:
 def make_session_factory(settings: Settings) -> sessionmaker:
     data_dir = Path(settings.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
-    db_path = data_dir / "jobcopilot.db"
+    db_path = data_dir / "hanarr.db"
+    _migrate_legacy_db_filename(data_dir, db_path)
     engine = create_engine(f"sqlite:///{db_path}", future=True)
     _upgrade_database(engine, db_path, data_dir)
     return sessionmaker(bind=engine, future=True)
+
+
+def _migrate_legacy_db_filename(data_dir: Path, db_path: Path) -> None:
+    """The database file was named jobcopilot.db before the project was
+    renamed to Hanarr. Carry an existing installation's data forward by
+    renaming the file in place rather than silently starting fresh — this
+    only ever runs once per installation, since afterward hanarr.db exists
+    and this is a no-op."""
+    legacy_path = data_dir / "jobcopilot.db"
+    if not db_path.exists() and legacy_path.exists():
+        try:
+            legacy_path.rename(db_path)
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not rename {legacy_path} to {db_path}: {exc}. "
+                f"Close any other running Hanarr/jobcopilot instance and try again."
+            ) from exc
 
 
 def _upgrade_database(engine, db_path: Path, data_dir: Path) -> None:
@@ -74,10 +92,10 @@ def _backup_database(db_path: Path, data_dir: Path) -> None:
     backup_dir = data_dir / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
-    backup_path = backup_dir / f"jobcopilot-{timestamp}.db"
+    backup_path = backup_dir / f"hanarr-{timestamp}.db"
     suffix = 1
     while backup_path.exists():
-        backup_path = backup_dir / f"jobcopilot-{timestamp}-{suffix}.db"
+        backup_path = backup_dir / f"hanarr-{timestamp}-{suffix}.db"
         suffix += 1
     shutil.copy2(db_path, backup_path)
 

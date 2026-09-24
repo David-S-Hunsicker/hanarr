@@ -1,4 +1,4 @@
-from jobcopilot.packaged import browser
+from hanarr.packaged import browser
 
 
 if __name__ == "__main__":

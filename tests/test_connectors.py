@@ -3,11 +3,11 @@ import datetime as dt
 import httpx
 import respx
 
-from jobcopilot.connectors.arbeitnow import ArbeitnowConnector
-from jobcopilot.connectors.base import to_naive_utc
-from jobcopilot.connectors.greenhouse import GreenhouseConnector
-from jobcopilot.connectors.lever import LeverConnector
-from jobcopilot.connectors.remoteok import RemoteOKConnector
+from hanarr.connectors.arbeitnow import ArbeitnowConnector
+from hanarr.connectors.base import to_naive_utc
+from hanarr.connectors.greenhouse import GreenhouseConnector
+from hanarr.connectors.lever import LeverConnector
+from hanarr.connectors.remoteok import RemoteOKConnector
 
 
 def test_to_naive_utc_converts_aware_offset_datetime():

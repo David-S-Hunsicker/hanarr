@@ -1,7 +1,7 @@
 import pytest
 
-from jobcopilot.config import Settings, load_settings
-from jobcopilot.launch import DashboardLaunchConfig, validate_launch_mode
+from hanarr.config import Settings, load_settings
+from hanarr.launch import DashboardLaunchConfig, validate_launch_mode
 
 
 def test_launch_config_builds_local_dashboard_url():

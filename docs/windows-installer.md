@@ -4,7 +4,7 @@ The supported packaging path is PyInstaller for the runtime and Inno Setup for
 the conventional Windows installer. The installer is per-user (`PrivilegesRequired=lowest`)
 and installs replaceable binaries under `%LOCALAPPDATA%\Programs\Hanarr`.
 
-The packaged launchers use the same `jobcopilot serve` backend:
+The packaged launchers use the same `hanarr serve` backend:
 
 - **Hanarr** starts the local dashboard in the optional desktop webview.
 - **Hanarr (Browser)** starts the local dashboard in the default browser.

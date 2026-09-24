@@ -233,7 +233,7 @@
   </div>
 
   {% if saved %}
-  <div class="banner success">Saved. Preference and matching changes apply on the next search — app config and scheduling changes need a restart of <code>jobcopilot serve</code>.</div>
+  <div class="banner success">Saved. Preference and matching changes apply on the next search — app config and scheduling changes need a restart of <code>hanarr serve</code>.</div>
   {% endif %}
   {% if errors %}
   <div class="banner error">
@@ -409,7 +409,7 @@
     <form method="post" action="/config/app">
       <div class="banner notice">
         <div class="restart-row">
-          <span>Changes on this tab take effect the next time <code>jobcopilot serve</code> starts.</span>
+          <span>Changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
           <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
         </div>
       </div>
@@ -541,7 +541,7 @@
     <form method="post" action="/config/schedule">
       <div class="banner notice">
         <div class="restart-row">
-          <span>Interval changes on this tab take effect the next time <code>jobcopilot serve</code> starts.</span>
+          <span>Interval changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
           <button type="button" class="restart-btn" id="restart-server-btn">Save &amp; restart server</button>
         </div>
       </div>

@@ -3,10 +3,10 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from jobcopilot.config import Settings
-from jobcopilot.dashboard.app import create_app
-from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.models import (
+from hanarr.config import Settings
+from hanarr.dashboard.app import create_app
+from hanarr.db import get_or_create_profile, make_session_factory
+from hanarr.models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
@@ -18,8 +18,8 @@ from jobcopilot.models import (
     Skill,
     SkillGapStatus,
 )
-from jobcopilot.skill_analysis import analyze_job
-from jobcopilot.skill_analysis import market_demand_summary
+from hanarr.skill_analysis import analyze_job
+from hanarr.skill_analysis import market_demand_summary
 
 
 class FakeLLM:

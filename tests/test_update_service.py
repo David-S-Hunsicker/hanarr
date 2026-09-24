@@ -2,8 +2,8 @@ import httpx
 import pytest
 import respx
 
-from jobcopilot.config import Settings
-from jobcopilot.update_service import UpdateCheckError, check_for_update, parse_release_metadata
+from hanarr.config import Settings
+from hanarr.update_service import UpdateCheckError, check_for_update, parse_release_metadata
 
 
 def _settings(tmp_path, **updates):

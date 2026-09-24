@@ -36,7 +36,7 @@ $requiredPaths = @(
     "config.example.yaml",
     "alembic.ini",
     "migrations",
-    "src\jobcopilot\dashboard\templates",
+    "src\hanarr\dashboard\templates",
     "scripts\hanarr_browser.py",
     "scripts\hanarr_desktop.py",
     "installer\hanarr.iss",
@@ -70,7 +70,7 @@ if ($LASTEXITCODE -ne 0) {
     --add-data "config.example.yaml;." `
     --add-data "alembic.ini;." `
     --add-data "migrations;migrations" `
-    --add-data "src\jobcopilot\dashboard\templates;jobcopilot\dashboard\templates" `
+    --add-data "src\hanarr\dashboard\templates;hanarr\dashboard\templates" `
     "scripts\hanarr_browser.py"
 if ($LASTEXITCODE -ne 0) { throw "Browser runtime build failed." }
 
@@ -79,7 +79,7 @@ if ($LASTEXITCODE -ne 0) { throw "Browser runtime build failed." }
     --add-data "config.example.yaml;." `
     --add-data "alembic.ini;." `
     --add-data "migrations;migrations" `
-    --add-data "src\jobcopilot\dashboard\templates;jobcopilot\dashboard\templates" `
+    --add-data "src\hanarr\dashboard\templates;hanarr\dashboard\templates" `
     "scripts\hanarr_desktop.py"
 if ($LASTEXITCODE -ne 0) { throw "Desktop runtime build failed." }
 

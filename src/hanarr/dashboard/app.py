@@ -2,7 +2,7 @@
 a job's status, and trigger a search or reminder check on demand.
 Deliberately server-rendered (Jinja2, a few forms) rather than a JS
 framework — keeps the project approachable to contribute to and easy to
-self-host with nothing but `jobcopilot serve`.
+self-host with nothing but `hanarr serve`.
 """
 from __future__ import annotations
 
@@ -284,7 +284,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             with session_factory() as session:
                 profile = get_or_create_profile(session, settings)
                 if not profile.resume_text:
-                    keyword_state["error"] = "No resume text on file — run `jobcopilot init` first."
+                    keyword_state["error"] = "No resume text on file — run `hanarr init` first."
                     return
                 keywords = suggest_boost_keywords(
                     profile.resume_text, settings.preferences.target_titles, profiler_llm
@@ -1010,7 +1010,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         # and this app all hold a reference to the same instance, so
         # preference/matching/source changes apply on the next search
         # without a restart. LLM/schedule/dashboard changes are saved but
-        # only take effect after `jobcopilot serve` is restarted, since the
+        # only take effect after `hanarr serve` is restarted, since the
         # LLM client and scheduler intervals are already built from the old
         # values — the config page says so next to those fields.
         for field in Settings.model_fields:
@@ -1135,7 +1135,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 logger.exception("Scheduler shutdown failed during restart")
         # Re-exec sys.argv[0] directly rather than routing through
         # sys.executable: on Windows, an installed console script
-        # (jobcopilot.exe) is itself a runnable launcher, not a .py file
+        # (hanarr.exe) is itself a runnable launcher, not a .py file
         # python.exe can take as an argument, so it needs to be the program
         # being executed, not a value passed to the interpreter.
         os.execv(sys.argv[0], sys.argv)

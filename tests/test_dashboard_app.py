@@ -4,15 +4,15 @@ import time
 
 from fastapi.testclient import TestClient
 
-import jobcopilot.dashboard.app as app_mod
-import jobcopilot.pipeline as pipeline_mod
-from jobcopilot.config import Settings
-from jobcopilot.connectors.base import RawJobPosting
-from jobcopilot.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
-from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.llm.base import LLMClient
-from jobcopilot.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
-from jobcopilot.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
+import hanarr.dashboard.app as app_mod
+import hanarr.pipeline as pipeline_mod
+from hanarr.config import Settings
+from hanarr.connectors.base import RawJobPosting
+from hanarr.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
+from hanarr.db import get_or_create_profile, make_session_factory
+from hanarr.llm.base import LLMClient
+from hanarr.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
+from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
 
 
 def test_task_is_stuck_false_when_not_running():

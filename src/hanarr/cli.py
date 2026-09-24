@@ -31,7 +31,7 @@ console = Console()
 @click.option("--config", "config_path", default=str(DEFAULT_CONFIG_PATH), help="Path to config.yaml")
 @click.pass_context
 def cli(ctx: click.Context, config_path: str):
-    """job-search-copilot: a self-hosted job search agent."""
+    """Hanarr: a self-hosted job search agent."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config_path
@@ -56,7 +56,7 @@ def init(ctx: click.Context):
     if not resume_path.exists():
         console.print(
             f"[yellow]No resume found at {resume_path}.[/yellow] Add one (txt/md/pdf), "
-            f"update profile.resume_path in config.yaml if needed, then re-run `jobcopilot init`."
+            f"update profile.resume_path in config.yaml if needed, then re-run `hanarr init`."
         )
         return
 
@@ -196,7 +196,7 @@ def serve(ctx: click.Context, launch_mode: str | None):
 
     # Self-heal on startup: if preferences are still blank/example-default,
     # fill them in from whatever resume profile was already parsed by
-    # `jobcopilot init` — no LLM call needed, this only reads what's already
+    # `hanarr init` — no LLM call needed, this only reads what's already
     # stored. Catches the case where a resume was updated without re-running
     # `init`, or `init` ran before this feature existed.
     session_factory = make_session_factory(settings)

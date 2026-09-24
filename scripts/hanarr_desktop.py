@@ -1,4 +1,4 @@
-from jobcopilot.packaged import desktop
+from hanarr.packaged import desktop
 
 
 if __name__ == "__main__":

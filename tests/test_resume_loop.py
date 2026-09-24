@@ -4,11 +4,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import jobcopilot.dashboard.app as app_module
-from jobcopilot.config import Settings
-from jobcopilot.dashboard.app import create_app
-from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.models import (
+import hanarr.dashboard.app as app_module
+from hanarr.config import Settings
+from hanarr.dashboard.app import create_app
+from hanarr.db import get_or_create_profile, make_session_factory
+from hanarr.models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
@@ -112,7 +112,7 @@ def test_stale_resume_proposal_cannot_replace_new_active_version(tmp_path):
         profile_id = profile.id
         stale_id = stale.id
 
-    from jobcopilot.resume_loop import approve_resume_proposal
+    from hanarr.resume_loop import approve_resume_proposal
 
     with factory() as session:
         with pytest.raises(ValueError, match="stale"):

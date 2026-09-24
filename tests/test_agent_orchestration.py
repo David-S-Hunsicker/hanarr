@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from jobcopilot.agent_orchestration import AgentOrchestrator
-from jobcopilot.config import Settings, load_settings, save_settings_to_yaml
-from jobcopilot.llm.base import NullLLMClient
+from hanarr.agent_orchestration import AgentOrchestrator
+from hanarr.config import Settings, load_settings, save_settings_to_yaml
+from hanarr.llm.base import NullLLMClient
 
 
 def test_routes_role_and_task_overrides_over_local_default():

@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from jobcopilot.config import Preferences, Settings
-from jobcopilot.llm.base import LLMClient
-from jobcopilot.models import Base
-from jobcopilot.resume import (
+from hanarr.config import Preferences, Settings
+from hanarr.llm.base import LLMClient
+from hanarr.models import Base
+from hanarr.resume import (
     autopopulate_preferences_from_resume,
     parse_and_store_resume,
     suggest_boost_keywords,

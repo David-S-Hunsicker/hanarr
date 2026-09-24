@@ -3,7 +3,7 @@
 Reminders are created reactively when a job's status changes (see
 mark_status in cli.py) — e.g. marking a posting "applied" schedules a
 follow-up reminder N days out. `check_due_reminders` is called
-periodically (by the scheduler or `jobcopilot remind`) to find and
+periodically (by the scheduler or `hanarr remind`) to find and
 deliver anything due.
 """
 from __future__ import annotations

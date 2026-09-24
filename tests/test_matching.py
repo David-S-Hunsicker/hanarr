@@ -1,10 +1,10 @@
 import datetime as dt
 import json
 
-from jobcopilot.config import Preferences
-from jobcopilot.connectors.base import RawJobPosting
-from jobcopilot.llm.base import LLMClient
-from jobcopilot.matching import _rule_based_score, passes_prefilter, score_fit
+from hanarr.config import Preferences
+from hanarr.connectors.base import RawJobPosting
+from hanarr.llm.base import LLMClient
+from hanarr.matching import _rule_based_score, passes_prefilter, score_fit
 
 
 def make_job(**overrides) -> RawJobPosting:

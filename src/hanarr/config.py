@@ -2,7 +2,7 @@
 
 Everything user-specific (preferences, resume path, sources, LLM choice)
 lives in config.yaml, which is gitignored. config.example.yaml is the
-committed template — copy it to get started (see `jobcopilot init`).
+committed template — copy it to get started (see `hanarr init`).
 """
 from __future__ import annotations
 

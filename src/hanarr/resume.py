@@ -69,7 +69,7 @@ def load_resume_text(resume_path: Path | str) -> str:
     if not path.exists():
         raise FileNotFoundError(
             f"Resume not found at {path}. Update profile.resume_path in "
-            f"config.yaml, or run `jobcopilot init` to set it up."
+            f"config.yaml, or run `hanarr init` to set it up."
         )
     if path.suffix.lower() == ".pdf":
         from pypdf import PdfReader
@@ -147,7 +147,7 @@ def parse_and_store_resume(
 ) -> tuple[Profile, dict, bool]:
     """Reads settings.profile.resume_path, extracts a structured summary via
     the LLM, and stores both the raw text and summary on the profile. Shared
-    by `jobcopilot init` and the dashboard's upload/re-parse flow so the two
+    by `hanarr init` and the dashboard's upload/re-parse flow so the two
     surfaces can't drift. Also auto-populates target_titles/keywords_boost
     on settings.preferences (mutated in place) if they're still blank or the
     example template's defaults — the third return value says whether that

@@ -3,11 +3,11 @@ import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from jobcopilot.config import Settings
-from jobcopilot.connectors.base import RawJobPosting
-from jobcopilot.llm.base import LLMClient
-from jobcopilot.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
-from jobcopilot.pipeline import run_search_cycle
+from hanarr.config import Settings
+from hanarr.connectors.base import RawJobPosting
+from hanarr.llm.base import LLMClient
+from hanarr.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
+from hanarr.pipeline import run_search_cycle
 
 
 def _make_session():
@@ -61,7 +61,7 @@ def test_rejected_posting_is_not_rescored_on_a_later_search(monkeypatch):
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job()])
-    monkeypatch.setattr("jobcopilot.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
 
     llm = _CountingLLM(score=30)  # below threshold, gets rejected
 
@@ -86,7 +86,7 @@ def test_matched_posting_is_not_readded_or_rescored_on_a_later_search(monkeypatc
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job()])
-    monkeypatch.setattr("jobcopilot.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
 
     llm = _CountingLLM(score=85)  # above threshold, gets matched
 
@@ -114,7 +114,7 @@ def test_different_postings_are_scored_independently(monkeypatch):
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job("1"), _make_job("2")])
-    monkeypatch.setattr("jobcopilot.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
 
     llm = _CountingLLM(score=85)
 
@@ -151,7 +151,7 @@ def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeyp
     connector = _FakeConnector(
         "arbeitnow", [prefiltered_job, already_seen_job, rejected_job, matched_job]
     )
-    monkeypatch.setattr("jobcopilot.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
 
     scores = {"rejected": 30, "matched": 85}
 

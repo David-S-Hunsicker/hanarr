@@ -3,7 +3,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobcopilot.ollama_setup import (
+from hanarr.ollama_setup import (
     HardwareInfo,
     SetupCancelled,
     SetupError,
@@ -37,11 +37,11 @@ def test_detect_ollama_reports_service_models_and_missing_configured_model(monke
         def json(self):
             return {"models": [{"name": "qwen2.5:7b", "size": 2 * 1024**3}]}
 
-    monkeypatch.setattr("jobcopilot.ollama_setup.shutil.which", lambda _: r"C:\Ollama\ollama.exe")
-    monkeypatch.setattr("jobcopilot.ollama_setup._executable_details", lambda _: "ollama version 0.1")
-    monkeypatch.setattr("jobcopilot.ollama_setup.httpx.get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("hanarr.ollama_setup.shutil.which", lambda _: r"C:\Ollama\ollama.exe")
+    monkeypatch.setattr("hanarr.ollama_setup._executable_details", lambda _: "ollama version 0.1")
+    monkeypatch.setattr("hanarr.ollama_setup.httpx.get", lambda *args, **kwargs: Response())
     monkeypatch.setattr(
-        "jobcopilot.ollama_setup.detect_hardware",
+        "hanarr.ollama_setup.detect_hardware",
         lambda _: HardwareInfo(16, 50, "Windows"),
     )
 
@@ -58,10 +58,10 @@ def test_detect_ollama_is_usable_when_service_is_unavailable(monkeypatch, tmp_pa
     def fail(*args, **kwargs):
         raise httpx.ConnectError("offline")
 
-    monkeypatch.setattr("jobcopilot.ollama_setup.shutil.which", lambda _: None)
-    monkeypatch.setattr("jobcopilot.ollama_setup.httpx.get", fail)
+    monkeypatch.setattr("hanarr.ollama_setup.shutil.which", lambda _: None)
+    monkeypatch.setattr("hanarr.ollama_setup.httpx.get", fail)
     monkeypatch.setattr(
-        "jobcopilot.ollama_setup.detect_hardware",
+        "hanarr.ollama_setup.detect_hardware",
         lambda _: HardwareInfo(None, None, "unknown"),
     )
 

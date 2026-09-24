@@ -4,10 +4,10 @@ import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from jobcopilot.config import Settings
-from jobcopilot.dashboard.app import create_app
-from jobcopilot.db import get_or_create_profile, make_session_factory
-from jobcopilot.models import (
+from hanarr.config import Settings
+from hanarr.dashboard.app import create_app
+from hanarr.db import get_or_create_profile, make_session_factory
+from hanarr.models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
@@ -16,9 +16,9 @@ from jobcopilot.models import (
     Skill,
     SkillGapStatus,
 )
-import jobcopilot.dashboard.app as app_module
-import jobcopilot.submissions as submissions_module
-from jobcopilot.submissions import fetch_github_submission
+import hanarr.dashboard.app as app_module
+import hanarr.submissions as submissions_module
+from hanarr.submissions import fetch_github_submission
 
 
 class FakeGitHubClient:

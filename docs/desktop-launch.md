@@ -1,6 +1,6 @@
 # Desktop launch foundation
 
-`jobcopilot serve` remains the single backend entry point. The dashboard launch
+`hanarr serve` remains the single backend entry point. The dashboard launch
 mode can be selected in `config.yaml` under `dashboard.launch_mode` or per run
 with `--launch-mode`:
 

@@ -3,7 +3,7 @@ import datetime as dt
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from jobcopilot.models import (
+from hanarr.models import (
     Base,
     JobPosting,
     JobSkill,

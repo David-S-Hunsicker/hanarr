@@ -1,5 +1,5 @@
 """Orchestrates one search cycle: fetch from all enabled connectors,
-prefilter, score, and upsert into the DB. This is what `jobcopilot search`
+prefilter, score, and upsert into the DB. This is what `hanarr search`
 and the scheduled background job both call.
 """
 from __future__ import annotations

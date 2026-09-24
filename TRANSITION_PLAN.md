@@ -1087,3 +1087,40 @@ the frozen/no-console conditions with `monkeypatch` rather than requiring an act
 Python/build tooling present at all, no-network setup, an existing separate Ollama
 installation, cancelled/failed provider setup, and a forced migration failure. Certificate-backed
 Authenticode signing and release publication remain deferred and out of scope for this pass.
+
+### Phase 12 — retiring the `jobcopilot` name
+
+Phase 0 deliberately kept the Python package, CLI command, routes, and on-disk database
+filename as `jobcopilot` while adopting Hanarr for the product/dashboard name, to keep the
+transition's early increments compatibility-safe. That compatibility reason no longer applies:
+this is a solo, pre-release, local-first project with no other installations depending on the
+`jobcopilot` name, so the remaining internal use of it was reversed rather than carried forward
+indefinitely.
+
+`src/jobcopilot/` is now `src/hanarr/`; every `import`/`from` statement across the source tree,
+tests, Alembic's `env.py` and `0001` migration, and the packaging scripts was updated to match.
+`pyproject.toml`'s distribution name and console-script entry point are now `hanarr` — the command
+a person types is `hanarr serve`, `hanarr init`, etc., not `jobcopilot ...`. The Windows packaging
+script's PyInstaller `--add-data` paths (both the source path and the destination path inside the
+bundle) were updated to the new package directory; the built executables were already named
+`HanarrBrowser.exe`/`HanarrDesktop.exe` and are unaffected.
+
+The on-disk SQLite filename changed from `jobcopilot.db` to `hanarr.db`. Rather than silently
+starting an existing installation over with an empty database, `make_session_factory` renames an
+existing `jobcopilot.db` to `hanarr.db` in place the first time it runs after the rename (a no-op
+on every run after that, since `hanarr.db` then exists) — the same "never lose local data"
+principle the rest of the migration system already follows. This was exercised directly on the
+one real local database that existed on the development machine at the time (an empty, freshly
+created profile with no job data) and covered by regression tests that create a populated legacy
+`jobcopilot.db`, run the rename, and confirm the rows are still readable afterward, plus a test
+confirming a stale legacy file reappearing later does not overwrite an already-migrated database.
+
+User-facing text (README, docs, config.yaml comments, dashboard hint text, CLI messages) was swept
+for the word `jobcopilot` and updated to `hanarr`; the historical phase entries above that
+describe what was literally decided/built at the time are left as an accurate record rather than
+rewritten.
+
+**Validation:** `python -m pytest -q` (full suite), `python -m compileall -q src`, and
+`git diff --check` after the rename; see the commit for exact pass counts. No schema, routing, or
+application behavior changed — this is a naming-only change plus the one-time database filename
+migration described above.

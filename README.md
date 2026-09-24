@@ -1,8 +1,8 @@
 # Hanarr
 
-Hanarr is the product name for this local-first career companion. The Python package and
-`jobcopilot` command remain unchanged during the transition so existing installations and
-scripts continue to work.
+Hanarr is a local-first career companion. The Python package, CLI command, and on-disk
+database filename are all named `hanarr` — an existing `jobcopilot.db` from before this
+rename is carried forward automatically the first time the app starts.
 
 A configurable, self-hosted job-search foundation. It parses your resume, searches job sources that
 have legitimate public APIs (no ToS-violating scraping), scores how well each posting fits your
@@ -31,10 +31,10 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 
 1. You write your preferences into `config.yaml` (titles, locations, salary floor, dealbreakers,
    which job sources to use) and drop your resume in `resumes/`.
-2. `jobcopilot init` parses your resume into a structured profile using a local LLM.
-3. `jobcopilot search` (or the scheduler in `jobcopilot serve`) fetches postings from your enabled
+2. `hanarr init` parses your resume into a structured profile using a local LLM.
+3. `hanarr search` (or the scheduler in `hanarr serve`) fetches postings from your enabled
    sources, rule-filters them against your preferences, and scores the survivors for fit.
-4. You review matches via `jobcopilot list` or the local dashboard, and mark status as you apply /
+4. You review matches via `hanarr list` or the local dashboard, and mark status as you apply /
    hear back / interview.
 5. Marking a job "applied" or "interviewing" schedules a reminder automatically.
 
@@ -43,7 +43,7 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 The local-first release validation pass completed the automated checks: the full suite passes
 (151 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
 upload-boundary, approval-gate, and localhost-default behaviors are covered by the test suite.
-The first desktop-launch foundation is now implemented: `jobcopilot serve` can retain the
+The first desktop-launch foundation is now implemented: `hanarr serve` can retain the
 foreground server (`none`), open the dashboard in the default browser (`browser`), or host the
 same dashboard in an optional desktop webview (`webview`). This is not an installer and does not
 bundle Python, Ollama, or a runtime. Still requiring a real local installation or manual
@@ -89,7 +89,7 @@ deterministic keyword-overlap scoring.
 ### 2. Configure
 
 ```bash
-cp config.example.yaml config.yaml   # jobcopilot init also does this for you
+cp config.example.yaml config.yaml   # hanarr init also does this for you
 ```
 
 Edit `config.yaml`: your target titles, locations, salary floor, dealbreakers, and which job
@@ -103,7 +103,7 @@ you use a different name/location).
 ### 3. Initialize
 
 ```bash
-jobcopilot init
+hanarr init
 ```
 
 This parses your resume and stores the structured profile (skills, titles, seniority) used for
@@ -112,16 +112,16 @@ scoring.
 ### 4. Run a search
 
 ```bash
-jobcopilot search        # one-off search cycle
-jobcopilot list          # see matches, sorted by fit score
-jobcopilot status 3 applied      # mark job id 3 as applied -> schedules a follow-up reminder
-jobcopilot remind        # check for and deliver due reminders
+hanarr search        # one-off search cycle
+hanarr list          # see matches, sorted by fit score
+hanarr status 3 applied      # mark job id 3 as applied -> schedules a follow-up reminder
+hanarr remind        # check for and deliver due reminders
 ```
 
 Or run continuously with a background scheduler and a local dashboard:
 
 ```bash
-jobcopilot serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
+hanarr serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
 ```
 
 The launch mode defaults to `none`, preserving the existing foreground-server behavior. To open
@@ -132,9 +132,9 @@ dashboard:
   launch_mode: "browser"  # none | browser | webview
 ```
 
-Or select it for one run: `jobcopilot serve --launch-mode browser`. The optional webview mode
+Or select it for one run: `hanarr serve --launch-mode browser`. The optional webview mode
 requires `pip install -e ".[desktop]"` and can be selected with
-`jobcopilot serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
+`hanarr serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
 The Windows packaging foundation is documented in [`docs/windows-installer.md`](docs/windows-installer.md).
 It uses PyInstaller plus Inno Setup, keeps user data in `%LOCALAPPDATA%\Hanarr`, provides Start
 Menu shortcuts and an optional Desktop shortcut, and preserves data on uninstall. Run
@@ -178,7 +178,7 @@ account and isn't something to build around.
 | Arbeitnow | none | Free public API, mostly EU-heavy listings |
 | Lever | `sources.lever.companies` — company slugs from `jobs.lever.co/<slug>` | Free public API |
 
-Adding a new source is one file: implement `Connector.fetch()` in `src/jobcopilot/connectors/`
+Adding a new source is one file: implement `Connector.fetch()` in `src/hanarr/connectors/`
 returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See
 `greenhouse.py` for a minimal example.
 
@@ -195,7 +195,7 @@ See `config.example.yaml` — every field is commented there. Highlights:
 - `agents.*` — specialized roles (`profiler`, `market_analysis`, `curriculum`, `evaluator`,
   and `resume_writer`) inherit the local-first `llm` settings. Override a role or a named
   `agents.tasks.*` workflow independently; Anthropic keys still come from `.env`.
-- `schedule.*` — how often `jobcopilot serve` runs searches and checks reminders.
+- `schedule.*` — how often `hanarr serve` runs searches and checks reminders.
 - `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP.
 
 ## Data & privacy
@@ -238,7 +238,7 @@ cover the prefilter and the rule-based fallback scorer.
   `git diff --check`.
 - [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
   review-first submission and a rejected upload.
-- [ ] Validate `jobcopilot serve --launch-mode browser` and `--launch-mode webview` on a real
+- [ ] Validate `hanarr serve --launch-mode browser` and `--launch-mode webview` on a real
   machine. Webview mode is currently an optional launch path, not an installed desktop product.
 - [ ] On Windows, run `.\scripts\build_windows.ps1 -ValidateOnly`, then build the unsigned
   installer and record the artifact hash and tool versions. This is the current local

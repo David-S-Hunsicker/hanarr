@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from jobcopilot.config import load_settings
+from hanarr.config import load_settings
 
 
 def test_missing_config_is_copied_from_template_instead_of_raising(tmp_path, monkeypatch):
     """A missing config.yaml is a first-run signal, not an error: load_settings
     must copy config.example.yaml into place and load normally rather than
-    raising FileNotFoundError and forcing a separate `jobcopilot init` step."""
+    raising FileNotFoundError and forcing a separate `hanarr init` step."""
     monkeypatch.chdir(tmp_path)
     example = tmp_path / "config.example.yaml"
     example.write_text("preferences:\n  salary_floor_usd: 123000\n", encoding="utf-8")

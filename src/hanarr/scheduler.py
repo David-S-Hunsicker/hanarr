@@ -1,4 +1,4 @@
-"""Background scheduler used by `jobcopilot serve`. Runs search cycles and
+"""Background scheduler used by `hanarr serve`. Runs search cycles and
 reminder checks on the intervals set in config.yaml.
 """
 from __future__ import annotations
