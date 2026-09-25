@@ -405,6 +405,17 @@
         </div>
         <div class="source-block">
           <div class="checkbox-row">
+            <input type="checkbox" id="ashby_enabled" name="ashby_enabled" {% if settings.sources.ashby.enabled %}checked{% endif %}>
+            <label for="ashby_enabled">Ashby</label>
+          </div>
+          <div class="field">
+            <label for="ashby_company_boards">Company boards</label>
+            <textarea id="ashby_company_boards" name="ashby_company_boards">{{ "\n".join(settings.sources.ashby.company_boards) }}</textarea>
+            <div class="hint">Slugs from jobs.ashbyhq.com/&lt;slug&gt;, one per line</div>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
             <input type="checkbox" id="remoteok_enabled" name="remoteok_enabled" {% if settings.sources.remoteok.enabled %}checked{% endif %}>
             <label for="remoteok_enabled">RemoteOK</label>
           </div>

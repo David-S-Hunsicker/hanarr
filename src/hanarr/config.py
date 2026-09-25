@@ -73,6 +73,11 @@ class LeverSource(BaseModel):
     companies: list[str] = Field(default_factory=list)
 
 
+class AshbySource(BaseModel):
+    enabled: bool = False
+    company_boards: list[str] = Field(default_factory=list)
+
+
 class RemoteOKSource(BaseModel):
     enabled: bool = False
     tags: list[str] = Field(default_factory=list)
@@ -85,6 +90,7 @@ class ArbeitnowSource(BaseModel):
 class SourcesConfig(BaseModel):
     greenhouse: GreenhouseSource = Field(default_factory=GreenhouseSource)
     lever: LeverSource = Field(default_factory=LeverSource)
+    ashby: AshbySource = Field(default_factory=AshbySource)
     remoteok: RemoteOKSource = Field(default_factory=RemoteOKSource)
     arbeitnow: ArbeitnowSource = Field(default_factory=ArbeitnowSource)
 

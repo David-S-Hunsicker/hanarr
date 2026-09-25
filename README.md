@@ -199,10 +199,11 @@ account and isn't something to build around.
 
 | Source | What it needs | Notes |
 |---|---|---|
-| Greenhouse | `sources.greenhouse.company_boards` — company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug |
+| Greenhouse | `sources.greenhouse.company_boards` — company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug. `config.example.yaml` ships 67 verified boards by default. |
+| Lever | `sources.lever.companies` — company slugs from `jobs.lever.co/<slug>` | Free public API. Fewer large public users than Greenhouse these days; `config.example.yaml` ships 13 verified companies. |
+| Ashby | `sources.ashby.company_boards` — company slugs from `jobs.ashbyhq.com/<slug>` | Free public API, popular with AI-native and recent-generation startups. `config.example.yaml` ships 21 verified boards. |
 | RemoteOK | `sources.remoteok.tags` — optional tag filter | Free public API |
 | Arbeitnow | none | Free public API, mostly EU-heavy listings |
-| Lever | `sources.lever.companies` — company slugs from `jobs.lever.co/<slug>` | Free public API |
 
 Adding a new source is one file: implement `Connector.fetch()` in `src/hanarr/connectors/`
 returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See

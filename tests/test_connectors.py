@@ -4,10 +4,13 @@ import httpx
 import respx
 
 from hanarr.connectors.arbeitnow import ArbeitnowConnector
+from hanarr.connectors.ashby import AshbyConnector
 from hanarr.connectors.base import to_naive_utc
 from hanarr.connectors.greenhouse import GreenhouseConnector
 from hanarr.connectors.lever import LeverConnector
+from hanarr.connectors.registry import build_enabled_connectors
 from hanarr.connectors.remoteok import RemoteOKConnector
+from hanarr.config import Settings
 
 
 def test_to_naive_utc_converts_aware_offset_datetime():
@@ -145,6 +148,90 @@ def test_greenhouse_connector_skips_failed_board_without_crashing():
         return_value=httpx.Response(404)
     )
     connector = GreenhouseConnector(company_boards=["gone"])
+    assert connector.fetch() == []
+
+
+@respx.mock
+def test_ashby_connector_parses_jobs():
+    respx.get("https://api.ashbyhq.com/posting-api/job-board/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": "abc-123",
+                        "title": "Backend Engineer",
+                        "location": "Remote (US)",
+                        "isRemote": True,
+                        "isListed": True,
+                        "jobUrl": "https://jobs.ashbyhq.com/acme/abc-123",
+                        "descriptionPlain": "We build things.",
+                        "publishedAt": "2026-01-01T00:00:00.000Z",
+                    }
+                ]
+            },
+        )
+    )
+    connector = AshbyConnector(company_boards=["acme"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    assert postings[0].external_id == "abc-123"
+    assert postings[0].remote is True
+    assert postings[0].description == "We build things."
+    assert postings[0].posted_at == dt.datetime(2026, 1, 1)
+
+
+@respx.mock
+def test_ashby_connector_skips_unlisted_jobs():
+    respx.get("https://api.ashbyhq.com/posting-api/job-board/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json={"jobs": [{"id": "1", "title": "Old role", "isListed": False}]},
+        )
+    )
+    connector = AshbyConnector(company_boards=["acme"])
+    assert connector.fetch() == []
+
+
+@respx.mock
+def test_ashby_connector_extracts_usd_salary_and_ignores_other_currencies():
+    respx.get("https://api.ashbyhq.com/posting-api/job-board/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": "1", "title": "Engineer", "isListed": True,
+                        "compensation": {
+                            "compensationTiers": [
+                                {
+                                    "components": [
+                                        {"compensationType": "EquityPercentage", "currencyCode": None},
+                                        {"compensationType": "Salary", "currencyCode": "EUR", "minValue": 80000, "maxValue": 100000},
+                                        {"compensationType": "Salary", "currencyCode": "USD", "minValue": 150000, "maxValue": 200000},
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    connector = AshbyConnector(company_boards=["acme"])
+    postings = connector.fetch()
+
+    assert postings[0].salary_min == 150000
+    assert postings[0].salary_max == 200000
+
+
+@respx.mock
+def test_ashby_connector_skips_failed_board_without_crashing():
+    respx.get("https://api.ashbyhq.com/posting-api/job-board/gone").mock(
+        return_value=httpx.Response(404)
+    )
+    connector = AshbyConnector(company_boards=["gone"])
     assert connector.fetch() == []
 
 
@@ -328,3 +415,23 @@ def test_arbeitnow_connector_parses_jobs():
     # silently shifting posted_at by whatever the host's UTC offset was.
     assert postings[0].posted_at == dt.datetime(2023, 11, 14, 22, 13, 20)
     assert postings[0].posted_at.tzinfo is None
+
+
+def test_build_enabled_connectors_includes_ashby_when_configured():
+    settings = Settings()
+    settings.sources.ashby.enabled = True
+    settings.sources.ashby.company_boards = ["acme"]
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert any(isinstance(c, AshbyConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_skips_ashby_without_company_boards():
+    settings = Settings()
+    settings.sources.ashby.enabled = True
+    settings.sources.ashby.company_boards = []
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert not any(isinstance(c, AshbyConnector) for c in connectors)

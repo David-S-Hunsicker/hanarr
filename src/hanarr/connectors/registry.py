@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..config import SourcesConfig
 from .arbeitnow import ArbeitnowConnector
+from .ashby import AshbyConnector
 from .base import Connector
 from .greenhouse import GreenhouseConnector
 from .lever import LeverConnector
@@ -15,6 +16,8 @@ def build_enabled_connectors(sources: SourcesConfig) -> list[Connector]:
         connectors.append(GreenhouseConnector(sources.greenhouse.company_boards))
     if sources.lever.enabled and sources.lever.companies:
         connectors.append(LeverConnector(sources.lever.companies))
+    if sources.ashby.enabled and sources.ashby.company_boards:
+        connectors.append(AshbyConnector(sources.ashby.company_boards))
     if sources.remoteok.enabled:
         connectors.append(RemoteOKConnector(sources.remoteok.tags))
     if sources.arbeitnow.enabled:

@@ -29,6 +29,7 @@ PREFERENCES_LIST_FIELDS = [
     "preferences.dealbreakers",
     "sources.greenhouse.company_boards",
     "sources.lever.companies",
+    "sources.ashby.company_boards",
     "sources.remoteok.tags",
 ]
 
@@ -76,6 +77,8 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     sources["greenhouse"]["company_boards"] = _list_from_form(form.get("greenhouse_company_boards", ""))
     sources["lever"]["enabled"] = "lever_enabled" in form
     sources["lever"]["companies"] = _list_from_form(form.get("lever_companies", ""))
+    sources["ashby"]["enabled"] = "ashby_enabled" in form
+    sources["ashby"]["company_boards"] = _list_from_form(form.get("ashby_company_boards", ""))
     sources["remoteok"]["enabled"] = "remoteok_enabled" in form
     sources["remoteok"]["tags"] = _list_from_form(form.get("remoteok_tags", ""))
     sources["arbeitnow"]["enabled"] = "arbeitnow_enabled" in form
