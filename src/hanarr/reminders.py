@@ -82,7 +82,7 @@ def _send_desktop_notifications(reminders: list[Reminder]) -> None:
         return
     for r in reminders:
         try:
-            notification.notify(title="job-search-copilot", message=r.message, timeout=10)
+            notification.notify(title="Hanarr", message=r.message, timeout=10)
         except Exception:  # noqa: BLE001
             logger.warning("Desktop notification failed (no notification backend on this OS?)")
             break
@@ -94,7 +94,7 @@ def _send_email_digest(reminders: list[Reminder], cfg: RemindersConfig) -> None:
         return
     body = "\n".join(f"- {r.message} (due {r.due_at.isoformat()})" for r in reminders)
     msg = MIMEText(body)
-    msg["Subject"] = f"job-search-copilot: {len(reminders)} reminder(s) due"
+    msg["Subject"] = f"Hanarr: {len(reminders)} reminder(s) due"
     msg["From"] = cfg.email.smtp_user
     msg["To"] = cfg.email.to_address
 

@@ -617,7 +617,7 @@
       function notifyDone(text) {
         if ("Notification" in window && Notification.permission === "granted") {
           try {
-            new Notification("job-search-copilot", { body: text });
+            new Notification("Hanarr", { body: text });
           } catch (e) { /* some browsers restrict this outside a user gesture */ }
         }
         searchNote.textContent = text;
