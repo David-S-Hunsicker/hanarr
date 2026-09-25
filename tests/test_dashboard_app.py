@@ -205,6 +205,40 @@ def _make_isolated_settings(tmp_path):
     return settings
 
 
+def test_resume_version_label_can_be_set_and_cleared(tmp_path):
+    """"Multiple resumes per person as an option" -- version history needs
+    a way to tell saved resumes apart, so labels must be settable and
+    clearable (blank label reverts to showing "Version N")."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        version = ResumeVersion(profile_id=profile.id, content="Jane Doe", is_active=True)
+        session.add(version)
+        session.commit()
+        version_id = version.id
+
+    client = TestClient(create_app(settings))
+    renamed = client.post(f"/api/resume/versions/{version_id}/label", json={"label": "Backend-focused"})
+    assert renamed.status_code == 200
+    assert renamed.json() == {"id": version_id, "label": "Backend-focused"}
+
+    page = client.get("/resume").text
+    assert "Backend-focused" in page
+
+    cleared = client.post(f"/api/resume/versions/{version_id}/label", json={"label": "  "})
+    assert cleared.json()["label"] is None
+
+
+def test_resume_version_label_404s_for_another_profiles_version(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        get_or_create_profile(session, settings)
+
+    client = TestClient(create_app(settings))
+    response = client.post("/api/resume/versions/999/label", json={"label": "x"})
+    assert response.status_code == 404
+
+
 def test_resume_download_serves_active_version_as_text_attachment(tmp_path):
     """"Export on resume is a must have" -- only extracted plain text is
     retained (not the original PDF bytes), so the download is always a

@@ -416,6 +416,10 @@ class ResumeVersion(Base):
     content: Mapped[str] = mapped_column(Text)
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Optional user-facing name (e.g. "Backend-focused") so multiple saved
+    # resumes can be told apart in Version history beyond a bare version
+    # number -- nullable since older versions predate this field.
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
 
     profile: Mapped["Profile"] = relationship(back_populates="resume_versions")

@@ -187,6 +187,41 @@ def test_parse_and_store_resume_falls_back_to_path_name_without_explicit_filenam
     assert profile.resume_original_filename == "my-resume.md"
 
 
+def test_parse_and_store_resume_labels_new_version_from_original_filename(tmp_path):
+    """"Multiple resumes per person" needs a way to tell saved versions
+    apart beyond a bare version number -- default the label to the
+    uploaded filename (minus extension) so it's identifiable without the
+    user having to rename it themselves."""
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer.")
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    session = _make_session()
+
+    profile, _, _ = parse_and_store_resume(
+        session, settings, _FakeLLM({"titles": [], "skills": []}), original_filename="Backend_Resume.pdf"
+    )
+
+    active_version = next(v for v in profile.resume_versions if v.is_active)
+    assert active_version.label == "Backend_Resume"
+
+
+def test_parse_and_store_resume_leaves_label_blank_without_original_filename(tmp_path):
+    """`hanarr init` has no browser-supplied filename to derive a label
+    from -- leave it blank rather than labeling it after the internal
+    storage path, which would be misleading."""
+    resume_file = tmp_path / "my-resume.md"
+    resume_file.write_text("Jane Doe.")
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    session = _make_session()
+
+    profile, _, _ = parse_and_store_resume(session, settings, _FakeLLM({"titles": [], "skills": []}))
+
+    active_version = next(v for v in profile.resume_versions if v.is_active)
+    assert active_version.label is None
+
+
 def test_parse_and_store_resume_does_not_touch_preferences_on_extraction_failure(tmp_path):
     resume_file = tmp_path / "resume.txt"
     resume_file.write_text("Jane Doe.")

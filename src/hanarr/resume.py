@@ -187,7 +187,13 @@ def parse_and_store_resume(
     if active_version is None or active_version.content != resume_text:
         for version in profile.resume_versions:
             version.is_active = False
-        session.add(ResumeVersion(profile_id=profile.id, content=resume_text, is_active=True))
+        # Default label from the uploaded filename (e.g. "Backend_Resume")
+        # so a fresh version is identifiable in Version history without
+        # requiring the user to rename it -- they can still rename it later.
+        default_label = Path(original_filename).stem if original_filename else None
+        session.add(ResumeVersion(
+            profile_id=profile.id, content=resume_text, is_active=True, label=default_label
+        ))
 
     session.commit()
 

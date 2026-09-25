@@ -222,6 +222,7 @@ def resume_status(profile: Profile, session: Session | None = None) -> dict[str,
     return {
         "active": {
             "id": active.id if active else None,
+            "label": active.label if active else None,
             "content": active_content,
             "sections": [{"heading": s.heading, "body": s.body} for s in split_resume_into_sections(active_content)],
         },
@@ -243,7 +244,7 @@ def resume_status(profile: Profile, session: Session | None = None) -> dict[str,
             for p in sorted(profile.resume_proposals, key=lambda item: item.id, reverse=True)
         ],
         "versions": [
-            {"id": v.id, "active": v.is_active, "content": v.content,
+            {"id": v.id, "active": v.is_active, "content": v.content, "label": v.label,
              "created_at": v.created_at.isoformat()}
             for v in sorted(profile.resume_versions, key=lambda item: item.id, reverse=True)
         ],

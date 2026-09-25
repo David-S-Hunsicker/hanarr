@@ -23,7 +23,7 @@
     .resume-section + .resume-section { padding-top:1rem; border-top:1px solid var(--border); }
     .resume-section h3 { text-transform:uppercase; letter-spacing:.05em; font-size:.82rem; font-weight:700; color:var(--accent); margin:0 0 .4rem; }
     .resume-section pre { margin:0; }
-    .actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.8rem; } button, a.button { font:inherit; border:1px solid var(--border); border-radius:6px; padding:.35rem .6rem; background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; display:inline-block; } button.primary { background:var(--accent); border-color:var(--accent); color:white; }
+    .actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.8rem; align-items:center; } button, a.button { font:inherit; border:1px solid var(--border); border-radius:6px; padding:.35rem .6rem; background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; display:inline-block; } button.primary { background:var(--accent); border-color:var(--accent); color:white; } .label-input { font:inherit; border:1px solid var(--border); border-radius:6px; padding:.35rem .6rem; background:var(--page); color:var(--text); min-width:14rem; }
     .impact { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; flex-wrap:wrap; } .up { color:var(--good); } .down { color:#a33; }
     .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
     .diff-lines { background:var(--page); border:1px solid var(--border); border-radius:6px; overflow-x:auto; margin-top:.5rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.82rem; }
@@ -103,13 +103,30 @@
 
   <section class="section">
     <h2>Version history</h2>
+    <p class="muted">Keep several resumes around (e.g. one backend-focused, one data-focused) and label them to tell them apart. "Prepare rollback proposal" makes a version active again after you approve it, same as any other resume change.</p>
     {% for version in resume.versions %}
-    <div class="card"><h3>Version {{ version.id }} {% if version.active %}<span class="pill">active</span>{% endif %}</h3><p class="muted">{{ version.created_at }}</p><details><summary>Read contents</summary><pre>{{ version.content }}</pre></details>{% if not version.active %}<div class="actions"><button onclick="rollback({{ version.id }})">Prepare rollback proposal</button></div>{% endif %}</div>
+    <div class="card">
+      <h3>{{ version.label or ("Version " ~ version.id) }} {% if version.active %}<span class="pill">active</span>{% endif %}</h3>
+      <p class="muted">Version {{ version.id }} · {{ version.created_at }}</p>
+      <div class="actions">
+        <input type="text" class="label-input" placeholder="Label this version…" value="{{ version.label or '' }}" data-version-id="{{ version.id }}">
+        <button onclick="renameVersion({{ version.id }})">Save label</button>
+      </div>
+      <details><summary>Read contents</summary><pre>{{ version.content }}</pre></details>
+      {% if not version.active %}<div class="actions"><button onclick="rollback({{ version.id }})">Prepare rollback proposal</button></div>{% endif %}
+    </div>
     {% else %}<div class="empty">No version history is available yet.</div>{% endfor %}
   </section>
   <script>
     async function decide(id, action) { const response = await fetch(`/api/resume/proposals/${id}/${action}`, {method:"POST"}); if (!response.ok) { window.alert((await response.json()).error || "Could not update proposal."); } else { window.location.reload(); } }
     async function rollback(id) { const response = await fetch(`/api/resume/versions/${id}/rollback`, {method:"POST"}); if (!response.ok) { window.alert((await response.json()).error || "Could not prepare rollback."); } else { window.location.reload(); } }
+    async function renameVersion(id) {
+      const input = document.querySelector(`.label-input[data-version-id="${id}"]`);
+      const response = await fetch(`/api/resume/versions/${id}/label`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({label: input.value}),
+      });
+      if (!response.ok) { window.alert((await response.json()).error || "Could not save label."); } else { window.location.reload(); }
+    }
   </script>
 </body>
 </html>

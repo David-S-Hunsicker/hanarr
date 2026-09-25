@@ -822,6 +822,19 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             session.commit()
             return JSONResponse({"id": pending.id, "status": pending.status.value})
 
+    @app.post("/api/resume/versions/{version_id}/label")
+    async def label_resume_version(version_id: int, request: Request):
+        payload = await request.json()
+        label = str(payload.get("label", "")).strip()[:100] if isinstance(payload, dict) else ""
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            version = session.get(ResumeVersion, version_id)
+            if version is None or version.profile_id != profile.id:
+                return JSONResponse({"error": "Resume version not found."}, status_code=404)
+            version.label = label or None
+            session.commit()
+            return JSONResponse({"id": version.id, "label": version.label})
+
     @app.get("/resume/download")
     def download_resume():
         with session_factory() as session:
