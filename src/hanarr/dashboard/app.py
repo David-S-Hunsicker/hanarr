@@ -24,7 +24,7 @@ from sqlalchemy import func
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import to_naive_utc
-from ..db import get_or_create_profile, make_session_factory
+from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
 from ..llm import build_llm_client
 from ..ollama_setup import (
     SetupError,
@@ -39,6 +39,7 @@ from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
     JobPosting,
+    Profile,
     Project,
     ProjectMode,
     ProjectSubmission,
@@ -100,6 +101,19 @@ from ..update_service import UpdateCheckError, check_for_update
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# No login/auth -- this is still a local, single-operator instance. Multiple
+# profiles are local "hats" on the same machine (each with their own resume,
+# jobs, applications, skills, coaching projects), selected in the browser via
+# a plain cookie rather than any server-side session. Search preferences
+# (target titles, locations, connectors, LLM, schedule) stay global/shared
+# across all profiles -- only per-person data is actually isolated.
+PROFILE_COOKIE = "hanarr_profile_id"
+
+
+def _active_profile_id(request: Request) -> int | None:
+    raw = request.cookies.get(PROFILE_COOKIE)
+    return int(raw) if raw and raw.isdigit() else None
 
 # A wedged LLM call (Ollama hung, unreachable, or just very slow on a long
 # prompt) would otherwise leave a background task's "running" flag stuck
@@ -229,7 +243,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         elif kind == "stopped":
             _log_event({"kind": "error", "text": f"Search stopped — {event['new_count']} new posting(s) kept."})
 
-    def _run_search_in_background(run_id: int):
+    def _run_search_in_background(run_id: int, profile_id: int | None = None):
         state["search_running"] = True
         state["run_id"] = run_id
         state["sources_done"] = 0
@@ -245,7 +259,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
             state["sources_total"] = len(build_enabled_connectors(settings.sources))
             with session_factory() as session:
-                profile = get_or_create_profile(session, settings)
+                profile = get_active_profile(session, settings, profile_id)
                 n = run_search_cycle(
                     session, settings, profile, market_analysis_llm,
                     on_progress=_on_progress,
@@ -290,7 +304,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         "started_at": None,
     }
 
-    def _suggest_keywords_in_background(run_id: int):
+    def _suggest_keywords_in_background(run_id: int, profile_id: int | None = None):
         keyword_state["running"] = True
         keyword_state["run_id"] = run_id
         keyword_state["keywords"] = None
@@ -298,7 +312,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         keyword_state["started_at"] = time.time()
         try:
             with session_factory() as session:
-                profile = get_or_create_profile(session, settings)
+                profile = get_active_profile(session, settings, profile_id)
                 if not profile.resume_text:
                     keyword_state["error"] = "No resume text on file — run `hanarr init` first."
                     return
@@ -332,7 +346,13 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         "started_at": None,
     }
 
-    def _reparse_resume_in_background(run_id: int, original_filename: str | None = None):
+    def _reparse_resume_in_background(
+        run_id: int,
+        original_filename: str | None = None,
+        profile_id: int | None = None,
+        resume_path: Path | None = None,
+        persist_global_path: bool = True,
+    ):
         resume_state["running"] = True
         resume_state["run_id"] = run_id
         resume_state["result"] = None
@@ -341,7 +361,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         try:
             with session_factory() as session:
                 profile, summary, prefs_changed = parse_and_store_resume(
-                    session, settings, profiler_llm, original_filename=original_filename
+                    session, settings, profiler_llm, original_filename=original_filename,
+                    profile_id=profile_id, resume_path=resume_path,
                 )
 
                 # A previous run may have been declared stuck and superseded
@@ -355,7 +376,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     )
                     return
 
-                save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
+                # Only the default profile's upload updates the shared
+                # config.yaml path -- a secondary profile's resume lives at
+                # its own per-profile path (see upload_resume) and would
+                # otherwise silently become everyone's global default.
+                if persist_global_path:
+                    save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
                 if summary.get("_extraction_error"):
                     resume_state["error"] = (
                         f"Resume saved, but structured extraction failed "
@@ -377,10 +403,48 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if resume_state["run_id"] == run_id:
                 resume_state["running"] = False
 
+    @app.get("/profiles")
+    def profiles_page(request: Request):
+        with session_factory() as session:
+            profiles = list_profiles(session)
+            active_id = get_active_profile(session, settings, _active_profile_id(request)).id
+            return templates.TemplateResponse(
+                request=request,
+                name="profiles.html",
+                context={
+                    "profiles": [{"id": p.id, "name": p.name} for p in profiles],
+                    "active_profile_id": active_id,
+                },
+            )
+
+    @app.post("/profiles")
+    def create_profile(name: str = Form(...)):
+        name = name.strip()
+        if not name:
+            return RedirectResponse("/profiles", status_code=303)
+        with session_factory() as session:
+            profile = Profile(name=name)
+            session.add(profile)
+            session.commit()
+            session.refresh(profile)
+            new_id = profile.id
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(PROFILE_COOKIE, str(new_id), max_age=60 * 60 * 24 * 365, samesite="lax")
+        return response
+
+    @app.post("/profiles/{profile_id}/activate")
+    def activate_profile(profile_id: int):
+        with session_factory() as session:
+            if session.get(Profile, profile_id) is None:
+                return JSONResponse({"error": "Profile not found."}, status_code=404)
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(PROFILE_COOKIE, str(profile_id), max_age=60 * 60 * 24 * 365, samesite="lax")
+        return response
+
     @app.get("/")
     def index(request: Request, status: str | None = None):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             query = session.query(JobPosting).filter(JobPosting.profile_id == profile.id)
             if status:
                 query = query.filter(JobPosting.status == ApplicationStatus(status))
@@ -440,14 +504,15 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "gap_by_job": gap_by_job,
                     "projects": [project_status(project) for project in projects],
                     "score_impact_by_job": score_impact_by_job,
-                    **_scheduler_status(),
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                    **_scheduler_status(profile.id),
                 },
             )
 
     @app.post("/jobs/{job_id}/status")
-    def update_status(job_id: int, new_status: str = Form(...)):
+    def update_status(request: Request, job_id: int, new_status: str = Form(...)):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             job = session.get(JobPosting, job_id)
             if job and job.profile_id == profile.id:
                 try:
@@ -458,9 +523,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     @app.post("/api/jobs/{job_id}/skill-gaps/analyze")
-    def analyze_job_skill_gaps(job_id: int):
+    def analyze_job_skill_gaps(request: Request, job_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             job = session.get(JobPosting, job_id)
             if job is None or job.profile_id != profile.id:
                 return JSONResponse({"error": "Saved job not found."}, status_code=404)
@@ -469,9 +534,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(result)
 
     @app.get("/api/jobs/{job_id}/skill-gaps")
-    def get_job_skill_gaps(job_id: int):
+    def get_job_skill_gaps(request: Request, job_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             job = session.get(JobPosting, job_id)
             if job is None or job.profile_id != profile.id:
                 return JSONResponse({"error": "Saved job not found."}, status_code=404)
@@ -484,21 +549,21 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"analyzed": True, **result})
 
     @app.get("/api/skill-gaps")
-    def get_skill_gaps():
+    def get_skill_gaps(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return JSONResponse({"jobs": saved_job_gaps(session, profile)})
 
     @app.get("/api/skills")
-    def get_skills():
+    def get_skills(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return JSONResponse({"skills": profile_skill_page(session, profile)})
 
     @app.get("/api/coaching")
-    def get_coaching():
+    def get_coaching(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return JSONResponse({
                 "suggestions": coaching_suggestions(session, profile),
                 "market_demand": market_demand_summary(session, profile),
@@ -522,7 +587,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         if not evidence:
             return JSONResponse({"error": "evidence is required for a capability override."}, status_code=400)
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             skill = session.get(Skill, skill_id)
             if skill is None:
                 return JSONResponse({"error": "Skill not found."}, status_code=404)
@@ -552,7 +617,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         except (ValueError, TypeError, KeyError):
             return JSONResponse({"error": "mode, job_id, and skill_id must be valid values."}, status_code=400)
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 result = create_coaching_project(
                     session, profile.id, mode, curriculum_llm, job_id=job_id, skill_id=skill_id
@@ -563,9 +628,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(result, status_code=201)
 
     @app.get("/api/coaching-projects")
-    def list_projects():
+    def list_projects(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             projects = (
                 session.query(Project)
                 .filter(Project.profile_id == profile.id)
@@ -575,9 +640,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"projects": [project_status(project) for project in projects]})
 
     @app.get("/api/coaching-projects/{project_id}")
-    def get_project(project_id: int):
+    def get_project(request: Request, project_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             project = session.get(Project, project_id)
             if project is None or project.profile_id != profile.id:
                 return JSONResponse({"error": "Coaching project not found."}, status_code=404)
@@ -591,7 +656,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         except (ValueError, TypeError):
             return JSONResponse({"error": "status must be todo, in_progress, or done."}, status_code=400)
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             project = session.get(Project, project_id)
             task = session.get(ProjectTask, task_id)
             if project is None or project.profile_id != profile.id or task is None or task.project_id != project.id:
@@ -608,7 +673,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         if not isinstance(payload, dict):
             return JSONResponse({"error": "submission payload must be an object."}, status_code=400)
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 submission = create_written_submission(
                     session, profile.id, project_id, str(payload.get("content", "")), str(payload.get("title", ""))
@@ -620,6 +685,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
     @app.post("/api/coaching-projects/{project_id}/submissions/files")
     async def create_local_project_submission(
+        request: Request,
         project_id: int,
         files: list[UploadFile] = File(...),
         title: str = Form(""),
@@ -628,7 +694,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"error": f"local submission must contain between 1 and {MAX_FILES} files."}, status_code=413)
         uploaded = [(file.filename or "", file.file) for file in files]
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 submission = create_local_submission(
                     session, profile.id, project_id, uploaded, Path(settings.data_dir) / "submissions", title
@@ -644,7 +710,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         if not isinstance(payload, dict):
             return JSONResponse({"error": "submission payload must be an object."}, status_code=400)
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 submission = create_github_submission(
                     session,
@@ -660,9 +726,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(submission_status(submission), status_code=201)
 
     @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/github/fetch")
-    def fetch_github_project_submission(project_id: int, submission_id: int):
+    def fetch_github_project_submission(request: Request, project_id: int, submission_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             submission = session.get(ProjectSubmission, submission_id)
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
@@ -674,18 +740,18 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(submission_status(submission))
 
     @app.get("/api/coaching-projects/{project_id}/submissions")
-    def list_project_submissions(project_id: int):
+    def list_project_submissions(request: Request, project_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             project = session.get(Project, project_id)
             if project is None or project.profile_id != profile.id:
                 return JSONResponse({"error": "Coaching project not found."}, status_code=404)
             return JSONResponse({"submissions": [submission_status(item) for item in project.submissions]})
 
     @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/submit")
-    def submit_project_submission(project_id: int, submission_id: int):
+    def submit_project_submission(request: Request, project_id: int, submission_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             submission = session.get(ProjectSubmission, submission_id)
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
@@ -697,9 +763,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(submission_status(submission))
 
     @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/evaluate")
-    def evaluate_project_submission(project_id: int, submission_id: int):
+    def evaluate_project_submission(request: Request, project_id: int, submission_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             submission = session.get(ProjectSubmission, submission_id)
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
@@ -736,9 +802,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(result)
 
     @app.post("/api/coaching-projects/{project_id}/submissions/{submission_id}/resubmit")
-    def resubmit_project_submission(project_id: int, submission_id: int):
+    def resubmit_project_submission(request: Request, project_id: int, submission_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             submission = session.get(ProjectSubmission, submission_id)
             if submission is None or submission.project_id != project_id:
                 return JSONResponse({"error": "Submission not found."}, status_code=404)
@@ -752,7 +818,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     @app.get("/coaching")
     def coaching(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             projects = (
                 session.query(Project)
                 .filter(Project.profile_id == profile.id)
@@ -773,19 +839,22 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return templates.TemplateResponse(
                 request=request,
                 name="coaching.html",
-                context={"projects": project_cards, "suggestions": suggestions, "market_demand": demand},
+                context={
+                    "projects": project_cards, "suggestions": suggestions, "market_demand": demand,
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                },
             )
 
     @app.get("/api/resume")
-    def get_resume():
+    def get_resume(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return JSONResponse(resume_page_status(profile, session))
 
     @app.post("/api/resume/proposals/{proposal_id}/approve")
-    def approve_proposal(proposal_id: int):
+    def approve_proposal(request: Request, proposal_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 result = approve_resume_proposal(session, settings, profile.id, proposal_id, resume_writer_llm)
                 session.commit()
@@ -794,9 +863,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse(result)
 
     @app.post("/api/resume/proposals/{proposal_id}/reject")
-    def reject_proposal(proposal_id: int):
+    def reject_proposal(request: Request, proposal_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
                 proposal = reject_resume_proposal(session, profile.id, proposal_id)
                 session.commit()
@@ -805,9 +874,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"id": proposal.id, "status": proposal.status.value})
 
     @app.post("/api/resume/versions/{version_id}/rollback")
-    def rollback_resume(version_id: int):
+    def rollback_resume(request: Request, version_id: int):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             version = session.get(ResumeVersion, version_id)
             if version is None or version.profile_id != profile.id:
                 return JSONResponse({"error": "Resume version not found."}, status_code=404)
@@ -827,7 +896,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         payload = await request.json()
         label = str(payload.get("label", "")).strip()[:100] if isinstance(payload, dict) else ""
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             version = session.get(ResumeVersion, version_id)
             if version is None or version.profile_id != profile.id:
                 return JSONResponse({"error": "Resume version not found."}, status_code=404)
@@ -836,9 +905,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             return JSONResponse({"id": version.id, "label": version.label})
 
     @app.get("/resume/download")
-    def download_resume():
+    def download_resume(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             active_version = next(
                 (v for v in reversed(profile.resume_versions) if v.is_active), None
             )
@@ -857,26 +926,32 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     @app.get("/resume")
     def resume_page(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return templates.TemplateResponse(
                 request=request, name="resume.html",
-                context={"resume": resume_page_status(profile, session)}
+                context={
+                    "resume": resume_page_status(profile, session),
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                }
             )
 
     @app.get("/skills")
     def skills_page(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             return templates.TemplateResponse(
                 request=request,
                 name="skills.html",
-                context={"skills": profile_skill_page(session, profile)},
+                context={
+                    "skills": profile_skill_page(session, profile),
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                },
             )
 
     @app.get("/applications")
     def applications_page(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             # "Applications" is deliberately the jobs you've actually acted
             # on -- everything past the default "new" status -- rather than
             # Jobs' full discovery list. Same underlying data as the Jobs
@@ -937,11 +1012,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "grouped_applications": {k: v for k, v in grouped.items() if v},
                     "status_counts": status_counts,
                     "total_count": len(jobs),
+                    "active_profile": {"id": profile.id, "name": profile.name},
                 },
             )
 
     @app.post("/jobs/clear")
-    def clear_jobs():
+    def clear_jobs(request: Request):
         # Refuse while a search is writing to the same tables -- clearing
         # mid-search could race with the pipeline's own inserts (delete a
         # row it just added, or leave a partial mix once the search
@@ -961,7 +1037,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         # everything to be re-fetched and re-scored from scratch, e.g.
         # after a scoring-logic change.
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             session.query(Reminder).filter(
                 Reminder.profile_id == profile.id, Reminder.job_id.isnot(None)
             ).delete(synchronize_session=False)
@@ -975,10 +1051,13 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     @app.post("/search")
-    def trigger_search():
+    def trigger_search(request: Request):
         if not state["search_running"]:
             next_run_id = state["run_id"] + 1
-            threading.Thread(target=_run_search_in_background, args=(next_run_id,), daemon=True).start()
+            profile_id = _active_profile_id(request)
+            threading.Thread(
+                target=_run_search_in_background, args=(next_run_id, profile_id), daemon=True
+            ).start()
         return RedirectResponse("/", status_code=303)
 
     def _relative_label(delta_seconds: float, future: bool) -> str:
@@ -994,7 +1073,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             value, unit = round(seconds / 86400), "d"
         return f"in {value}{unit}" if future else f"{value}{unit} ago"
 
-    def _scheduler_status() -> dict:
+    def _scheduler_status(profile_id: int | None = None) -> dict:
         """Next-scheduled-run labels, and the last search's persisted
         outcome (which survives a restart, unlike `state`, so this doesn't
         go blank every time "Save & restart server" is used). `scheduler`
@@ -1003,7 +1082,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         the restart-in-progress moment) just show nothing scheduled rather
         than erroring. APScheduler's next_run_time is timezone-aware
         (local-timezone by default); to_naive_utc normalizes it to match
-        this app's naive-UTC convention before comparing against utc_now()."""
+        this app's naive-UTC convention before comparing against utc_now().
+        "Last search" is shown per active profile, since the background
+        scheduler runs a cycle for every profile independently."""
         now = utc_now()
         next_search_label = None
         next_reminder_check_label = None
@@ -1018,7 +1099,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 next_reminder_check_label = _relative_label(delta, future=True)
 
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, profile_id)
             last_search_label = None
             if profile.last_search_at:
                 delta = (now - profile.last_search_at).total_seconds()
@@ -1035,7 +1116,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         }
 
     @app.get("/search/status")
-    def search_status():
+    def search_status(request: Request):
         return JSONResponse(
             {
                 "search_running": state["search_running"],
@@ -1049,7 +1130,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),
-                **_scheduler_status(),
+                **_scheduler_status(_active_profile_id(request)),
             }
         )
 
@@ -1061,9 +1142,9 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     @app.post("/remind")
-    def trigger_remind():
+    def trigger_remind(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             due = get_due_reminders(session, profile)
             if due:
                 deliver_reminders(due, settings.reminders)
@@ -1082,19 +1163,25 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "saved": saved == "1",
                 "errors": [],
                 "provider_diagnostics": provider_diagnostics,
-                "resume_upload": _resume_upload_status(),
+                "resume_upload": _resume_upload_status(_active_profile_id(request)),
+                "active_profile": _active_profile_summary(request),
             },
         )
 
     def _provider_diagnostics():
         return detect_ollama(settings.llm.model, settings.llm.base_url, settings.data_dir)
 
-    def _resume_upload_status() -> dict:
+    def _active_profile_summary(request: Request) -> dict:
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            return {"id": profile.id, "name": profile.name}
+
+    def _resume_upload_status(profile_id: int | None = None) -> dict:
         """For server-rendered template context; parsed_at is a raw datetime
         here so the template can format it, unlike the JSON-facing
         /config/resume/status route which sends an ISO string instead."""
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, profile_id)
             return {
                 "original_filename": profile.resume_original_filename,
                 "parsed_at": profile.resume_parsed_at,
@@ -1185,7 +1272,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "saved": False,
                     "errors": errors,
                     "provider_diagnostics": _provider_diagnostics(),
-                    "resume_upload": _resume_upload_status(),
+                    "resume_upload": _resume_upload_status(_active_profile_id(request)),
+                    "active_profile": _active_profile_summary(request),
                 },
             )
 
@@ -1205,11 +1293,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
 
     @app.post("/config/suggest-keywords")
-    def trigger_suggest_keywords():
+    def trigger_suggest_keywords(request: Request):
         if not keyword_state["running"] or _task_is_stuck(keyword_state):
             next_run_id = keyword_state["run_id"] + 1
+            profile_id = _active_profile_id(request)
             threading.Thread(
-                target=_suggest_keywords_in_background, args=(next_run_id,), daemon=True
+                target=_suggest_keywords_in_background, args=(next_run_id, profile_id), daemon=True
             ).start()
             return JSONResponse({"run_id": next_run_id})
         return JSONResponse({"run_id": keyword_state["run_id"]})
@@ -1226,7 +1315,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         )
 
     @app.post("/config/resume")
-    async def upload_resume(file: UploadFile = File(...)):
+    async def upload_resume(request: Request, file: UploadFile = File(...)):
         if resume_state["running"] and not _task_is_stuck(resume_state):
             return JSONResponse({"error": "A resume is already being parsed — wait for it to finish."}, status_code=409)
 
@@ -1236,12 +1325,22 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             allowed = ", ".join(sorted(ALLOWED_RESUME_EXTENSIONS))
             return JSONResponse({"error": f"Unsupported file type {ext!r} — allowed: {allowed}"}, status_code=400)
 
-        RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+        with session_factory() as session:
+            active_profile = get_active_profile(session, settings, _active_profile_id(request))
+            default_profile = get_or_create_profile(session, settings)
+            profile_id = active_profile.id
+            is_default_profile = active_profile.id == default_profile.id
+
+        # Each profile's upload lives in its own subdirectory -- otherwise
+        # two profiles' resumes would collide on the same fixed filename and
+        # silently overwrite each other on disk.
+        profile_resumes_dir = RESUMES_DIR / str(profile_id)
+        profile_resumes_dir.mkdir(parents=True, exist_ok=True)
         # Fixed filename per extension rather than keeping the upload's
-        # original name — one resume per instance, so each new upload
-        # replaces the last rather than accumulating files.
-        dest = RESUMES_DIR / f"resume{ext}"
-        staged = RESUMES_DIR / f".resume-upload{ext}.staging"
+        # original name — one resume per profile, so each new upload
+        # replaces that profile's last rather than accumulating files.
+        dest = profile_resumes_dir / f"resume{ext}"
+        staged = profile_resumes_dir / f".resume-upload{ext}.staging"
         written = 0
         try:
             too_large = False
@@ -1267,19 +1366,25 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             staged.unlink(missing_ok=True)
             return JSONResponse({"error": "Could not save the resume upload; check server logs."}, status_code=400)
 
-        settings.profile.resume_path = str(dest)
-        save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
+        # Only the default profile's upload updates the shared config.yaml
+        # path -- a secondary profile's file lives at its own path above and
+        # would otherwise silently become everyone's global default.
+        if is_default_profile:
+            settings.profile.resume_path = str(dest)
+            save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
 
         next_run_id = resume_state["run_id"] + 1
         threading.Thread(
-            target=_reparse_resume_in_background, args=(next_run_id, original_name), daemon=True
+            target=_reparse_resume_in_background,
+            args=(next_run_id, original_name, profile_id, dest, is_default_profile),
+            daemon=True,
         ).start()
         return JSONResponse({"run_id": next_run_id, "saved_as": str(dest)})
 
     @app.get("/config/resume/status")
-    def resume_status():
+    def resume_status(request: Request):
         with session_factory() as session:
-            profile = get_or_create_profile(session, settings)
+            profile = get_active_profile(session, settings, _active_profile_id(request))
             original_filename = profile.resume_original_filename
             parsed_at = profile.resume_parsed_at.isoformat() if profile.resume_parsed_at else None
         return JSONResponse(

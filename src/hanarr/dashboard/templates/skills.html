@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div class="header"><h1>Skills</h1><span class="meta">Capability, evidence, and wording are tracked separately.</span></div>
+  <div class="header"><h1>Skills</h1><span class="meta">Capability, evidence, and wording are tracked separately.</span>{% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}</div>
   <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a class="active" href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
   <p class="muted">A resume mention is not proof. A project becomes proven only after a passing evaluation; corrections below update capability evidence without creating a proven-skill record.</p>
   <section class="section">

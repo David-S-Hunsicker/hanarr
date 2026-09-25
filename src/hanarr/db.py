@@ -101,10 +101,27 @@ def _backup_database(db_path: Path, data_dir: Path) -> None:
 
 
 def get_or_create_profile(session: Session, settings: Settings) -> Profile:
-    profile = session.execute(select(Profile)).scalars().first()
+    profile = session.execute(select(Profile).order_by(Profile.id)).scalars().first()
     if profile is None:
         profile = Profile(name=settings.profile.name)
         session.add(profile)
         session.commit()
         session.refresh(profile)
     return profile
+
+
+def get_active_profile(session: Session, settings: Settings, profile_id: int | None = None) -> Profile:
+    """Like get_or_create_profile, but honors an explicit profile_id when
+    given (e.g. from the dashboard's active-profile cookie) -- falls back to
+    the default (first-created) profile when profile_id is None or doesn't
+    resolve to a real row, so every existing single-profile caller keeps
+    working unchanged."""
+    if profile_id is not None:
+        profile = session.get(Profile, profile_id)
+        if profile is not None:
+            return profile
+    return get_or_create_profile(session, settings)
+
+
+def list_profiles(session: Session) -> list[Profile]:
+    return list(session.execute(select(Profile).order_by(Profile.id)).scalars().all())

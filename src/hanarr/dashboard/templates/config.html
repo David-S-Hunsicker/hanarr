@@ -217,7 +217,10 @@
 <body>
   <div class="page-header">
     <h1>Preferences &amp; config</h1>
-    <a class="nav-link" href="/">&larr; Back to jobs</a>
+    <span>
+      {% if active_profile %}<a class="nav-link" href="/profiles">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
+      <a class="nav-link" href="/">&larr; Back to jobs</a>
+    </span>
   </div>
   <nav class="tabs" aria-label="Main navigation">
     <a class="tab" href="/">Jobs</a>

@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profiles · Hanarr</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; } }
+    * { box-sizing:border-box; } body { max-width:640px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
+    h1,h2 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin:1.5rem 0 .75rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:.5rem; }
+    .muted { color:var(--muted); }
+    a.nav-link { color:var(--accent); text-decoration:none; font-size:.85rem; font-weight:600; }
+    a.nav-link:hover { text-decoration:underline; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.9rem 1rem; margin:.6rem 0; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+    .pill { display:inline-block; border:1px solid var(--good); color:var(--good); border-radius:999px; padding:.15rem .55rem; font-size:.78rem; font-weight:600; }
+    button, input[type=text] { font:inherit; }
+    button { border:1px solid var(--border); border-radius:6px; padding:.4rem .75rem; background:var(--surface); color:var(--text); cursor:pointer; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    form.add-form { display:flex; gap:.5rem; margin-top:.75rem; flex-wrap:wrap; }
+    input[type=text] { border:1px solid var(--border); border-radius:6px; padding:.4rem .6rem; background:var(--page); color:var(--text); flex:1; min-width:12rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Profiles</h1>
+    <a class="nav-link" href="/">&larr; Back to jobs</a>
+  </div>
+  <p class="muted">Local profiles let more than one person use this instance -- each has their own resume, jobs, applications, skills, and coaching projects. Search preferences (target titles, locations, connectors, LLM, schedule) are shared across every profile. There's no login; switching just tells this browser which profile to act as.</p>
+
+  <h2>Switch profile</h2>
+  {% for profile in profiles %}
+  <div class="card">
+    <span>{{ profile.name }} {% if profile.id == active_profile_id %}<span class="pill">active</span>{% endif %}</span>
+    {% if profile.id != active_profile_id %}
+    <form method="post" action="/profiles/{{ profile.id }}/activate"><button type="submit">Switch to this profile</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <h2>Add a profile</h2>
+  <form class="add-form" method="post" action="/profiles">
+    <input type="text" name="name" placeholder="Name (e.g. Jordan)" required maxlength="100">
+    <button class="primary" type="submit">Create and switch</button>
+  </form>
+</body>
+</html>

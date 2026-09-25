@@ -2,6 +2,7 @@ import datetime as dt
 import sys
 import threading
 import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -12,7 +13,7 @@ from hanarr.connectors.base import RawJobPosting
 from hanarr.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
 from hanarr.db import get_or_create_profile, make_session_factory
 from hanarr.llm.base import LLMClient
-from hanarr.models import ApplicationStatus, JobPosting, Reminder, ReminderType, ResumeVersion, SeenPosting
+from hanarr.models import ApplicationStatus, JobPosting, Profile, Reminder, ReminderType, ResumeVersion, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
 
 
@@ -203,6 +204,117 @@ def _make_isolated_settings(tmp_path):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.llm.provider = "none"
     return settings
+
+
+def test_profiles_page_lists_and_creates_and_switches(tmp_path):
+    """"We do need to add profiles for multiple people" -- local profile
+    slots, no auth. Creating one and switching sets a cookie the rest of
+    the app reads to decide which profile's data to show."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    # Visiting any page creates the default profile.
+    client.get("/")
+    with make_session_factory(settings)() as session:
+        default_id = get_or_create_profile(session, settings).id
+
+    page = client.get("/profiles").text
+    assert settings.profile.name in page
+
+    created = client.post("/profiles", data={"name": "Jordan"}, follow_redirects=False)
+    assert created.status_code == 303
+    assert created.cookies.get("hanarr_profile_id") is not None
+    new_id = int(created.cookies["hanarr_profile_id"])
+    assert new_id != default_id
+
+    with make_session_factory(settings)() as session:
+        assert session.get(Profile, new_id).name == "Jordan"
+
+    switched = client.post(f"/profiles/{default_id}/activate", follow_redirects=False)
+    assert switched.cookies.get("hanarr_profile_id") == str(default_id)
+
+
+def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
+    """Regression test for the core multi-profile promise: switching the
+    active-profile cookie must isolate jobs (and everything else keyed by
+    profile_id) -- profile A's saved jobs must never leak into profile B's
+    dashboard, and vice versa."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile_a = get_or_create_profile(session, settings)
+        profile_b = Profile(name="Jordan")
+        session.add(profile_b)
+        session.commit()
+        session.add_all([
+            JobPosting(
+                profile_id=profile_a.id, source="test", external_id="a1", company="Acme",
+                title="Profile A Job", url="https://example.test/a1", fit_score=80.0,
+            ),
+            JobPosting(
+                profile_id=profile_b.id, source="test", external_id="b1", company="Acme",
+                title="Profile B Job", url="https://example.test/b1", fit_score=80.0,
+            ),
+        ])
+        session.commit()
+        profile_a_id, profile_b_id = profile_a.id, profile_b.id
+
+    client = TestClient(create_app(settings))
+    client.cookies.set("hanarr_profile_id", str(profile_a_id))
+    page_a = client.get("/").text
+    assert "Profile A Job" in page_a
+    assert "Profile B Job" not in page_a
+
+    client.cookies.set("hanarr_profile_id", str(profile_b_id))
+    page_b = client.get("/").text
+    assert "Profile B Job" in page_b
+    assert "Profile A Job" not in page_b
+
+
+def test_resume_uploads_for_two_profiles_do_not_collide_on_disk(tmp_path, monkeypatch):
+    """Regression test: before per-profile storage, every upload was saved
+    to the same fixed resumes/resume.<ext> path regardless of who uploaded
+    it -- a second profile's resume would silently overwrite the first's
+    file on disk (though not its already-parsed DB text). Uploads must now
+    land under a per-profile subdirectory, and only the default profile's
+    upload should update the shared config.yaml resume_path."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.profile.resume_path = str(tmp_path / "resume.md")
+    monkeypatch.setattr(app_mod, "DEFAULT_CONFIG_PATH", tmp_path / "config.yaml")
+    client = TestClient(create_app(settings))
+
+    with make_session_factory(settings)() as session:
+        default_id = get_or_create_profile(session, settings).id
+
+    created = client.post("/profiles", data={"name": "Jordan"}, follow_redirects=False)
+    second_id = int(created.cookies["hanarr_profile_id"])
+
+    def _upload_and_wait(profile_id: int, text: bytes, filename: str):
+        client.cookies.set("hanarr_profile_id", str(profile_id))
+        response = client.post("/config/resume", files={"file": (filename, text, "text/plain")})
+        assert response.status_code == 200
+        for _ in range(50):
+            status = client.get("/config/resume/status").json()
+            if not status["running"]:
+                return status
+            time.sleep(0.05)
+        raise AssertionError("resume re-parse did not finish in time")
+
+    _upload_and_wait(default_id, b"Default profile resume text.", "default.txt")
+    _upload_and_wait(second_id, b"Jordan's resume text.", "jordan.txt")
+
+    resumes_dir = (tmp_path / "resume.md").parent
+    assert (resumes_dir / str(default_id) / "resume.txt").read_text() == "Default profile resume text."
+    assert (resumes_dir / str(second_id) / "resume.txt").read_text() == "Jordan's resume text."
+
+    with make_session_factory(settings)() as session:
+        default_profile = session.get(Profile, default_id)
+        second_profile = session.get(Profile, second_id)
+        assert default_profile.resume_text == "Default profile resume text."
+        assert second_profile.resume_text == "Jordan's resume text."
+
+    # Only the default profile's upload is allowed to move the shared
+    # config.yaml pointer -- Jordan's upload must not silently redirect it.
+    assert Path(settings.profile.resume_path) == resumes_dir / str(default_id) / "resume.txt"
 
 
 def test_resume_version_label_can_be_set_and_cleared(tmp_path):

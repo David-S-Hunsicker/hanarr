@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .config import Preferences, Settings
-from .db import get_or_create_profile
+from .db import get_active_profile
 from .llm.base import LLMClient
 from .models import Profile, ResumeVersion, utc_now
 
@@ -143,9 +143,14 @@ def suggest_boost_keywords(resume_text: str, target_titles: list[str], llm: LLMC
 
 
 def parse_and_store_resume(
-    session: Session, settings: Settings, llm: LLMClient, *, original_filename: str | None = None
+    session: Session, settings: Settings, llm: LLMClient, *,
+    original_filename: str | None = None,
+    profile_id: int | None = None,
+    resume_path: Path | str | None = None,
 ) -> tuple[Profile, dict, bool]:
-    """Reads settings.profile.resume_path, extracts a structured summary via
+    """Reads settings.profile.resume_path (or `resume_path`, when a caller
+    already has a specific file to read -- e.g. a per-profile upload path),
+    extracts a structured summary via
     the LLM, and stores both the raw text and summary on the profile. Shared
     by `hanarr init` and the dashboard's upload/re-parse flow so the two
     surfaces can't drift. Also auto-populates target_titles/keywords_boost
@@ -172,12 +177,14 @@ def parse_and_store_resume(
     dashboard upload route pass the browser-supplied name (e.g.
     "David_Resume_2026.pdf") through before it's lost to the rename; it
     defaults to resume_path's own name for `hanarr init`, where the
-    configured path is the only name there ever was."""
-    resume_path = Path(settings.profile.resume_path)
+    configured path is the only name there ever was. `profile_id` targets a
+    specific profile (e.g. the dashboard's active-profile cookie) rather
+    than always the default profile."""
+    resume_path = Path(resume_path) if resume_path is not None else Path(settings.profile.resume_path)
     resume_text = load_resume_text(resume_path)
     summary = extract_profile_summary(resume_text, llm)
 
-    profile = get_or_create_profile(session, settings)
+    profile = get_active_profile(session, settings, profile_id)
     profile.resume_text = resume_text
     profile.resume_summary_json = json.dumps(summary)
     profile.resume_original_filename = original_filename or resume_path.name
