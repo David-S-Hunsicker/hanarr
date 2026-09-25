@@ -1231,3 +1231,43 @@ def test_onboarding_banner_shows_partial_progress(tmp_path):
     assert "Get set up" in html
     assert '<li class="done"><span class="check">✓</span> <a href="/config?tab=app#resume">Add your resume</a></li>' in html
     assert '<li class=""><span class="check">○</span> <a href="/config?tab=preferences">Set your target titles</a></li>' in html
+
+
+def test_debug_filtered_page_is_empty_before_any_search(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/debug/filtered").text
+    assert "Nothing to show yet" in html
+
+
+def test_debug_filtered_page_shows_rejected_postings_after_a_search(tmp_path, monkeypatch):
+    """"Why filtered out" debug view: a posting rejected by the prefilter
+    during a real search must show up here with the specific reason, not
+    just silently vanish."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.keywords_exclude = ["unpaid"]
+
+    class _FakeConnector:
+        name = "test"
+
+        def fetch(self):
+            return [
+                RawJobPosting(
+                    source="test", external_id="1", company="Acme",
+                    title="Unpaid Intern", location="Remote", remote=True,
+                    url="https://example.test/1", description="This is an unpaid role.",
+                )
+            ]
+
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [_FakeConnector()])
+
+    client = TestClient(create_app(settings))
+    client.post("/search", follow_redirects=False)
+    for _ in range(50):
+        time.sleep(0.05)
+        if not client.get("/search/status").json()["search_running"]:
+            break
+
+    html = client.get("/debug/filtered").text
+    assert "Unpaid Intern" in html
+    assert "Acme" in html
+    assert "unpaid" in html

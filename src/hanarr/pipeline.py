@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .config import Settings
 from .connectors import build_enabled_connectors
 from .llm.base import LLMClient, NullLLMClient
-from .matching import passes_prefilter, score_fit
+from .matching import prefilter_rejection_reason, score_fit
 from .models import JobPosting, Profile, ScoreSnapshot, SeenPosting
 
 logger = logging.getLogger(__name__)
@@ -124,9 +124,13 @@ def run_search_cycle(
                 stopped = True
                 break
 
-            if not passes_prefilter(job, settings.preferences):
+            prefilter_reason = prefilter_rejection_reason(job, settings.preferences)
+            if prefilter_reason is not None:
                 if on_progress:
-                    on_progress({"event": "considered"})
+                    on_progress({
+                        "event": "considered", "rejected": True, "reason": prefilter_reason,
+                        "title": job.title, "company": job.company, "source": job.source,
+                    })
                 continue
 
             already_seen = session.execute(
@@ -150,7 +154,11 @@ def run_search_cycle(
             if score < settings.matching.min_fit_score:
                 session.commit()
                 if on_progress:
-                    on_progress({"event": "considered"})
+                    on_progress({
+                        "event": "considered", "rejected": True,
+                        "reason": f"Fit score {score:.0f} is below your minimum of {settings.matching.min_fit_score:.0f}",
+                        "title": job.title, "company": job.company, "source": job.source,
+                    })
                 continue
 
             posting = JobPosting(

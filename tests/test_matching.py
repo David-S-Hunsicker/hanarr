@@ -4,7 +4,7 @@ import json
 from hanarr.config import Preferences
 from hanarr.connectors.base import RawJobPosting
 from hanarr.llm.base import LLMClient
-from hanarr.matching import _rule_based_score, passes_prefilter, score_fit
+from hanarr.matching import _rule_based_score, passes_prefilter, prefilter_rejection_reason, score_fit
 
 
 def make_job(**overrides) -> RawJobPosting:
@@ -29,6 +29,31 @@ def test_prefilter_rejects_excluded_keyword():
     job = make_job(description="This is an unpaid internship.")
     prefs = Preferences(keywords_exclude=["unpaid"])
     assert passes_prefilter(job, prefs) is False
+
+
+def test_prefilter_rejection_reason_explains_excluded_keyword():
+    """Feeds the "why was this filtered out" debug view -- passes_prefilter
+    stays a bare bool for existing callers, but the dashboard needs the
+    specific reason, not just pass/fail."""
+    job = make_job(description="This is an unpaid internship.")
+    prefs = Preferences(keywords_exclude=["unpaid"])
+    reason = prefilter_rejection_reason(job, prefs)
+    assert reason is not None
+    assert "unpaid" in reason
+
+
+def test_prefilter_rejection_reason_is_none_when_job_passes():
+    job = make_job()
+    prefs = Preferences()
+    assert prefilter_rejection_reason(job, prefs) is None
+
+
+def test_prefilter_rejection_reason_explains_salary_floor():
+    job = make_job(salary_max=50000)
+    prefs = Preferences(salary_floor_usd=100000)
+    reason = prefilter_rejection_reason(job, prefs)
+    assert reason is not None
+    assert "50,000" in reason or "50000" in reason
 
 
 def test_prefilter_rejects_remote_when_not_wanted():

@@ -185,6 +185,20 @@ def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeyp
     assert new_count == 1  # only "matched" cleared the threshold
     assert len(considered_events) == 4, "one considered event per posting, regardless of outcome"
 
+    # Prefilter and below-threshold rejections carry a specific reason plus
+    # enough detail to show in a "why was this filtered out" debug view --
+    # already-seen and matched postings don't need one (already-seen has no
+    # fresh outcome to explain; matched isn't a rejection). Events arrive in
+    # fetch order: prefiltered, already-seen, rejected (low score), matched.
+    prefiltered_event, already_seen_event, rejected_event, matched_event = considered_events
+    assert prefiltered_event["rejected"] is True
+    assert "blocked" in prefiltered_event["reason"]
+    assert prefiltered_event["company"] == "Acme"
+    assert "title" not in already_seen_event
+    assert rejected_event["rejected"] is True
+    assert "30" in rejected_event["reason"] and "60" in rejected_event["reason"]
+    assert "title" not in matched_event
+
 
 def _fake_diagnostics(**overrides) -> OllamaDiagnostics:
     defaults = dict(

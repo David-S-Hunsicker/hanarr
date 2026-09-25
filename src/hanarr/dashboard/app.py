@@ -196,6 +196,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     # dict plus a bounded activity log is enough. `run_id` lets the browser
     # tell "still the same run" apart from "a new one started" across polls.
     MAX_LOG_ENTRIES = 25
+    # Deliberately larger than MAX_LOG_ENTRIES -- the activity log is a
+    # scrolling narrative of the run, but the filtered-postings list is a
+    # reference someone tunes preferences against afterward, so it's worth
+    # keeping more of it. Still bounded: a huge run with a badly-tuned
+    # prefilter shouldn't grow this without limit.
+    MAX_FILTERED_LOG_ENTRIES = 300
     state = {
         "search_running": False,
         "run_id": 0,
@@ -210,6 +216,10 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         "considered_total": 0,
         "considered_done": 0,
         "log": [],
+        # Ephemeral, not persisted -- only reflects the most recent search
+        # run on this server process, reset at the start of the next one.
+        # Feeds the "why was this filtered out" debug view.
+        "filtered_log": [],
         "last_search_result": None,
     }
     stop_event = threading.Event()
@@ -222,6 +232,15 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
 
     def _on_progress(event: dict) -> None:
         kind = event["event"]
+        if kind == "considered" and event.get("rejected"):
+            state["filtered_log"].append({
+                "title": event.get("title", ""),
+                "company": event.get("company", ""),
+                "source": event.get("source", ""),
+                "reason": event.get("reason", ""),
+            })
+            if len(state["filtered_log"]) > MAX_FILTERED_LOG_ENTRIES:
+                state["filtered_log"] = state["filtered_log"][-MAX_FILTERED_LOG_ENTRIES:]
         if kind == "source_start":
             state["current_source"] = event["source"]
             _log_event({"kind": "source_start", "text": f"Searching {event['source']}…"})
@@ -261,6 +280,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         state["considered_total"] = 0
         state["considered_done"] = 0
         state["log"] = []
+        state["filtered_log"] = []
         stop_event.clear()
         try:
             from ..connectors import build_enabled_connectors
@@ -1250,6 +1270,23 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "stop_requested": stop_event.is_set(),
                 **_scheduler_status(_active_profile_id(request)),
             }
+        )
+
+    @app.get("/debug/filtered")
+    def filtered_postings_debug(request: Request):
+        """Shows postings rejected during the most recent search on this
+        server process (prefiltered out, or scored below the minimum fit
+        score) with the specific reason -- useful for tuning preferences.
+        Ephemeral: nothing here is persisted, so it's empty after a
+        restart and only ever reflects the last run, not history."""
+        return templates.TemplateResponse(
+            request=request,
+            name="debug_filtered.html",
+            context={
+                "filtered": list(reversed(state["filtered_log"])),
+                "search_running": state["search_running"],
+                "active_profile": _active_profile_summary(request),
+            },
         )
 
     @app.post("/search/stop")

@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Filtered out · Hanarr</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; } }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
+    h1,h2 { margin:0; } h1 { font-size:1.35rem; font-weight:650; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; } .muted { color:var(--muted); }
+    .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.5rem; }
+    .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color:var(--accent); color:var(--accent); }
+    .intro { color:var(--muted); margin:0 0 1.4rem; max-width:720px; }
+    .banner { border-radius:8px; padding:.7rem 1rem; font-size:.85rem; margin-bottom:1.4rem; background:var(--surface); border:1px dashed var(--border); color:var(--muted); }
+    table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    th, td { text-align:left; padding:.6rem .8rem; font-size:.85rem; border-bottom:1px solid var(--border); vertical-align:top; }
+    th { color:var(--muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; }
+    tr:last-child td { border-bottom:none; }
+    td.company { white-space:nowrap; color:var(--muted); }
+    td.source { white-space:nowrap; }
+    .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.1rem .5rem; font-size:.74rem; color:var(--muted); }
+    .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+    .table-wrap { overflow-x:auto; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Filtered out</h1>
+    <span class="muted">Why postings didn't reach the Jobs page</span>
+    {% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
+  </div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
+  </nav>
+  <p class="intro">Postings fetched during the most recent search, but rejected before reaching your Jobs list -- either by a preference rule (prefilter) or by scoring below your minimum fit score. This is not saved between server restarts and only reflects the last search run, not history. Useful for spotting a preference that's too strict.</p>
+  {% if search_running %}<div class="banner">A search is running now -- this list is filling in live; refresh to see more.</div>{% endif %}
+  {% if filtered %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Title</th><th>Company</th><th>Source</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for item in filtered %}
+        <tr>
+          <td>{{ item.title or "—" }}</td>
+          <td class="company">{{ item.company or "—" }}</td>
+          <td class="source"><span class="pill">{{ item.source or "—" }}</span></td>
+          <td>{{ item.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Nothing to show yet -- run a search first. Postings that pass every filter go straight to the Jobs page instead of showing up here.</div>
+  {% endif %}
+</body>
+</html>

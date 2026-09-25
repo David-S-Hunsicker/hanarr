@@ -169,22 +169,32 @@ def _detected_other_country_restriction(job: RawJobPosting, work_country: str) -
 
 
 def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
+    return prefilter_rejection_reason(job, prefs) is None
+
+
+def prefilter_rejection_reason(job: RawJobPosting, prefs: Preferences) -> str | None:
+    """Same rules as passes_prefilter, but returns the specific reason a
+    posting was rejected instead of a bare bool -- feeds the dashboard's
+    "why was this filtered out" debug view. None means it passes."""
     text = f"{job.title} {job.description}".lower()
 
-    if any(kw.lower() in text for kw in prefs.keywords_exclude):
-        return False
+    hit = next((kw for kw in prefs.keywords_exclude if kw.lower() in text), None)
+    if hit:
+        return f"Matched an excluded keyword: {hit!r}"
 
-    if prefs.industries_exclude and any(ind.lower() in text for ind in prefs.industries_exclude):
-        return False
+    if prefs.industries_exclude:
+        hit = next((ind for ind in prefs.industries_exclude if ind.lower() in text), None)
+        if hit:
+            return f"Matched an excluded industry: {hit!r}"
 
     if job.remote and not prefs.remote_ok:
-        return False
+        return "Remote posting, but remote work isn't accepted in your preferences"
     if not job.remote and not prefs.onsite_ok and not prefs.willing_to_relocate:
         location_matches = any(
             loc.lower() in job.location.lower() for loc in prefs.locations if loc.lower() != "remote"
         )
         if not location_matches:
-            return False
+            return f"On-site posting in {job.location!r}, which isn't one of your accepted locations"
 
     # A "remote" posting is often remote *within one specific country* —
     # being remote-ok doesn't mean eligible for a "Remote - Canada" role.
@@ -192,11 +202,11 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
     # (Greenhouse) put the country restriction in the location field
     # without a clean remote/onsite flag either way.
     if _detected_other_country_restriction(job, prefs.work_country):
-        return False
+        return f"Restricted to a country other than {prefs.work_country!r}"
 
     if prefs.salary_floor_usd and job.salary_max:
         if job.salary_max < prefs.salary_floor_usd:
-            return False
+            return f"Max salary ${job.salary_max:,.0f} is below your ${prefs.salary_floor_usd:,.0f} floor"
 
     if prefs.employment_types:
         # Best-effort: only reject on an explicit contradiction in the title/description,
@@ -204,7 +214,7 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
         if "internship" not in [t.lower() for t in prefs.employment_types] and re.search(
             r"\bintern(ship)?\b", text
         ):
-            return False
+            return "Looks like an internship, which isn't one of your accepted employment types"
 
     candidate_levels = [s for s in prefs.seniority if s in SENIORITY_LEVELS]
     if candidate_levels:
@@ -219,7 +229,7 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
                 for level in candidate_levels
             )
             if min_gap > SENIORITY_TOLERANCE:
-                return False
+                return f"Detected seniority {detected!r} is too far from your selected levels"
 
     if prefs.target_titles or prefs.keywords_boost:
         # Nothing at all to anchor a match on — very unlikely to score well,
@@ -230,9 +240,9 @@ def passes_prefilter(job: RawJobPosting, prefs: Preferences) -> bool:
         has_title_overlap = any(w in job.title.lower() for w in title_words)
         has_boost_overlap = any(kw.lower() in text for kw in prefs.keywords_boost)
         if not has_title_overlap and not has_boost_overlap:
-            return False
+            return "No overlap with your target titles or boost keywords"
 
-    return True
+    return None
 
 
 def score_fit(
