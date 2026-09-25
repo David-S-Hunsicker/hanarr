@@ -26,6 +26,12 @@
     .actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.8rem; } button { font:inherit; border:1px solid var(--border); border-radius:6px; padding:.35rem .6rem; background:var(--surface); color:var(--text); cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); color:white; }
     .impact { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; flex-wrap:wrap; } .up { color:var(--good); } .down { color:#a33; }
     .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+    .diff-lines { background:var(--page); border:1px solid var(--border); border-radius:6px; overflow-x:auto; margin-top:.5rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.82rem; }
+    .diff-line { padding:.05rem .6rem; white-space:pre; }
+    .diff-add { background:rgba(23,107,69,.14); color:var(--good); }
+    .diff-del { background:rgba(163,51,51,.12); color:#a33; }
+    .diff-hunk { color:var(--accent); opacity:.85; }
+    .diff-ctx { color:var(--muted); }
   </style>
 </head>
 <body>
@@ -76,7 +82,12 @@
     <article class="card">
       <h3>Proposal {{ proposal.id }} <span class="pill">{{ proposal.status }}</span></h3>
       <p class="muted">{{ proposal.rationale }}</p>
-      <details><summary>Review proposed content and diff</summary><pre>{{ proposal.content }}</pre><pre>{{ proposal.diff }}</pre></details>
+      <details><summary>Review proposed content and diff</summary>
+        <pre>{{ proposal.content }}</pre>
+        {% if proposal.diff %}
+        <div class="diff-lines">{% for line in proposal.diff.split("\n") %}<div class="diff-line {{ "diff-add" if line.startswith("+") and not line.startswith("+++") else "diff-del" if line.startswith("-") and not line.startswith("---") else "diff-hunk" if line.startswith("@@") else "diff-ctx" }}">{{ line }}</div>{% endfor %}</div>
+        {% endif %}
+      </details>
       {% if proposal.status == "pending" %}<div class="actions"><button class="primary" onclick="decide({{ proposal.id }}, 'approve')">Approve and re-parse/rematch</button><button onclick="decide({{ proposal.id }}, 'reject')">Reject proposal</button></div>{% endif %}
     </article>
     {% else %}<div class="empty">No resume proposals yet. A passed project creates one for review.</div>{% endfor %}
