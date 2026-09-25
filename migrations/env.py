@@ -7,7 +7,15 @@ from hanarr.models import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which -- since alembic.ini
+    # only configures alembic's/sqlalchemy's own loggers -- disables every
+    # *other* logger that already exists at this point, including every
+    # hanarr.* logger. This runs on every `hanarr serve` startup (and every
+    # new session factory), so it silently killed the app's own logging for
+    # the rest of the process: a caught-and-logged exception (e.g. an LLM
+    # call failing and falling back to rule-based scoring) never actually
+    # reached the log, with no error and no indication why.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 import os
 import shutil
 import sys
@@ -12,6 +13,25 @@ from hanarr.db import _backup_database, make_session_factory
 from hanarr.models import Base, JobPosting, Profile, ScoreSnapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_running_migrations_does_not_disable_application_loggers(tmp_path):
+    """Regression test: migrations/env.py's fileConfig() call defaults to
+    disable_existing_loggers=True, which -- since alembic.ini only
+    configures alembic's/sqlalchemy's own loggers -- silently disabled
+    every hanarr.* logger for the rest of the process the moment the first
+    database migration ran (i.e. on every `hanarr serve` startup). An
+    exception caught and logged anywhere in the app (e.g. matching.py
+    falling back to rule-based scoring when an LLM call fails) never
+    actually reached the log, with nothing to explain why."""
+    logger = logging.getLogger("hanarr.matching")
+    logger.disabled = False
+    try:
+        settings = Settings(data_dir=tmp_path / "data")
+        make_session_factory(settings)
+        assert logger.disabled is False
+    finally:
+        logger.disabled = False
 
 
 def test_existing_database_is_upgraded_without_recreating_legacy_rows(tmp_path):

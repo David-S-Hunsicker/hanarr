@@ -295,3 +295,23 @@ def test_score_fit_sends_resume_text_to_llm():
     score_fit(job, {}, "10 years of Python and distributed systems experience", prefs, _CapturingLLM())
 
     assert "10 years of Python" in captured["user"]
+
+
+def test_score_fit_logs_a_warning_when_falling_back_to_rule_based_scoring(caplog):
+    """Regression test: a malformed/off-schema LLM response used to fall
+    back to the rule-based scorer completely silently -- indistinguishable
+    from llm.provider="none" with no way to tell "not configured" apart
+    from "configured but every call is failing" short of manually
+    reproducing a call. Every fallback must now log why."""
+    job = make_job()
+    prefs = Preferences()
+
+    class _GarbageLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            return "not json"
+
+    with caplog.at_level("WARNING", logger="hanarr.matching"):
+        score_fit(job, {}, "resume text", prefs, _GarbageLLM())
+
+    assert "falling back to rule-based scoring" in caplog.text
+    assert job.title in caplog.text

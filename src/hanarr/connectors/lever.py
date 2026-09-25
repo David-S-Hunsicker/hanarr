@@ -9,6 +9,7 @@ jobs.lever.co/netflix it's "netflix".
 from __future__ import annotations
 
 import datetime as dt
+import html
 import re
 import time
 
@@ -64,8 +65,13 @@ class LeverConnector(Connector):
         return postings
 
 
-def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html or "").strip()
+def _strip_html(raw: str) -> str:
+    # Same entity-escaping issue as the Greenhouse connector -- see its
+    # _strip_html for the full explanation. Kept as a duplicate here rather
+    # than shared, matching this module's existing self-contained style.
+    unescaped = html.unescape(html.unescape(raw or ""))
+    stripped = re.sub(r"<[^>]+>", " ", unescaped)
+    return re.sub(r"\s+", " ", stripped).strip()
 
 
 def _parse_created_at(value) -> dt.datetime | None:

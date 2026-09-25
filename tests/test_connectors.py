@@ -59,6 +59,46 @@ def test_greenhouse_connector_parses_jobs():
 
 
 @respx.mock
+def test_greenhouse_connector_unescapes_entity_encoded_html_content():
+    """Regression test: some postings (seen on Indeed-syndicated Greenhouse
+    listings, e.g. Coinbase) come back with their own tag delimiters
+    entity-escaped ("&lt;div&gt;" instead of "<div>"), sometimes doubly so
+    ("&amp;nbsp;"). Stripping literal <tags> first left that markup
+    completely untouched -- thousands of characters of &lt;/&amp;/&quot;
+    noise landed in the LLM fit-scoring prompt verbatim, which was enough
+    to make the model return malformed JSON and silently fall back to the
+    rule-based scorer on every posting from these companies."""
+    respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": 123,
+                        "title": "Backend Engineer",
+                        "location": {"name": "Remote - US"},
+                        "absolute_url": "https://boards.greenhouse.io/acme/jobs/123",
+                        "content": (
+                            "&lt;div class=&quot;content&quot;&gt;&lt;p&gt;We build "
+                            "things &amp;amp; ship fast.&amp;nbsp;&lt;/p&gt;&lt;/div&gt;"
+                        ),
+                    }
+                ]
+            },
+        )
+    )
+    connector = GreenhouseConnector(company_boards=["acme"])
+    postings = connector.fetch()
+
+    description = postings[0].description
+    assert "&lt;" not in description
+    assert "&amp;" not in description
+    assert "&quot;" not in description
+    assert "&nbsp;" not in description
+    assert "We build things & ship fast." in description
+
+
+@respx.mock
 def test_greenhouse_connector_parses_first_published_as_naive_utc():
     respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").mock(
         return_value=httpx.Response(
@@ -192,6 +232,33 @@ def test_lever_connector_parses_jobs():
     assert postings[0].external_id == "abc-123"
     assert postings[0].remote is True
     assert "We build things." in postings[0].description
+
+
+@respx.mock
+def test_lever_connector_unescapes_entity_encoded_html_content():
+    """Same regression as the Greenhouse connector -- see its equivalent
+    test for the full explanation."""
+    respx.get("https://api.lever.co/v0/postings/acme").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "abc-123",
+                    "text": "Backend Engineer",
+                    "categories": {"location": "Remote - US"},
+                    "hostedUrl": "https://jobs.lever.co/acme/abc-123",
+                    "descriptionPlain": "&lt;p&gt;We build things &amp;amp; ship fast.&lt;/p&gt;",
+                }
+            ],
+        )
+    )
+    connector = LeverConnector(companies=["acme"])
+    postings = connector.fetch()
+
+    description = postings[0].description
+    assert "&lt;" not in description
+    assert "&amp;" not in description
+    assert "We build things & ship fast." in description
 
 
 @respx.mock

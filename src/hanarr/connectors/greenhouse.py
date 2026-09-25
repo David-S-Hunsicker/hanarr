@@ -9,6 +9,7 @@ boards.greenhouse.io/stripe it's "stripe".
 from __future__ import annotations
 
 import datetime as dt
+import html
 import re
 import time
 
@@ -63,8 +64,20 @@ class GreenhouseConnector(Connector):
         return postings
 
 
-def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html or "").strip()
+def _strip_html(raw: str) -> str:
+    # Greenhouse's `content` field is HTML whose own tag delimiters are
+    # entity-escaped (`&lt;div class=&quot;...&quot;&gt;`), at least for
+    # some postings (seen on Indeed-syndicated listings) -- so stripping
+    # literal <tags> first leaves the entire escaped markup untouched,
+    # dumping thousands of characters of &lt;/&amp;/&quot; noise into the
+    # LLM prompt. Some content is escaped twice (e.g. "&amp;nbsp;"), so
+    # unescape is applied twice -- a second pass on already-clean text is a
+    # no-op, so this is safe either way. Collapsing whitespace afterward
+    # also shrinks the prompt, since every removed tag otherwise leaves
+    # its surrounding whitespace behind.
+    unescaped = html.unescape(html.unescape(raw or ""))
+    stripped = re.sub(r"<[^>]+>", " ", unescaped)
+    return re.sub(r"\s+", " ", stripped).strip()
 
 
 def _parse_first_published(value: str | None) -> dt.datetime | None:

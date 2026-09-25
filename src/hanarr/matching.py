@@ -8,11 +8,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from .config import Preferences
 from .connectors.base import RawJobPosting
 from .llm.base import LLMClient
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are scoring how well a job posting fits a candidate, for a personal \
 job-search tool. You will be given the candidate's full resume text, a structured summary of \
@@ -280,7 +283,16 @@ def score_fit(
         if unmet and not rationale:
             rationale = "Unmet requirement(s): " + "; ".join(unmet)
         return max(0.0, min(100.0, score)), rationale
-    except Exception:  # noqa: BLE001 - fall back rather than block the pipeline
+    except Exception as exc:  # noqa: BLE001 - fall back rather than block the pipeline
+        # This used to be silent, which made every rule-based fallback
+        # indistinguishable from llm.provider="none" -- there was no way to
+        # tell "not configured" apart from "configured but every call is
+        # failing" short of re-running score_fit by hand. Bounded so a huge
+        # malformed-JSON dump doesn't flood the log.
+        logger.warning(
+            "LLM fit scoring failed for %r at %r, falling back to rule-based scoring: %s",
+            job.title, job.company, str(exc)[:300],
+        )
         return _rule_based_score(job, resume_summary, prefs)
 
 
