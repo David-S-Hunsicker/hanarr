@@ -195,6 +195,7 @@ def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeyp
     assert "blocked" in prefiltered_event["reason"]
     assert prefiltered_event["company"] == "Acme"
     assert "title" not in already_seen_event
+    assert already_seen_event["already_seen"] is True
     assert rejected_event["rejected"] is True
     assert "30" in rejected_event["reason"] and "60" in rejected_event["reason"]
     assert "title" not in matched_event

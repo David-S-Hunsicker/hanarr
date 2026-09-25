@@ -620,9 +620,16 @@
               headline.textContent = data.current_source
                 ? "Searching " + data.current_source + "…"
                 : "Working…";
-              countLabel.textContent = consideredTotal > 0
+              // already_seen_count is visible evidence that a search
+              // resumed after an interruption instead of redoing
+              // already-scored work -- only worth showing once it's
+              // actually happened, so a normal first-time run isn't
+              // cluttered with "0 already seen".
+              const alreadySeen = data.already_seen_count || 0;
+              const alreadySeenNote = alreadySeen > 0 ? " (" + alreadySeen + " already seen, skipped)" : "";
+              countLabel.textContent = (consideredTotal > 0
                 ? consideredDone + " / " + consideredTotal + " considered · " + data.matched_count + " matched"
-                : sourcesDone + " / " + sourcesTotal + " source(s) · " + data.matched_count + " matched";
+                : sourcesDone + " / " + sourcesTotal + " source(s) · " + data.matched_count + " matched") + alreadySeenNote;
               renderLog(data.log || []);
 
               wasRunning = true;

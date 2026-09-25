@@ -216,6 +216,12 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         # (skipped or scored, either way) toward that running total.
         "considered_total": 0,
         "considered_done": 0,
+        # Postings skipped because they were already scored in a previous
+        # run (SeenPosting dedup) -- visible evidence that an interrupted
+        # search "resumes" rather than redoing already-scored work when
+        # restarted, since the expensive part (the LLM call) isn't repeated
+        # for these.
+        "already_seen_count": 0,
         "log": [],
         # Ephemeral, not persisted -- only reflects the most recent search
         # run on this server process, reset at the start of the next one.
@@ -254,6 +260,8 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             _log_event({"kind": "scoring", "text": f"Scoring: {event['title']} at {event['company']}"})
         elif kind == "considered":
             state["considered_done"] += 1
+            if event.get("already_seen"):
+                state["already_seen_count"] += 1
         elif kind == "matched":
             state["matched_count"] += 1
             score = event["fit_score"]
@@ -280,6 +288,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         state["matched_count"] = 0
         state["considered_total"] = 0
         state["considered_done"] = 0
+        state["already_seen_count"] = 0
         state["log"] = []
         state["filtered_log"] = []
         stop_event.clear()
@@ -1313,6 +1322,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "matched_count": state["matched_count"],
                 "considered_total": state["considered_total"],
                 "considered_done": state["considered_done"],
+                "already_seen_count": state["already_seen_count"],
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),

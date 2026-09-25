@@ -1343,3 +1343,48 @@ def test_debug_filtered_page_shows_rejected_postings_after_a_search(tmp_path, mo
     assert "Unpaid Intern" in html
     assert "Acme" in html
     assert "unpaid" in html
+
+
+def test_search_status_reports_already_seen_count_for_resumed_postings(tmp_path, monkeypatch):
+    """"Do we think it's possible to resume a search that was paused or
+    disrupted?" -- yes, via the SeenPosting dedup, but it needs to be
+    visible. A posting already scored in a prior run must be counted and
+    reported separately from genuinely new postings on the next run."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        # Simulates a posting already scored by an earlier, interrupted run.
+        session.add(SeenPosting(profile_id=profile.id, source="test", external_id="already-scored"))
+        session.commit()
+
+    class _FakeConnector:
+        name = "test"
+
+        def fetch(self):
+            return [
+                RawJobPosting(
+                    source="test", external_id="already-scored", company="Acme",
+                    title="Seen Before", location="Remote", remote=True,
+                    url="https://example.test/1", description="d",
+                ),
+                RawJobPosting(
+                    source="test", external_id="brand-new", company="Acme",
+                    title="Never Seen", location="Remote", remote=True,
+                    url="https://example.test/2", description="d",
+                ),
+            ]
+
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [_FakeConnector()])
+
+    client = TestClient(create_app(settings))
+    client.post("/search", follow_redirects=False)
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/search/status").json()
+        if not s["search_running"]:
+            final = s
+            break
+
+    assert final is not None, "search did not finish in time"
+    assert final["already_seen_count"] == 1

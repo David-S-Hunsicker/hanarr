@@ -142,7 +142,7 @@ def run_search_cycle(
             ).scalars().first()
             if already_seen is not None:
                 if on_progress:
-                    on_progress({"event": "considered"})
+                    on_progress({"event": "considered", "already_seen": True})
                 continue  # fetched and scored on a previous search, whether matched or rejected
 
             if on_progress:
