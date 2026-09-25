@@ -12,7 +12,7 @@ from hanarr.connectors.base import RawJobPosting
 from hanarr.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
 from hanarr.db import get_or_create_profile, make_session_factory
 from hanarr.llm.base import LLMClient
-from hanarr.models import ApplicationStatus, JobPosting, Reminder, ReminderType, SeenPosting
+from hanarr.models import ApplicationStatus, JobPosting, Reminder, ReminderType, ResumeVersion, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
 
 
@@ -203,6 +203,32 @@ def _make_isolated_settings(tmp_path):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.llm.provider = "none"
     return settings
+
+
+def test_resume_download_serves_active_version_as_text_attachment(tmp_path):
+    """"Export on resume is a must have" -- only extracted plain text is
+    retained (not the original PDF bytes), so the download is always a
+    .txt file built from the active ResumeVersion, named after whatever
+    the user originally uploaded."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_original_filename = "David_Resume_2026.pdf"
+        session.add(ResumeVersion(profile_id=profile.id, content="Jane Doe\nSenior Engineer", is_active=True))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    response = client.get("/resume/download")
+    assert response.status_code == 200
+    assert response.text == "Jane Doe\nSenior Engineer"
+    assert response.headers["content-disposition"] == 'attachment; filename="David_Resume_2026.txt"'
+
+
+def test_resume_download_404s_with_no_resume_on_file(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    response = client.get("/resume/download")
+    assert response.status_code == 404
 
 
 def test_clear_jobs_wipes_postings_seen_and_related_reminders(tmp_path):

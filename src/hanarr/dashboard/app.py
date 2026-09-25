@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 
@@ -821,6 +821,25 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             session.add(pending)
             session.commit()
             return JSONResponse({"id": pending.id, "status": pending.status.value})
+
+    @app.get("/resume/download")
+    def download_resume():
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            active_version = next(
+                (v for v in reversed(profile.resume_versions) if v.is_active), None
+            )
+            # Only the extracted plain text is retained -- the original
+            # uploaded PDF/DOCX bytes aren't kept -- so this is always a
+            # .txt download, never a reproduction of the original file.
+            content = active_version.content if active_version else profile.resume_text
+            if not content:
+                return JSONResponse({"error": "No resume on file yet."}, status_code=404)
+            base_name = Path(profile.resume_original_filename or "resume").stem or "resume"
+            return PlainTextResponse(
+                content,
+                headers={"Content-Disposition": f'attachment; filename="{base_name}.txt"'},
+            )
 
     @app.get("/resume")
     def resume_page(request: Request):
