@@ -1,13 +1,11 @@
 # Hanarr transition plan
 
-**Status:** Phase 10 Windows-first installer and distribution planning is complete; the first
-desktop-launch foundation and Windows packaging foundation are implemented, while signing and
-clean-machine release validation remain deferred. Phase 6
-submission, evaluator, and local-first provider-routing
-foundations are complete. Alembic migrations, a
-frozen compatibility baseline, score snapshots, normalized skills, coaching records, proven
-skills, resume proposal storage, review-first submissions, and structured evaluation
-attempts are in place without changing existing job-search behavior.
+**Status: the transition described here is complete** (see Section 3 at the end of this
+document). All phases below were executed; the `jobcopilot` → Hanarr migration, the six-tab
+dashboard, Alembic migrations, coaching/skills/resume/applications surfaces, and the Windows
+packaging foundation all exist and are in active use. This file is kept as a historical record
+of how that happened — **for current status, setup, and the release-readiness checklist, see
+[`README.md`](README.md)**, which is updated as the project evolves; this file is not.
 
 ## 1. Purpose and decisions
 
@@ -1124,3 +1122,67 @@ rewritten.
 `git diff --check` after the rename; see the commit for exact pass counts. No schema, routing, or
 application behavior changed — this is a naming-only change plus the one-time database filename
 migration described above.
+
+## 3. Closing note: the transition is complete
+
+Phase 12 finished the plan laid out in Section 1 — the jobs dashboard, coaching, resume,
+skills, applications, and settings surfaces described there all exist, share one local SQLite
+store, and the `jobcopilot` name is fully retired. This document was a plan for getting from
+`job-search-copilot` to that state; it isn't being kept as a running log of every feature added
+afterward. **README.md is the current-state reference going forward** — setup, status, feature
+list, and the release-readiness checklist all live there and are kept up to date; this file
+stays as the historical record of how the transition itself was decided and executed, and the
+phase entries above are left exactly as they were written at the time rather than revised with
+hindsight.
+
+For context on what's been built since Phase 12 (not exhaustive — see commit history for
+specifics), in roughly chronological order:
+
+- **Correctness fixes with real user-facing impact**, found by live-testing rather than only
+  unit tests: Ollama detection false-negatives (IPv6-first localhost resolution, stale PATH
+  caching), a TLS trust-store gap that broke every outbound HTTPS connector on a machine
+  running TLS-inspecting security software, a `_strip_html()` bug in the Greenhouse/Lever
+  connectors that left thousands of characters of HTML-entity noise in job descriptions
+  (confirmed live: this was silently degrading LLM fit-scoring to garbled-JSON rule-based
+  fallback on affected postings), and an Alembic `fileConfig()` call that was silently
+  disabling every `hanarr.*` logger on the first migration of every `hanarr serve` startup —
+  meaning caught-and-logged exceptions across the app, including the connector bug above,
+  never actually reached the log.
+- **Reliability**: `run_search_cycle()` now checks the configured LLM is actually reachable
+  (and, for Ollama, that the model is downloaded) before touching any connector or scoring a
+  single posting, instead of discovering a broken LLM one slow failed call at a time.
+- **Resume**: section-based rendering instead of a raw text blob, a download-as-.txt export,
+  and labeled resume versions (e.g. "Backend-focused" vs "Data-focused") so more than one
+  saved resume can be told apart and switched between via the existing rollback/approve flow.
+- **Skills**: the page now actually populates from resume extraction (it always did — the
+  gap was the Ollama/logging bugs above silently breaking the extraction that feeds it);
+  grouped into Proven/Not-proven with a compact collapsed row per skill and a name filter, plus
+  one-click Low/Medium/High confidence presets instead of a buried raw-decimal correction form.
+- **Multiple people on one instance**: local, unauthenticated profile switching (a cookie
+  naming which profile the browser is acting as) — each profile gets its own resume, jobs,
+  applications, skills, and coaching projects, while search preferences stay shared across
+  all profiles. This revises the single-user decision in Section 1 to "single local
+  operator, multiple local profiles" — still no accounts, hosted tenancy, or remote database.
+- **Dashboard responsiveness**: the jobs list, stats, and filter counts now update live via a
+  polled partial refresh as postings are scored during a search, instead of only after the
+  run finishes and the page fully reloads.
+- **Visual consistency**: all seven pages (Jobs, Coaching, Resume, Skills, Applications,
+  Settings, Profiles) now share identical body width, header spacing, nav spacing, and
+  heading size — they had drifted (Settings was 24% narrower than every other page; Profiles
+  had no nav bar at all), verified with a test that checks the shared shell values are
+  literally identical across every page.
+- **First-run onboarding**: a non-blocking "Get set up" checklist on Jobs and Settings for a
+  brand-new install, replacing empty-state text that told a packaged-app user to run a
+  terminal command they don't have.
+- **Local model management**: the model field is a dropdown (installed models + the
+  hardware-based recommendation + a custom-name escape hatch) instead of free text; picking
+  a not-yet-downloaded model shows a live download progress bar (still one confirm click, no
+  silent downloads) instead of the request blocking with no feedback until a multi-gigabyte
+  pull finished; "Run search now" is disabled with a clear explanation when the configured
+  model isn't downloaded yet, instead of only failing after the click.
+- **Windows packaging, verified beyond the source/CI checks described in Phase 11**: built the
+  installer, installed it silently, launched the installed `HanarrBrowser.exe` and confirmed
+  it served the real dashboard (including all of the above features) against its own
+  `%LOCALAPPDATA%\Hanarr` data directory, then uninstalled and confirmed user data was
+  preserved — all on a real Windows machine, not yet a clean one (that remains the open item
+  in `docs/windows-installer.md`'s checklist, along with signing).

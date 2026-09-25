@@ -14,11 +14,14 @@ Hanarr runs entirely on your own machine. Your resume, preferences, and match da
 SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
 LLM provider you configure.
 
-The transition is intentionally incremental. The existing Jobs dashboard, public-API connectors,
-SQLite store, scheduler, and Ollama-first inference remain the source of truth while coaching,
-skills, projects, resume proposals, and submission workflows are added in later milestones.
-Hanarr does not add accounts, hosted tenancy, scraping, automatic project creation, automatic
-resume activation, or unattended application submission.
+The dashboard has six pages: **Jobs** (discovery and status), **Coaching** (skill-gap projects
+with review-first evaluation), **Resume** (source content, sectioned display, proposals, version
+history, and a plain-text export), **Skills** (capability evidence, separate from resume claims),
+**Applications** (your pipeline by status), and **Settings**. Local, unauthenticated profile
+switching lets more than one person use the same instance — each profile gets its own resume,
+jobs, applications, and skills, while search preferences stay shared. Hanarr does not add hosted
+accounts/tenancy, scraping, automatic project creation, automatic resume activation, or
+unattended application submission.
 
 Database upgrades use Alembic migrations. Existing databases are upgraded in place without
 recreating legacy rows, and a timestamped SQLite backup is written to `data/backups/` before an
@@ -40,16 +43,29 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 
 ## Status: what's actually verified
 
-The local-first release validation pass completed the automated checks: the full suite passes
-(151 tests), `src/` byte-compiles cleanly, and `git diff --check` is clean. The migration,
-upload-boundary, approval-gate, and localhost-default behaviors are covered by the test suite.
-The first desktop-launch foundation is now implemented: `hanarr serve` can retain the
-foreground server (`none`), open the dashboard in the default browser (`browser`), or host the
-same dashboard in an optional desktop webview (`webview`). This is not an installer and does not
-bundle Python, Ollama, or a runtime. Still requiring a real local installation or manual
-walk-through are the CLI commands end to end, the dashboard in a browser/webview, Ollama/Anthropic
-clients against a real model, RemoteOK/Arbeitnow against live APIs, and desktop notifications via
-`plyer`.
+The full test suite passes (235 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+clean. Beyond the automated suite, the following have been verified live against real
+infrastructure (a running Ollama instance with a real model loaded onto GPU, a real Windows
+build/install/uninstall cycle, real connector APIs) rather than only mocked in tests:
+
+- `hanarr serve` runs the dashboard with a real Ollama model doing fit-scoring — confirmed the
+  model is genuinely loaded into GPU VRAM during scoring, not silently falling back.
+- A configured-but-unreachable LLM (Ollama down, model not pulled) is caught before a search
+  touches any connector, with a specific, actionable error instead of every posting silently
+  degrading to rule-based scoring.
+- Greenhouse and Lever connectors were confirmed fetching and correctly cleaning real postings
+  from live company boards.
+- The Windows packaging path was built, installed silently, launched (the installed executable
+  served the real dashboard against its own `%LOCALAPPDATA%\Hanarr` data), and uninstalled with
+  user data preserved — see [`docs/windows-installer.md`](docs/windows-installer.md) for what
+  remains (a genuinely clean machine/VM, and code signing).
+- Local model management (dropdown, live download progress, search gated on the model being
+  downloaded) was verified against a real Ollama pull, watching the reported percentage
+  advance in real time and confirming the model was actually installed afterward.
+
+Not yet performed: desktop notifications via `plyer` on a real OS notification center, and
+RemoteOK/Arbeitnow against live APIs (Greenhouse/Lever have been; RemoteOK/Arbeitnow are only
+covered by mocked connector tests so far).
 
 ## Setup
 
@@ -77,14 +93,19 @@ note this incurs API usage costs. Setting `llm.provider: none` skips the LLM ent
 back to keyword-overlap scoring only.
 
 The Settings → App config page reports whether the Ollama executable, local service, and
-configured model are detected. It also shows a conservative hardware-based starting model
-recommendation (RAM and free-storage heuristics only). The optional setup actions always detect
-first and show source, license, size, and destination before asking for confirmation. Confirming
-the Ollama action only downloads a bounded installer into `data/setup/`; Hanarr never executes it
-or starts a service. Confirming the model action asks the existing local Ollama service to pull
-the configured model. Declining, cancelling, or failing leaves the provider configuration and
-local data unchanged. If Ollama is unavailable, choose `anthropic` explicitly or use `none` for
-deterministic keyword-overlap scoring.
+configured model are detected, and shows a conservative hardware-based starting model
+recommendation (RAM and free-storage heuristics only). The model field is a dropdown of what's
+already installed plus that recommendation, with a "Custom model name…" option for anything
+else. Picking a model that isn't downloaded shows a "Download this model" button with a live
+progress bar — still one explicit click, Hanarr never downloads anything on its own, but you see
+real progress instead of a frozen page. "Run search now" on the Jobs page is disabled with a
+clear explanation whenever the configured Ollama model isn't downloaded yet, so a broken setup
+is obvious before you click rather than after a search silently degrades to keyword matching.
+The "Check for Ollama / stage installer" action detects first and shows source, license, size,
+and destination before asking for confirmation, and only downloads a bounded installer into
+`data/setup/` — Hanarr never executes it or starts a service. Declining, cancelling, or failing
+leaves the provider configuration and local data unchanged. If Ollama is unavailable, choose
+`anthropic` explicitly or use `none` for deterministic keyword-overlap scoring.
 
 ### 2. Configure
 
@@ -123,6 +144,11 @@ Or run continuously with a background scheduler and a local dashboard:
 ```bash
 hanarr serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
 ```
+
+While a search runs, the Jobs page updates live — the job list, stats bar, and filter counts
+refresh as each posting is scored, instead of only after the whole run finishes. A brand-new
+install shows a non-blocking "Get set up" checklist on Jobs and Settings until a resume and
+target titles are in place.
 
 The launch mode defaults to `none`, preserving the existing foreground-server behavior. To open
 the local dashboard automatically, choose a mode in `config.yaml`:
@@ -208,14 +234,22 @@ text and job descriptions sent to Anthropic's API for scoring.
 
 ## Running your own instance vs. sharing this project
 
-This is built as **one instance per person**: each user clones the repo, fills in their own
-`config.yaml` and resume, and runs it locally. That's deliberate — a shared multi-user instance
-would mean storing other people's resumes and preferences, handling auth, and isolating their
-data from each other, which is real scope beyond a personal tool. If you want to hand this to
-friends, the easiest path today is "you each clone and configure your own copy." The data model
-(everything scoped under `Profile`) is structured so a real multi-tenant version — should this
-ever become that — is an extension rather than a rewrite, but that work (auth, per-user data
-isolation, likely a hosted deployment) hasn't been built.
+This is still built as **one local instance, no hosted accounts or multi-tenancy** — there's no
+login, no remote database, and no isolation between people beyond what a single local machine
+already provides. Within that, one instance now supports **multiple local profiles**: each
+profile (created from the Profiles page) gets its own resume, jobs, applications, skills, and
+coaching projects, and a browser cookie tracks which profile it's acting as — useful for a
+household or a couple of people sharing one machine's instance. Search preferences (target
+titles, locations, connectors, LLM, schedule) are shared across every profile on the instance,
+not per-profile.
+
+This is not the same thing as a real multi-tenant, hosted product — there's still no
+authentication (anyone with access to the browser can switch profiles), no per-user access
+control, and no remote deployment story. If you want to hand this to friends who aren't sharing
+your machine, the path today is still "you each clone and configure your own copy." The data
+model (everything scoped under `Profile`, now with genuine profile-switching built on top) is
+structured so a real hosted multi-tenant version — should this ever become that — is closer to
+an extension than a rewrite, but auth and a hosted deployment still haven't been built.
 
 ## Development
 
@@ -229,31 +263,43 @@ cover the prefilter and the rule-based fallback scorer.
 
 ## Local release-readiness checklist
 
-- [ ] Copy the production SQLite file before upgrading and confirm a fresh backup appears under
-  `data/backups/`.
-- [ ] Start once from the repository root and confirm migrations complete without warnings.
-- [ ] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
-  reject oversized or unsafe uploads.
-- [x] Run `python -m pytest -q` (151 tests), `python -m compileall -q src`, and
+- [x] Confirm a fresh backup appears under `data/backups/` before an upgrade — this runs
+  automatically on every `make_session_factory()` call and is covered by migration tests.
+- [x] Start from the repository root and confirm migrations complete without warnings —
+  verified across all nine migrations on a real database.
+- [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
+  reject oversized uploads (covered by tests; live-verified for resume uploads).
+- [x] Run `python -m pytest -q` (235 tests), `python -m compileall -q src`, and
   `git diff --check`.
-- [ ] Walk through Jobs, Coaching, Resume, Skills, Applications, and Settings, including a
-  review-first submission and a rejected upload.
-- [ ] Validate `hanarr serve --launch-mode browser` and `--launch-mode webview` on a real
-  machine. Webview mode is currently an optional launch path, not an installed desktop product.
-- [ ] On Windows, run `.\scripts\build_windows.ps1 -ValidateOnly`, then build the unsigned
-  installer and record the artifact hash and tool versions. This is the current local
-  packaging milestone; no artifact is claimed here until those tools are available.
+- [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
+  real running instance with real data.
+- [ ] Validate `hanarr serve --launch-mode webview` specifically (browser mode and the packaged
+  webview executable have both been verified; the dev-mode `--launch-mode webview` path
+  hasn't been separately re-checked recently).
+- [x] On Windows, ran `.\scripts\build_windows.ps1 -ValidateOnly`, then built the unsigned
+  installer, installed it silently, launched the installed executable against its own
+  `%LOCALAPPDATA%\Hanarr` data, and uninstalled it with data preserved — all on a real
+  Windows dev machine (not yet a clean one).
 - [ ] Sign and verify the installer and packaged executables with Authenticode, then validate
-  install, shortcuts, launch, upgrade, uninstall, and data preservation on a clean machine.
+  install, shortcuts, launch, upgrade, uninstall, and data preservation on a genuinely clean
+  machine/VM with no prior Python/Ollama/Hanarr installation. This is the main remaining gap
+  before this could be handed to a non-technical stranger — see
+  [`docs/windows-installer.md`](docs/windows-installer.md).
 - [ ] Do not enable external GitHub delivery, hosted auth, or CSRF-dependent non-local access;
   those remain future blockers.
 
 ## Roadmap ideas
 
+- Fuzzy/synonym skill matching (e.g. "JS" ↔ "JavaScript") — under discussion, not yet designed.
+- Manual job entry (add a posting Hanarr didn't find on its own) — deferred by request.
+- An in-dashboard activity log of background job runs — lower priority.
 - Ashby connector (same pattern as Greenhouse/Lever)
 - Cover-letter drafting from the LLM client already in place
 - A "why was this filtered out" debug view in the dashboard
 - Optional calendar-file (.ics) export for interview reminders
+- Per-profile search preferences (currently shared across all local profiles on an instance;
+  see "Running your own instance" above) — would need preferences to move from `config.yaml`
+  into the database, and the scheduler to run one cycle per profile with its own criteria.
 
 ## License
 
