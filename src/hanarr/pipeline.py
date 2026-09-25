@@ -57,8 +57,8 @@ def check_llm_available(llm: LLMClient, data_dir) -> None:
             )
         if not diagnostics.configured_model_available:
             raise LLMUnavailableError(
-                f"Model {llm.model!r} is not pulled in Ollama — run `ollama pull {llm.model}` "
-                f"or update llm.model in config.yaml."
+                f"Model {llm.model!r} isn't downloaded yet — open Settings to download it "
+                f"(or run `ollama pull {llm.model}` from a terminal)."
             )
         return
 

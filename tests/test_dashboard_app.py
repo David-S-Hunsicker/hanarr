@@ -22,6 +22,53 @@ def test_task_is_stuck_false_when_not_running():
     assert task_is_stuck({"running": False, "started_at": 100.0}, 1800.0, now=99999.0) is False
 
 
+def test_jobs_page_disables_search_when_ollama_model_is_not_downloaded(tmp_path, monkeypatch):
+    """"Block application functions until the model is completely
+    downloaded" -- scoped to search: the button must be disabled and a
+    clear, linked explanation shown before the user even clicks."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=r"C:\Ollama\ollama.exe", executable_version="test",
+        service_reachable=True, service_error=None, installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=False,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert 'id="search-btn" disabled' in html
+    assert "isn't downloaded yet" in html
+    assert '/config?tab=app#provider' in html
+
+
+def test_jobs_page_search_enabled_when_ollama_model_is_downloaded(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=r"C:\Ollama\ollama.exe", executable_version="test",
+        service_reachable=True, service_error=None, installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=True,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert 'id="search-btn" disabled' not in html
+    assert "isn't downloaded yet" not in html
+
+
+def test_jobs_page_search_enabled_when_provider_is_none(tmp_path):
+    """No local model to be "not ready" for when llm.provider isn't
+    Ollama -- must never falsely block search."""
+    settings = _make_isolated_settings(tmp_path)  # provider = "none" by default
+    html = TestClient(create_app(settings)).get("/").text
+    assert 'id="search-btn" disabled' not in html
+    assert "isn't downloaded yet" not in html
+
+
 def test_dashboard_uses_hanarr_product_name(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     app = create_app(settings)
@@ -56,9 +103,8 @@ def test_provider_setup_decline_returns_offer_without_download(tmp_path, monkeyp
     assert not (settings.data_dir / "setup").exists()
 
 
-def test_provider_setup_is_no_op_when_model_is_already_available(tmp_path, monkeypatch):
-    settings = _make_isolated_settings(tmp_path)
-    diagnostics = OllamaDiagnostics(
+def _reachable_diagnostics(settings, **overrides):
+    defaults = dict(
         executable_path=r"C:\Ollama\ollama.exe",
         executable_version="ollama version test",
         service_reachable=True,
@@ -69,14 +115,106 @@ def test_provider_setup_is_no_op_when_model_is_already_available(tmp_path, monke
         hardware=HardwareInfo(8, 20, "Windows"),
         recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
     )
-    monkeypatch.setattr(app_mod, "detect_ollama", lambda *args: diagnostics)
-    response = TestClient(create_app(settings)).post(
-        "/config/provider/setup",
-        data={"action": "model"},
-    )
+    defaults.update(overrides)
+    return OllamaDiagnostics(**defaults)
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "already_available", "model": settings.llm.model}
+
+def test_model_pull_runs_in_background_and_reports_live_progress(tmp_path, monkeypatch):
+    """The old flow blocked the whole request until the entire download
+    finished with zero visible progress. A pull must now run off-request
+    and report live phase/percent through a poll endpoint."""
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: _reachable_diagnostics(settings))
+
+    release_event = threading.Event()
+
+    def fake_pull_model(model, base_url, *, consent, cancel_event=None, on_progress=None):
+        on_progress({"status": "pulling manifest"})
+        on_progress({"status": "downloading", "completed": 50, "total": 200})
+        release_event.wait(timeout=2)
+        on_progress({"status": "downloading", "completed": 200, "total": 200})
+        return []
+
+    monkeypatch.setattr(app_mod, "pull_model", fake_pull_model)
+
+    client = TestClient(create_app(settings))
+    started = client.post("/config/provider/pull", data={"model": "qwen2.5:7b"})
+    assert started.status_code == 200
+
+    for _ in range(50):
+        status = client.get("/config/provider/pull/status").json()
+        if status["percent"] == 25.0:
+            break
+        time.sleep(0.02)
+    assert status["running"] is True
+    assert status["percent"] == 25.0
+
+    release_event.set()
+    final = None
+    for _ in range(50):
+        time.sleep(0.02)
+        final = client.get("/config/provider/pull/status").json()
+        if not final["running"]:
+            break
+    assert final is not None and not final["running"]
+    assert final["phase"] == "success"
+    assert final["percent"] == 100.0
+
+
+def test_model_pull_refuses_when_ollama_unreachable(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(
+        app_mod, "detect_ollama",
+        lambda *a: _reachable_diagnostics(settings, service_reachable=False),
+    )
+    response = TestClient(create_app(settings)).post(
+        "/config/provider/pull", data={"model": "qwen2.5:7b"}
+    )
+    assert response.status_code == 409
+
+
+def test_model_pull_refuses_a_second_concurrent_pull(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: _reachable_diagnostics(settings))
+
+    release_event = threading.Event()
+
+    def fake_pull_model(model, base_url, *, consent, cancel_event=None, on_progress=None):
+        release_event.wait(timeout=2)
+        return []
+
+    monkeypatch.setattr(app_mod, "pull_model", fake_pull_model)
+    client = TestClient(create_app(settings))
+
+    first = client.post("/config/provider/pull", data={"model": "qwen2.5:7b"})
+    assert first.status_code == 200
+    second = client.post("/config/provider/pull", data={"model": "qwen2.5:14b"})
+    assert second.status_code == 409
+
+    release_event.set()
+
+
+def test_cancel_model_pull_sets_the_cancel_event(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: _reachable_diagnostics(settings))
+
+    saw_cancel = threading.Event()
+
+    def fake_pull_model(model, base_url, *, consent, cancel_event=None, on_progress=None):
+        for _ in range(100):
+            if cancel_event is not None and cancel_event.is_set():
+                saw_cancel.set()
+                return []
+            time.sleep(0.02)
+        return []
+
+    monkeypatch.setattr(app_mod, "pull_model", fake_pull_model)
+    client = TestClient(create_app(settings))
+    client.post("/config/provider/pull", data={"model": "qwen2.5:7b"})
+
+    cancelled = client.post("/config/provider/pull/cancel")
+    assert cancelled.status_code == 200
+    assert saw_cancel.wait(timeout=2)
 
 
 def test_update_install_requires_explicit_approval(tmp_path):

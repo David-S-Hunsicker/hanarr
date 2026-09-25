@@ -234,7 +234,7 @@ def test_check_llm_available_raises_when_configured_model_missing(monkeypatch):
         "hanarr.ollama_setup.detect_ollama",
         lambda model, base_url, data_dir: _fake_diagnostics(configured_model_available=False),
     )
-    with pytest.raises(LLMUnavailableError, match="not pulled"):
+    with pytest.raises(LLMUnavailableError, match="isn't downloaded"):
         check_llm_available(llm, data_dir=".")
 
 

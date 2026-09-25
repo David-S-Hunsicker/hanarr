@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -193,8 +193,15 @@ def pull_model(
     consent: bool,
     client: httpx.Client | None = None,
     cancel_event: Event | None = None,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Ask an existing local Ollama service to pull a model after consent."""
+    """Ask an existing local Ollama service to pull a model after consent.
+    `on_progress`, when given, is called once per parsed progress event as
+    it streams in (e.g. {"status": "downloading", "completed": N, "total":
+    M}) -- callers that want live progress (the dashboard's background pull
+    job) use this instead of waiting for the full event list, which is
+    still returned unchanged for existing callers that just want the final
+    outcome."""
     if not consent:
         raise SetupError("Explicit consent is required before downloading a model.")
     if not model.strip():
@@ -214,9 +221,12 @@ def pull_model(
                     raise SetupError("Model progress exceeded the safety limit.")
                 if line:
                     try:
-                        events.append(httpx.Response(200, content=line).json())
+                        event = httpx.Response(200, content=line).json()
                     except ValueError:
                         raise SetupError("Ollama returned invalid model progress.") from None
+                    events.append(event)
+                    if on_progress is not None:
+                        on_progress(event)
     except SetupError:
         raise
     except httpx.HTTPError as exc:

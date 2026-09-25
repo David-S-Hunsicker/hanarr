@@ -162,6 +162,9 @@
     .toolbar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .toolbar button:disabled { color: var(--text-muted); cursor: default; }
     .toolbar .note { font-size: 0.85rem; color: var(--text-secondary); }
+    #model-not-ready-note { font-size: 0.85rem; color: var(--text-secondary); margin: -0.5rem 0 1rem; }
+    #model-not-ready-note a { color: var(--accent); text-decoration: none; }
+    #model-not-ready-note a:hover { text-decoration: underline; }
     .toolbar .stop-btn { border-color: var(--status-critical); color: var(--status-critical); }
     .toolbar .stop-btn:hover:not(:disabled) { background: var(--status-critical); color: #fff; }
     .toolbar .stop-btn:disabled { border-color: var(--border); color: var(--text-muted); }
@@ -416,7 +419,7 @@
 
   <div class="toolbar">
     <form method="post" action="/search" id="search-form">
-      <button type="submit" id="search-btn" {% if search_running %}disabled{% endif %}>
+      <button type="submit" id="search-btn" {% if search_running or not model_ready %}disabled{% endif %}>
         {% if search_running %}Search running…{% else %}Run search now{% endif %}
       </button>
     </form>
@@ -431,6 +434,12 @@
     </form>
     <span class="note" id="search-note">{% if last_search_result %}{{ last_search_result }}{% endif %}</span>
   </div>
+
+  {% if not model_ready %}
+  <div class="note" id="model-not-ready-note">
+    Configured model isn't downloaded yet — <a href="/config?tab=app#provider">set it up in Settings</a>.
+  </div>
+  {% endif %}
 
   <div class="progress-panel" id="progress-panel" hidden>
     <div class="progress-head">
@@ -637,6 +646,29 @@
 
       pollTimer = setInterval(poll, 1500);
       poll();
+
+      const modelNote = document.getElementById("model-not-ready-note");
+      if (modelNote) {
+        let wasPulling = false;
+        function pollModelReadiness() {
+          fetch("/config/provider/pull/status")
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.running) {
+                wasPulling = true;
+                const pct = data.percent == null ? "" : " — " + data.percent + "%";
+                modelNote.textContent = "Downloading " + (data.model || "model") + pct + "…";
+              } else if (wasPulling) {
+                // A download that was running just finished -- reload once
+                // to pick up the server's canonical model-ready state.
+                window.location.reload();
+              }
+            })
+            .catch(() => {});
+        }
+        pollModelReadiness();
+        setInterval(pollModelReadiness, 2000);
+      }
     })();
   </script>
 </body>

@@ -163,6 +163,8 @@
     .suggest-btn:disabled { border-color: var(--border); color: var(--text-muted); cursor: default; }
     .suggest-status { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
     .suggest-status.error { color: var(--status-critical); }
+    .progress-bar-track { height: 6px; border-radius: 999px; background: var(--gridline); overflow: hidden; margin: 0.5rem 0; }
+    .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; width: 0%; transition: width 0.3s ease; }
     .field input[type="text"],
     .field input[type="number"],
     .field input[type="url"],
@@ -482,7 +484,6 @@
           <strong>Optional local setup</strong>
           <div class="hint">Hanarr checks first. It will not install software, start Ollama, or change providers automatically.</div>
           <button type="button" class="suggest-btn" data-setup-action="ollama_installer">Check for Ollama / stage installer</button>
-          <button type="button" class="suggest-btn" data-setup-action="model">Check / download configured model</button>
           <div class="suggest-status" id="ollama-setup-status" hidden></div>
         </div>
         <div class="row">
@@ -495,9 +496,28 @@
             </select>
           </div>
           <div class="field">
-            <label for="llm_model">Model</label>
-            <input type="text" id="llm_model" name="llm_model" value="{{ settings.llm.model }}">
+            {% set installed_names = provider_diagnostics.installed_models|map(attribute="name")|list %}
+            {% set known_names = installed_names + [provider_diagnostics.recommendation.model] %}
+            {% set is_custom = settings.llm.model not in known_names %}
+            <label for="llm_model_select">Model</label>
+            <select id="llm_model_select">
+              {% for m in provider_diagnostics.installed_models %}
+              <option value="{{ m.name }}" data-installed="true" {% if m.name == settings.llm.model %}selected{% endif %}>{{ m.name }} — installed{% if m.size_gb %} ({{ "%.1f"|format(m.size_gb) }} GB){% endif %}</option>
+              {% endfor %}
+              {% if provider_diagnostics.recommendation.model not in installed_names %}
+              <option value="{{ provider_diagnostics.recommendation.model }}" data-installed="false" {% if provider_diagnostics.recommendation.model == settings.llm.model %}selected{% endif %}>{{ provider_diagnostics.recommendation.model }} — recommended, not downloaded</option>
+              {% endif %}
+              <option value="__custom__" data-installed="false" {% if is_custom %}selected{% endif %}>Custom model name…</option>
+            </select>
+            <input type="text" id="llm_model" name="llm_model" value="{{ settings.llm.model }}" placeholder="e.g. qwen2.5:7b" {% if not is_custom %}hidden{% endif %}>
           </div>
+        </div>
+        <div class="field" id="model-download-section" hidden>
+          <div class="hint" id="model-download-hint"></div>
+          <button type="button" class="suggest-btn" id="model-download-btn">Download this model</button>
+          <button type="button" class="suggest-btn" id="model-download-cancel-btn" hidden>Cancel download</button>
+          <div class="progress-bar-track" id="model-download-track" hidden><div class="progress-bar-fill" id="model-download-fill"></div></div>
+          <div class="suggest-status" id="model-download-status" hidden></div>
         </div>
         <div class="row">
           <div class="field">
@@ -846,6 +866,112 @@
         }).catch(() => show("Lost connection during setup; no silent retry was attempted.", true))
           .finally(() => { button.disabled = false; });
       }));
+    })();
+  </script>
+  <script>
+    (function () {
+      const select = document.getElementById("llm_model_select");
+      const modelInput = document.getElementById("llm_model");
+      const downloadSection = document.getElementById("model-download-section");
+      const downloadHint = document.getElementById("model-download-hint");
+      const downloadBtn = document.getElementById("model-download-btn");
+      const cancelBtn = document.getElementById("model-download-cancel-btn");
+      const track = document.getElementById("model-download-track");
+      const fill = document.getElementById("model-download-fill");
+      const downloadStatus = document.getElementById("model-download-status");
+      if (!select || !modelInput || !downloadSection) return;
+
+      let pollTimer = null;
+
+      function selectedInstalled() {
+        const option = select.options[select.selectedIndex];
+        return option ? option.dataset.installed === "true" : false;
+      }
+
+      function syncModelField() {
+        if (select.value === "__custom__") {
+          modelInput.hidden = false;
+          modelInput.focus();
+        } else {
+          modelInput.value = select.value;
+          modelInput.hidden = true;
+        }
+        downloadSection.hidden = selectedInstalled();
+        downloadHint.textContent = "“" + modelInput.value + "” isn't downloaded yet.";
+      }
+
+      select.addEventListener("change", syncModelField);
+      modelInput.addEventListener("input", () => {
+        downloadSection.hidden = false;
+        downloadHint.textContent = "“" + (modelInput.value || "this model") + "” isn't confirmed downloaded.";
+      });
+      syncModelField();
+
+      function showStatus(text, error) {
+        downloadStatus.hidden = false;
+        downloadStatus.textContent = text;
+        downloadStatus.className = "suggest-status" + (error ? " error" : "");
+      }
+
+      function poll() {
+        fetch("/config/provider/pull/status")
+          .then((r) => r.json())
+          .then((data) => {
+            if (!data.running) {
+              clearInterval(pollTimer);
+              pollTimer = null;
+              downloadBtn.disabled = false;
+              cancelBtn.hidden = true;
+              track.hidden = true;
+              if (data.error) {
+                showStatus(data.error, true);
+              } else if (data.phase === "success") {
+                showStatus("Downloaded. Save app config, then restart the server to use it.", false);
+                downloadSection.hidden = true;
+              } else if (data.phase === "cancelled") {
+                showStatus("Download cancelled.", false);
+              }
+              return;
+            }
+            downloadBtn.disabled = true;
+            cancelBtn.hidden = false;
+            track.hidden = false;
+            const pct = data.percent == null ? 0 : data.percent;
+            fill.style.width = pct + "%";
+            showStatus((data.phase || "starting") + (data.percent != null ? " — " + data.percent + "%" : "…"), false);
+          })
+          .catch(() => {});
+      }
+
+      downloadBtn.addEventListener("click", function () {
+        const model = modelInput.value.trim();
+        if (!model) { showStatus("Enter a model name first.", true); return; }
+        if (!window.confirm('Download "' + model + '" from Ollama now? This can be several gigabytes.')) return;
+        downloadBtn.disabled = true;
+        const body = new URLSearchParams({ model: model });
+        fetch("/config/provider/pull", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
+          .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+          .then(({ ok, data }) => {
+            if (!ok) { showStatus(data.error || "Could not start the download.", true); downloadBtn.disabled = false; return; }
+            if (!pollTimer) pollTimer = setInterval(poll, 1000);
+            poll();
+          });
+      });
+
+      cancelBtn.addEventListener("click", function () {
+        cancelBtn.disabled = true;
+        fetch("/config/provider/pull/cancel", { method: "POST" }).finally(() => { cancelBtn.disabled = false; });
+      });
+
+      // Pick up an in-progress download from a prior page load (e.g. the
+      // user switched tabs while it was running).
+      fetch("/config/provider/pull/status").then((r) => r.json()).then((data) => {
+        if (data.running) {
+          downloadSection.hidden = false;
+          pollTimer = setInterval(poll, 1000);
+          poll();
+        }
+      }).catch(() => {});
     })();
   </script>
   {% endif %}

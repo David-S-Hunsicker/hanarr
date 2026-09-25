@@ -27,10 +27,10 @@ from ..connectors.base import to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
 from ..llm import build_llm_client
 from ..ollama_setup import (
+    SetupCancelled,
     SetupError,
     detect_ollama,
     installer_offer,
-    model_offer,
     pull_model,
     stage_ollama_installer,
 )
@@ -124,6 +124,14 @@ def _active_profile_id(request: Request) -> int | None:
 # means a redundant background thread, while a false "stuck" verdict would
 # let two re-parses race on the same profile.
 STUCK_TASK_BUFFER_SECONDS = 30.0
+
+# Model downloads are unrelated to the LLM call timeout -- a multi-gigabyte
+# pull on a slow connection can legitimately take far longer than any
+# sensible inference timeout. Generous on purpose for the same reason
+# STUCK_TASK_BUFFER_SECONDS is: a false "not stuck" verdict just means a
+# redundant background thread, a false "stuck" verdict would let two pulls
+# race on the same shared state.
+MODEL_PULL_STUCK_SECONDS = 3600.0
 
 
 def task_is_stuck(task_state: dict, llm_timeout_seconds: float, now: float | None = None) -> bool:
@@ -403,6 +411,64 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             if resume_state["run_id"] == run_id:
                 resume_state["running"] = False
 
+    # Same background-thread pattern again: model downloads can take
+    # minutes, so this runs off-request with a poll endpoint reporting
+    # live progress, instead of the request blocking until the whole
+    # multi-gigabyte pull finishes.
+    pull_state = {
+        "running": False,
+        "run_id": 0,
+        "model": None,
+        "phase": None,
+        "percent": None,
+        "error": None,
+        "started_at": None,
+    }
+    pull_cancel_event = threading.Event()
+
+    def _pull_model_in_background(run_id: int, model: str):
+        pull_state["running"] = True
+        pull_state["run_id"] = run_id
+        pull_state["model"] = model
+        pull_state["phase"] = "starting"
+        pull_state["percent"] = None
+        pull_state["error"] = None
+        pull_state["started_at"] = time.time()
+        pull_cancel_event.clear()
+
+        def on_progress(event: dict):
+            if pull_state["run_id"] != run_id:
+                return
+            status = event.get("status")
+            if status:
+                pull_state["phase"] = status
+            completed, total = event.get("completed"), event.get("total")
+            if isinstance(completed, (int, float)) and isinstance(total, (int, float)) and total > 0:
+                pull_state["percent"] = round(completed / total * 100, 1)
+
+        try:
+            pull_model(
+                model, settings.llm.base_url, consent=True,
+                cancel_event=pull_cancel_event, on_progress=on_progress,
+            )
+            if pull_state["run_id"] == run_id:
+                pull_state["phase"] = "success"
+                pull_state["percent"] = 100.0
+        except SetupCancelled:
+            if pull_state["run_id"] == run_id:
+                pull_state["phase"] = "cancelled"
+        except SetupError as exc:
+            logger.warning("Model pull failed for %r: %s", model, exc)
+            if pull_state["run_id"] == run_id:
+                pull_state["error"] = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Model pull failed unexpectedly for %r", model)
+            if pull_state["run_id"] == run_id:
+                pull_state["error"] = f"Download failed: {exc}"
+        finally:
+            if pull_state["run_id"] == run_id:
+                pull_state["running"] = False
+
     @app.get("/profiles")
     def profiles_page(request: Request):
         with session_factory() as session:
@@ -514,7 +580,17 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             "projects": [project_status(project) for project in projects],
             "score_impact_by_job": score_impact_by_job,
             "onboarding": _onboarding_status(profile, settings),
+            "model_ready": _model_ready(),
         }
+
+    def _model_ready() -> bool:
+        """Only Ollama has a locally-pulled-model concept -- Anthropic (or
+        no provider) has nothing to download, so is always "ready" here.
+        Cheap: same /api/tags call _provider_diagnostics() already makes
+        for Settings, not a full generation."""
+        if settings.llm.provider != "ollama":
+            return True
+        return _provider_diagnostics().configured_model_available
 
     @app.get("/jobs/panel")
     def jobs_panel(request: Request, status: str | None = None):
@@ -1262,22 +1338,45 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 return JSONResponse({"status": "error", "error": str(exc), "offer": offer.to_dict()}, status_code=502)
             return JSONResponse({"status": "staged", "destination": str(staged), "message": "Installer staged but not started. Run it yourself after reviewing it."})
 
-        if action == "model":
-            if diagnostics.configured_model_available:
-                return JSONResponse({"status": "already_available", "model": settings.llm.model})
-            if not diagnostics.service_reachable:
-                return JSONResponse({"status": "unavailable", "error": "Ollama is not reachable; start Ollama yourself and try again."}, status_code=409)
-            offer = model_offer(settings.llm.model, settings.llm.base_url)
-            if not consent:
-                return JSONResponse({"status": "consent_required", "offer": offer.to_dict()})
-            try:
-                events = pull_model(settings.llm.model, settings.llm.base_url, consent=True)
-            except SetupError as exc:
-                logger.warning("Ollama model pull failed: %s", exc)
-                return JSONResponse({"status": "error", "error": str(exc), "offer": offer.to_dict()}, status_code=502)
-            return JSONResponse({"status": "downloaded", "model": settings.llm.model, "events": events[-1:]})
-
         return JSONResponse({"status": "error", "error": "Unknown setup action."}, status_code=400)
+
+    @app.post("/config/provider/pull")
+    async def start_model_pull(request: Request):
+        """Starts a background model download -- see pull_state/_pull_model_in_background.
+        Still requires an explicit request from a button click; never starts on its own."""
+        form = await request.form()
+        model = str(form.get("model", "")).strip()
+        if not model:
+            return JSONResponse({"error": "A model name is required."}, status_code=400)
+        if pull_state["running"] and not task_is_stuck(pull_state, MODEL_PULL_STUCK_SECONDS):
+            return JSONResponse({"error": "A model download is already in progress."}, status_code=409)
+        diagnostics = _provider_diagnostics()
+        if not diagnostics.service_reachable:
+            return JSONResponse({"error": "Ollama is not reachable; start Ollama and try again."}, status_code=409)
+        next_run_id = pull_state["run_id"] + 1
+        threading.Thread(
+            target=_pull_model_in_background, args=(next_run_id, model), daemon=True
+        ).start()
+        return JSONResponse({"run_id": next_run_id})
+
+    @app.get("/config/provider/pull/status")
+    def model_pull_status():
+        return JSONResponse(
+            {
+                "running": pull_state["running"],
+                "run_id": pull_state["run_id"],
+                "model": pull_state["model"],
+                "phase": pull_state["phase"],
+                "percent": pull_state["percent"],
+                "error": pull_state["error"],
+            }
+        )
+
+    @app.post("/config/provider/pull/cancel")
+    def cancel_model_pull():
+        if pull_state["running"]:
+            pull_cancel_event.set()
+        return JSONResponse({"cancelling": pull_state["running"]})
 
     @app.get("/config/update/check")
     def update_check():
