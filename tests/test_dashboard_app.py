@@ -649,3 +649,87 @@ def test_applications_page_shows_a_helpful_empty_state(tmp_path):
 
     assert "reserved for the next transition milestone" not in html
     assert "Jobs" in html
+
+
+class _FakeSchedulerJob:
+    def __init__(self, next_run_time):
+        self.next_run_time = next_run_time
+
+
+class _FakeScheduler:
+    """Duck-typed stand-in for apscheduler.BackgroundScheduler -- create_app
+    only ever calls .get_job(id), so a real scheduler (with its own thread)
+    isn't needed to test what the dashboard shows."""
+
+    def __init__(self, jobs: dict):
+        self._jobs = jobs
+
+    def get_job(self, job_id):
+        return self._jobs.get(job_id)
+
+
+def test_search_status_shows_next_scheduled_run_and_persisted_last_search(tmp_path):
+    """Regression test: the dashboard previously had no visibility into the
+    background scheduler at all -- no next-run time, and "last search"
+    lived only in in-memory state that reset to blank on every restart."""
+    settings = _make_isolated_settings(tmp_path)
+    next_run = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=3)
+    scheduler = _FakeScheduler({"search": _FakeSchedulerJob(next_run)})
+
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.last_search_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(hours=2)
+        profile.last_search_new_count = 7
+        profile.last_search_trigger = "scheduled"
+        session.commit()
+
+    app = create_app(settings, scheduler=scheduler)
+    client = TestClient(app)
+
+    status = client.get("/search/status").json()
+    assert status["next_search_label"] == "in 3h"
+    assert status["last_search_label"] == "Last scheduled search: 7 new posting(s), 2h ago"
+
+    html = client.get("/").text
+    assert "Next automatic search in 3h" in html
+    assert "Last scheduled search: 7 new posting(s), 2h ago" in html
+
+
+def test_search_status_omits_schedule_info_without_a_scheduler(tmp_path):
+    """Most routes (including every test) run with scheduler=None -- must
+    not error, just show nothing scheduled."""
+    settings = _make_isolated_settings(tmp_path)
+    app = create_app(settings)  # no scheduler
+    client = TestClient(app)
+
+    status = client.get("/search/status").json()
+    assert status["next_search_label"] is None
+    assert status["next_reminder_check_label"] is None
+    assert status["last_search_label"] is None
+
+
+def test_manual_search_persists_last_search_to_the_profile(tmp_path, monkeypatch):
+    """A manual "Run search now" must also update the persisted fields, not
+    just the in-memory state -- otherwise this info only ever reflects
+    scheduled runs, not the button the user actually clicked."""
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [])
+
+    app = create_app(settings)
+    client = TestClient(app)
+
+    client.post("/search", follow_redirects=False)
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/search/status").json()
+        if not s["search_running"]:
+            final = s
+            break
+
+    assert final is not None, "search did not finish in time"
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        assert profile.last_search_trigger == "manual"
+        assert profile.last_search_new_count == 0
+        assert profile.last_search_at is not None

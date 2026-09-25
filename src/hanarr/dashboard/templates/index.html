@@ -127,6 +127,8 @@
     .stats-bar strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
     .stats-bar .stats-sep { color: var(--text-muted); }
 
+    .schedule-bar { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.9rem; }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -388,6 +390,14 @@
     <span class="stats-sep">·</span>
     <span><strong>{{ matched_count }}</strong> matched</span>
   </div>
+
+  {% if last_search_label or next_search_label %}
+  <div class="schedule-bar" id="schedule-bar">
+    {% if last_search_label %}<span id="last-search-label">{{ last_search_label }}</span>{% endif %}
+    {% if last_search_label and next_search_label %}<span class="stats-sep">·</span>{% endif %}
+    {% if next_search_label %}<span id="next-search-label">Next automatic search {{ next_search_label }}</span>{% endif %}
+  </div>
+  {% endif %}
 
   <div class="toolbar">
     <form method="post" action="/search" id="search-form">

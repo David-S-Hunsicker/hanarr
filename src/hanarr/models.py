@@ -52,6 +52,13 @@ class Profile(Base):
     # (resumes/resume.pdf) regardless of what it was originally called.
     resume_original_filename: Mapped[str | None] = mapped_column(String, nullable=True)
     resume_parsed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Persisted so "last search" survives a restart -- background-thread
+    # state (see dashboard/app.py's `state` dict) lives only in memory and
+    # resets to blank on every restart, including the ones "Save & restart
+    # server" triggers, which made it look like nothing had ever run.
+    last_search_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    last_search_new_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_search_trigger: Mapped[str | None] = mapped_column(String, nullable=True)  # "manual" | "scheduled"
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now

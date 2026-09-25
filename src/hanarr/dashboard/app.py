@@ -23,6 +23,7 @@ from sqlalchemy import func
 
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..agent_orchestration import AgentOrchestrator
+from ..connectors.base import to_naive_utc
 from ..db import get_or_create_profile, make_session_factory
 from ..llm import build_llm_client
 from ..ollama_setup import (
@@ -250,6 +251,10 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     on_progress=_on_progress,
                     should_stop=stop_event.is_set,
                 )
+                profile.last_search_at = utc_now()
+                profile.last_search_new_count = n
+                profile.last_search_trigger = "manual"
+                session.commit()
                 if stop_event.is_set():
                     state["last_search_result"] = f"Search stopped — {n} new posting(s) kept."
                 else:
@@ -435,6 +440,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "gap_by_job": gap_by_job,
                     "projects": [project_status(project) for project in projects],
                     "score_impact_by_job": score_impact_by_job,
+                    **_scheduler_status(),
                 },
             )
 
@@ -943,6 +949,59 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             threading.Thread(target=_run_search_in_background, args=(next_run_id,), daemon=True).start()
         return RedirectResponse("/", status_code=303)
 
+    def _relative_label(delta_seconds: float, future: bool) -> str:
+        """Small human-relative label, e.g. "in 5h" or "3h ago". Deliberately
+        coarse (minutes/hours/days, not seconds) since search/reminder
+        intervals are configured in hours."""
+        seconds = abs(delta_seconds)
+        if seconds < 3600:
+            value, unit = max(1, round(seconds / 60)), "m"
+        elif seconds < 86400:
+            value, unit = round(seconds / 3600), "h"
+        else:
+            value, unit = round(seconds / 86400), "d"
+        return f"in {value}{unit}" if future else f"{value}{unit} ago"
+
+    def _scheduler_status() -> dict:
+        """Next-scheduled-run labels, and the last search's persisted
+        outcome (which survives a restart, unlike `state`, so this doesn't
+        go blank every time "Save & restart server" is used). `scheduler`
+        is only available when `hanarr serve` actually started one (see
+        create_app's own docstring); routes that run without it (tests,
+        the restart-in-progress moment) just show nothing scheduled rather
+        than erroring. APScheduler's next_run_time is timezone-aware
+        (local-timezone by default); to_naive_utc normalizes it to match
+        this app's naive-UTC convention before comparing against utc_now()."""
+        now = utc_now()
+        next_search_label = None
+        next_reminder_check_label = None
+        if scheduler is not None:
+            search_job = scheduler.get_job("search")
+            if search_job and search_job.next_run_time:
+                delta = (to_naive_utc(search_job.next_run_time) - now).total_seconds()
+                next_search_label = _relative_label(delta, future=True)
+            reminder_job = scheduler.get_job("reminders")
+            if reminder_job and reminder_job.next_run_time:
+                delta = (to_naive_utc(reminder_job.next_run_time) - now).total_seconds()
+                next_reminder_check_label = _relative_label(delta, future=True)
+
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            last_search_label = None
+            if profile.last_search_at:
+                delta = (now - profile.last_search_at).total_seconds()
+                trigger = profile.last_search_trigger or "manual"
+                count = profile.last_search_new_count if profile.last_search_new_count is not None else 0
+                last_search_label = (
+                    f"Last {trigger} search: {count} new posting(s), {_relative_label(delta, future=False)}"
+                )
+
+        return {
+            "next_search_label": next_search_label,
+            "next_reminder_check_label": next_reminder_check_label,
+            "last_search_label": last_search_label,
+        }
+
     @app.get("/search/status")
     def search_status():
         return JSONResponse(
@@ -958,6 +1017,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),
+                **_scheduler_status(),
             }
         )
 
