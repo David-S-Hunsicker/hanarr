@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -543,15 +544,30 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             "all_done": resume_done and preferences_done,
         }
 
-    def _job_list_context(session, profile, status: str | None) -> dict:
+    RECENT_POSTING_WINDOW_DAYS = 7
+
+    def _job_list_context(
+        session, profile, status: str | None, sort: str | None = None, recent_only: bool = False
+    ) -> dict:
         """Everything the jobs list + stats bar + filter pills need --
         shared between the full index page and the /jobs/panel partial the
         page polls while a search is running, so the two can never drift
         out of sync with each other."""
+        cutoff = utc_now() - dt.timedelta(days=RECENT_POSTING_WINDOW_DAYS)
         query = session.query(JobPosting).filter(JobPosting.profile_id == profile.id)
         if status:
             query = query.filter(JobPosting.status == ApplicationStatus(status))
-        jobs = query.order_by(JobPosting.fit_score.desc()).all()
+        if recent_only:
+            query = query.filter(JobPosting.posted_at.isnot(None), JobPosting.posted_at >= cutoff)
+        if sort == "recent":
+            # Nulls-last without relying on SQLite's NULLS LAST support
+            # (only in 3.30+): sort by "is this null" first (False/0 before
+            # True/1), then by the real date within each group.
+            query = query.order_by(JobPosting.posted_at.is_(None), JobPosting.posted_at.desc())
+        else:
+            sort = "fit"
+            query = query.order_by(JobPosting.fit_score.desc())
+        jobs = query.all()
 
         # "Considered" = every posting fetched and scored (matched or
         # not), regardless of the current status filter above — this is
@@ -561,6 +577,15 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         )
         matched_count = (
             session.query(JobPosting).filter(JobPosting.profile_id == profile.id).count()
+        )
+        recent_count = (
+            session.query(JobPosting)
+            .filter(
+                JobPosting.profile_id == profile.id,
+                JobPosting.posted_at.isnot(None),
+                JobPosting.posted_at >= cutoff,
+            )
+            .count()
         )
 
         status_counts_rows = (
@@ -589,18 +614,41 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             # explanation when a job has been rematched more than once.
             score_impact_by_job.setdefault(impact["job_id"], impact)
 
+        def job_filter_href(new_status=Ellipsis, new_sort=Ellipsis, new_recent=Ellipsis) -> str:
+            """Builds a /?... link for a filter/sort pill, changing only
+            the one dimension it's given and preserving the other two --
+            so switching status doesn't silently drop an active "posted
+            this week" filter or sort choice, and vice versa."""
+            eff_status = status if new_status is Ellipsis else new_status
+            eff_sort = sort if new_sort is Ellipsis else new_sort
+            eff_recent = recent_only if new_recent is Ellipsis else new_recent
+            params = {}
+            if eff_status:
+                params["status"] = eff_status
+            if eff_sort and eff_sort != "fit":
+                params["sort"] = eff_sort
+            if eff_recent:
+                params["recent"] = "1"
+            query = urlencode(params)
+            return "/" + (f"?{query}" if query else "")
+
         return {
             "jobs": jobs,
             "statuses": [s.value for s in ApplicationStatus],
             "current_filter": status or "",
+            "current_sort": sort,
+            "current_recent": recent_only,
+            "recent_window_days": RECENT_POSTING_WINDOW_DAYS,
             "considered_count": considered_count,
             "matched_count": matched_count,
+            "recent_count": recent_count,
             "status_counts": status_counts,
             "gap_by_job": gap_by_job,
             "projects": [project_status(project) for project in projects],
             "score_impact_by_job": score_impact_by_job,
             "onboarding": _onboarding_status(profile, settings),
             "model_ready": _model_ready(),
+            "job_filter_href": job_filter_href,
         }
 
     def _model_ready() -> bool:
@@ -613,24 +661,24 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         return _provider_diagnostics().configured_model_available
 
     @app.get("/jobs/panel")
-    def jobs_panel(request: Request, status: str | None = None):
+    def jobs_panel(request: Request, status: str | None = None, sort: str | None = None, recent: str | None = None):
         """Polled by the dashboard while a search is running so newly
         matched jobs (and the stats bar / filter counts) appear as they're
         scored, instead of only after a full page reload once the search
         finishes."""
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
-            context = _job_list_context(session, profile, status)
+            context = _job_list_context(session, profile, status, sort, recent == "1")
         return JSONResponse({
             "stats_html": templates.env.get_template("_stats_bar.html").render(context),
             "jobs_html": templates.env.get_template("_jobs_panel.html").render(context),
         })
 
     @app.get("/")
-    def index(request: Request, status: str | None = None):
+    def index(request: Request, status: str | None = None, sort: str | None = None, recent: str | None = None):
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
-            context = _job_list_context(session, profile, status)
+            context = _job_list_context(session, profile, status, sort, recent == "1")
             reminders = get_due_reminders(session, profile)
 
             return templates.TemplateResponse(

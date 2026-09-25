@@ -702,6 +702,78 @@ def test_jobs_panel_respects_status_filter(tmp_path):
     assert "New Job" not in panel["jobs_html"]
 
 
+def test_jobs_page_recent_filter_shows_only_postings_within_the_window(tmp_path):
+    """"We need a way to filter ... for jobs that have been posted
+    recently, say within a week." """
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="0", company="Acme",
+            title="Fresh Job", url="u", fit_score=80, posted_at=now - dt.timedelta(days=2),
+        ))
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Stale Job", url="u", fit_score=80, posted_at=now - dt.timedelta(days=30),
+        ))
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="2", company="Acme",
+            title="Undated Job", url="u", fit_score=80, posted_at=None,
+        ))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+
+    unfiltered = client.get("/").text
+    assert "Fresh Job" in unfiltered and "Stale Job" in unfiltered and "Undated Job" in unfiltered
+
+    recent = client.get("/", params={"recent": "1"}).text
+    assert "Fresh Job" in recent
+    assert "Stale Job" not in recent
+    assert "Undated Job" not in recent
+    # The toggle itself must be marked active, and the count in its own
+    # label must reflect only what actually matches the window.
+    assert 'class="active">Posted within 7d (1)' in recent
+
+
+def test_jobs_page_sort_newest_first_orders_by_posted_at(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        # Deliberately give the older posting the higher fit score, so a
+        # newest-first result only makes sense if sort actually overrides
+        # the default fit-score ordering.
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="0", company="Acme",
+            title="Older Higher-Fit Job", url="u", fit_score=95, posted_at=now - dt.timedelta(days=5),
+        ))
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Newer Lower-Fit Job", url="u", fit_score=40, posted_at=now - dt.timedelta(days=1),
+        ))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    html = client.get("/", params={"sort": "recent"}).text
+
+    newer_index = html.index("Newer Lower-Fit Job")
+    older_index = html.index("Older Higher-Fit Job")
+    assert newer_index < older_index, "newest-first sort should list the more recent posting first"
+
+
+def test_jobs_panel_filter_links_preserve_the_other_active_dimensions(tmp_path):
+    """Switching status shouldn't silently drop an active recency filter
+    or sort choice, and vice versa -- each pill link must carry the other
+    two dimensions forward."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    html = client.get("/", params={"status": "applied", "sort": "recent", "recent": "1"}).text
+    assert "status=applied&amp;sort=recent&amp;recent=1" in html or "status=applied&sort=recent&recent=1" in html
+
+
 def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     settings.matching.min_fit_score = 0

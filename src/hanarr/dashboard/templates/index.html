@@ -525,8 +525,13 @@
 
       function refreshJobsPanel() {
         const params = new URLSearchParams(window.location.search);
-        const statusFilter = params.get("status") || "";
-        const url = statusFilter ? "/jobs/panel?status=" + encodeURIComponent(statusFilter) : "/jobs/panel";
+        const panelParams = new URLSearchParams();
+        for (const key of ["status", "sort", "recent"]) {
+          const value = params.get(key);
+          if (value) panelParams.set(key, value);
+        }
+        const query = panelParams.toString();
+        const url = "/jobs/panel" + (query ? "?" + query : "");
         fetch(url)
           .then((r) => r.json())
           .then((data) => {

@@ -1,8 +1,13 @@
 <div class="filters">
-  <a href="/" class="{% if not current_filter %}active{% endif %}">All ({{ matched_count }})</a>
+  <a href="{{ job_filter_href(new_status='') }}" class="{% if not current_filter %}active{% endif %}">All ({{ matched_count }})</a>
   {% for s in statuses %}
-  <a href="/?status={{ s }}" class="{% if s == current_filter %}active{% endif %}">{{ s }} ({{ status_counts[s] }})</a>
+  <a href="{{ job_filter_href(new_status=s) }}" class="{% if s == current_filter %}active{% endif %}">{{ s }} ({{ status_counts[s] }})</a>
   {% endfor %}
+</div>
+<div class="filters">
+  <a href="{{ job_filter_href(new_recent=not current_recent) }}" class="{% if current_recent %}active{% endif %}">Posted within {{ recent_window_days }}d ({{ recent_count }})</a>
+  <a href="{{ job_filter_href(new_sort='fit') }}" class="{% if current_sort != 'recent' %}active{% endif %}">Sort: Fit score</a>
+  <a href="{{ job_filter_href(new_sort='recent') }}" class="{% if current_sort == 'recent' %}active{% endif %}">Sort: Newest first</a>
 </div>
 
 {% if jobs %}
