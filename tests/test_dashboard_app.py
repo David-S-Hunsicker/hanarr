@@ -995,3 +995,46 @@ def test_manual_search_persists_last_search_to_the_profile(tmp_path, monkeypatch
         assert profile.last_search_trigger == "manual"
         assert profile.last_search_new_count == 0
         assert profile.last_search_at is not None
+
+
+def test_all_pages_share_identical_shell_layout_values(tmp_path):
+    """"All page formatting should basically look the same and not shift
+    the text around... the header line shouldn't shift or move." Each page
+    template keeps its own <style> block, so nothing prevents them from
+    drifting -- this pins the shared shell values (body width, header
+    spacing, nav spacing, heading size) so a future edit to one page can't
+    silently diverge from the rest without a test failing."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    pages = ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles"]
+    responses = {page: client.get(page) for page in pages}
+    for page, response in responses.items():
+        assert response.status_code == 200, f"{page} did not load"
+    bodies = {page: response.text for page, response in responses.items()}
+
+    import re
+
+    def first(pattern, text):
+        match = re.search(pattern, text)
+        assert match, f"pattern {pattern!r} not found"
+        return match.group(1)
+
+    max_widths = {page: first(r"max-width:\s*(\d+)px;\s*margin:\s*0 auto", html) for page, html in bodies.items()}
+    assert len(set(max_widths.values())) == 1, f"body max-width differs across pages: {max_widths}"
+    assert list(max_widths.values())[0] == "1000"
+
+    header_margins = {
+        page: first(r"\.(?:page-)?header\s*\{[^}]*margin-bottom:\s*([\d.]+rem)", html)
+        for page, html in bodies.items()
+    }
+    assert len(set(header_margins.values())) == 1, f"header margin-bottom differs across pages: {header_margins}"
+
+    nav_margins = {
+        page: first(r"\.(?:nav|tabs)\s*\{[^}]*margin:\s*([\d.a-z ]+;)", html)
+        for page, html in bodies.items()
+    }
+    assert len(set(nav_margins.values())) == 1, f"nav margin differs across pages: {nav_margins}"
+
+    h1_sizes = {page: first(r"h1[^{]*\{[^}]*font-size:\s*([\d.]+rem)", html) for page, html in bodies.items()}
+    assert len(set(h1_sizes.values())) == 1, f"h1 font-size differs across pages: {h1_sizes}"

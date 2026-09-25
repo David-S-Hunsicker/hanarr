@@ -7,13 +7,17 @@
   <style>
     :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; }
     @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; } }
-    * { box-sizing:border-box; } body { max-width:640px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
     @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
-    h1,h2 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin:1.5rem 0 .75rem; }
-    .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:.5rem; }
+    h1,h2 { margin:0; } h1 { font-size:1.35rem; font-weight:650; } h2 { font-size:1.05rem; margin:1.5rem 0 .75rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
     .muted { color:var(--muted); }
     a.nav-link { color:var(--accent); text-decoration:none; font-size:.85rem; font-weight:600; }
     a.nav-link:hover { text-decoration:underline; }
+    .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.5rem; }
+    .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color:var(--accent); color:var(--accent); }
+    .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
     .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.9rem 1rem; margin:.6rem 0; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
     .pill { display:inline-block; border:1px solid var(--good); color:var(--good); border-radius:999px; padding:.15rem .55rem; font-size:.78rem; font-weight:600; }
     button, input[type=text] { font:inherit; }
@@ -28,6 +32,7 @@
     <h1>Profiles</h1>
     <a class="nav-link" href="/">&larr; Back to jobs</a>
   </div>
+  <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
   <p class="muted">Local profiles let more than one person use this instance -- each has their own resume, jobs, applications, skills, and coaching projects. Search preferences (target titles, locations, connectors, LLM, schedule) are shared across every profile. There's no login; switching just tells this browser which profile to act as.</p>
 
   <h2>Switch profile</h2>

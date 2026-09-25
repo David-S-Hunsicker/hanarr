@@ -56,12 +56,13 @@
     * { box-sizing: border-box; }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      max-width: 760px;
+      max-width: 1000px;
       margin: 0 auto;
       padding: 2rem 1rem 4rem;
       background: var(--page-plane);
       color: var(--text-primary);
     }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
     .page-header {
       display: flex;
       align-items: baseline;
@@ -74,7 +75,7 @@
     .nav-link { font-size: 0.85rem; font-weight: 550; color: var(--accent); text-decoration: none; }
     .nav-link:hover { text-decoration: underline; }
 
-    .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+    .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 1rem 0 1.5rem; }
     .tab {
       font-size: 0.85rem;
       font-weight: 600;
