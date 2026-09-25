@@ -31,8 +31,31 @@ def _brief_and_rubric(project: Project) -> tuple[dict[str, Any], list[str]]:
 
 def _submission_text(submission: ProjectSubmission) -> str:
     manifest = json.loads(submission.manifest_json or "[]")
-    paths = " ".join(item.get("path", "") for item in manifest if isinstance(item, dict))
-    return " ".join(part for part in (submission.title, submission.content, paths) if part)
+    parts = []
+    for item in manifest:
+        if not isinstance(item, dict):
+            continue
+        parts.append(item.get("path", ""))
+        # A fetched GitHub submission (see submissions.fetch_github_submission)
+        # stores the actual diff text here -- without including it, the
+        # deterministic fallback only ever saw file *names*, never whether
+        # any real code was actually touched.
+        patch = item.get("patch")
+        if isinstance(patch, str):
+            parts.append(patch)
+    return " ".join(part for part in (submission.title, submission.content, *parts) if part)
+
+
+def _manifest_line_changes(submission: ProjectSubmission) -> int:
+    """Total added+deleted lines across a fetched diff's files, when known
+    (0 for submissions with no manifest additions/deletions, e.g. a plain
+    written response, or a GitHub submission that hasn't been fetched
+    yet)."""
+    manifest = json.loads(submission.manifest_json or "[]")
+    return sum(
+        (item.get("additions") or 0) + (item.get("deletions") or 0)
+        for item in manifest if isinstance(item, dict)
+    )
 
 
 def _deterministic_result(project: Project, submission: ProjectSubmission) -> dict[str, Any]:
@@ -41,7 +64,19 @@ def _deterministic_result(project: Project, submission: ProjectSubmission) -> di
     evidence_terms = ("built", "implemented", "tested", "benchmark", "evidence", "result", "document")
     evidence_count = sum(term in text for term in evidence_terms)
     score = min(100.0, max(0.0, 35.0 + evidence_count * 10.0)) if text else 0.0
+
+    # Real added/changed lines are a much more direct, harder-to-game signal
+    # of substantive work than keyword matching on diff text -- code doesn't
+    # naturally contain words like "tested" or "implemented" just because
+    # real tests/features were added, so this is deliberately a separate,
+    # structured signal rather than folded into the keyword scan above.
+    line_changes = _manifest_line_changes(submission)
+    if line_changes > 0:
+        score = min(100.0, score + min(25.0, line_changes / 4))
+
     strengths = ["Submission contains reviewable project evidence."] if text else []
+    if line_changes > 0:
+        strengths.append(f"Diff shows {line_changes} changed line(s) across the submitted files.")
     improvements = [] if score >= 70 else ["Add concrete implementation, validation, and outcome evidence."]
     actionable = [] if score >= 70 else [f"Address rubric criterion: {rubric[0]}."]
     outcome = "passed" if score >= 70 else "needs_improvement"

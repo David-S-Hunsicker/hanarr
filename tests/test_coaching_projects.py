@@ -12,6 +12,9 @@ from hanarr.models import (
     JobSkill,
     JobSkillRequirement,
     Project,
+    ProjectSubmission,
+    ProjectSubmissionKind,
+    ProjectSubmissionStatus,
     ProjectTaskStatus,
     Skill,
     SkillGapStatus,
@@ -485,3 +488,65 @@ def test_malformed_evaluation_uses_safe_fallback_and_records_error(tmp_path, mon
     assert evaluation["evaluator"] == "deterministic-fallback"
     assert evaluation["outcome"] == "needs_improvement"
     assert evaluation["error"]
+
+
+def test_deterministic_fallback_credits_real_diff_content_not_just_filenames(tmp_path, monkeypatch):
+    """Regression test: the deterministic fallback used to build its scoring
+    text from manifest *filenames* only, so a fetched GitHub diff with real
+    added/removed code scored identically to an empty stub with the same
+    file list. It must now (a) see the actual patch text and (b) credit a
+    separate additions+deletions signal that a keyword scan can't fake."""
+    settings = _settings(tmp_path)
+
+    class BrokenLLM:
+        def complete_json(self, system, user):
+            return "not json"
+
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: BrokenLLM())
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    def _submit_with_manifest(manifest: list[dict]) -> dict:
+        with factory() as session:
+            project = session.get(Project, project_id)
+            submission = ProjectSubmission(
+                project_id=project.id,
+                kind=ProjectSubmissionKind.GITHUB_REPOSITORY,
+                title="demo@deadbeef",
+                content="https://github.com/example/demo@deadbeef",
+                manifest_json=json.dumps(manifest),
+                status=ProjectSubmissionStatus.SUBMITTED,
+            )
+            session.add(submission)
+            session.flush()
+            submission_id = submission.id
+            session.commit()
+        return client.post(
+            f"/api/coaching-projects/{project_id}/submissions/{submission_id}/evaluate"
+        ).json()["evaluations"][0]
+
+    # Same filename, no real diff content -- the pre-fix behaviour.
+    stub = _submit_with_manifest(
+        [{"path": "src/feature.py", "status": "modified", "additions": 0, "deletions": 0}]
+    )
+    # Real diff content: filename plus patch text plus actual line counts.
+    real = _submit_with_manifest(
+        [{
+            "path": "src/feature.py", "status": "modified",
+            "additions": 40, "deletions": 20,
+            "patch": "@@ -1,4 +1,4 @@\n-def old():\n+def new():\n     pass",
+        }]
+    )
+
+    assert stub["evaluator"] == "deterministic-fallback"
+    assert real["evaluator"] == "deterministic-fallback"
+    assert real["score"] > stub["score"]
+    assert any("Diff shows 60 changed line(s)" in s for s in real["strengths"])
+    assert not any("Diff shows" in s for s in stub["strengths"])
