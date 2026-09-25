@@ -254,6 +254,30 @@ def test_skills_page_groups_proven_and_unproven_and_has_a_filter_box(tmp_path):
     assert "SQL" in unproven_section
 
 
+def test_skills_page_has_quick_confidence_presets(tmp_path):
+    """"There should be a way to manually mark a skill or change it...
+    some skills the user knows they have high confidence in." A raw 0-1
+    decimal correction form buried two <details> deep wasn't discoverable
+    -- a one-click Low/Medium/High preset must be directly visible once a
+    skill row is expanded, wired to the same underlying proficiency/
+    confidence inputs the correction PATCH already uses."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_summary_json = json.dumps({"skills": ["Kubernetes"]})
+        session.commit()
+
+    page = TestClient(create_app(settings)).get("/skills").text
+    assert 'class="preset-btn low" data-level="Low" data-value=".3"' in page
+    assert 'class="preset-btn medium" data-level="Medium" data-value=".6"' in page
+    assert 'class="preset-btn high" data-level="High" data-value=".9"' in page
+    # Exactly one proficiency/confidence <input> per skill -- not two
+    # competing fields with the same name that would race in FormData.
+    assert page.count('<input name="proficiency"') == 1
+    assert page.count('<input name="confidence"') == 1
+
+
 def test_skill_override_requires_evidence_and_never_creates_proof(tmp_path):
     settings = _settings(tmp_path)
     factory = make_session_factory(settings)

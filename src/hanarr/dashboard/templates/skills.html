@@ -27,6 +27,13 @@
     .skill-row .skill-body { padding:0 1rem 1rem; border-top:1px solid var(--border); }
     .skill-row.no-match { display:none; }
     .skill-group.no-visible-rows { display:none; }
+    .confidence-editor { margin-top:1rem; padding-top:.8rem; border-top:1px solid var(--border); }
+    .preset-buttons { display:flex; gap:.4rem; margin:.4rem 0 .7rem; }
+    .preset-btn { border-radius:999px; padding:.3rem .8rem; font-size:.82rem; }
+    .preset-btn.low:hover, .preset-btn.low.active { background:var(--warn); border-color:var(--warn); color:#fff; }
+    .preset-btn.medium:hover, .preset-btn.medium.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .preset-btn.high:hover, .preset-btn.high.active { background:var(--good); border-color:var(--good); color:#fff; }
+    details.advanced-fields summary { color:var(--accent); font-size:.82rem; margin-top:.3rem; }
   </style>
 </head>
 <body>
@@ -66,7 +73,24 @@
               <div><div class="label">Resume wording</div><p>{% if skill.resume_wording %}Mentioned in the stored resume profile summary.{% else %}No resume wording recorded for this skill.{% endif %}</p><div class="label">Affected jobs</div>{% if skill.jobs %}<ul class="list">{% for job in skill.jobs %}<li><a href="/#job-{{ job.id }}">{{ job.title }} · {{ job.company }}</a> · {{ job.status }} ({{ job.requirement }}) · <a href="{{ job.url }}" target="_blank" rel="noopener">posting [open]</a></li>{% endfor %}</ul>{% else %}<p class="muted">No analyzed jobs yet.</p>{% endif %}</div>
             </div>
             {% if skill.market_demand %}<p class="meta"><strong>Market priority:</strong> {{ skill.market_demand.priority_score }} · {{ skill.market_demand.affected_job_count }} affected job{{ "" if skill.market_demand.affected_job_count == 1 else "s" }} · {{ skill.market_demand.required_count }} required / {{ skill.market_demand.preferred_count }} preferred · {{ skill.market_demand.estimated_effort }} effort</p>{% endif %}
-            <details><summary>Correct capability evidence</summary><form data-skill-id="{{ skill.id }}"><label>Current level (0 to 1)<input name="proficiency" type="number" min="0" max="1" step=".05" value="{{ skill.capability.proficiency if skill.capability.proficiency is not none else '' }}"></label><label>Confidence (0 to 1)<input name="confidence" type="number" min="0" max="1" step=".05" value="{{ skill.capability.confidence if skill.capability.confidence is not none else '' }}"></label><label>Evidence<textarea name="evidence" required>{{ skill.capability.evidence }}</textarea></label><button type="submit">Save correction</button><span class="muted" data-message></span></form></details>
+            <div class="confidence-editor">
+              <div class="label">Know you're strong here? Set your confidence directly</div>
+              <div class="preset-buttons">
+                <button type="button" class="preset-btn low" data-level="Low" data-value=".3">Low confidence</button>
+                <button type="button" class="preset-btn medium" data-level="Medium" data-value=".6">Medium confidence</button>
+                <button type="button" class="preset-btn high" data-level="High" data-value=".9">High confidence</button>
+              </div>
+              <form data-skill-id="{{ skill.id }}">
+                <textarea name="evidence" required placeholder="Why -- e.g. a role, a project, years of hands-on use">{{ skill.capability.evidence }}</textarea>
+                <details class="advanced-fields">
+                  <summary>Set exact values instead</summary>
+                  <label>Current level (0 to 1)<input name="proficiency" type="number" min="0" max="1" step=".05" value="{{ skill.capability.proficiency if skill.capability.proficiency is not none else '' }}"></label>
+                  <label>Confidence (0 to 1)<input name="confidence" type="number" min="0" max="1" step=".05" value="{{ skill.capability.confidence if skill.capability.confidence is not none else '' }}"></label>
+                </details>
+                <button type="submit">Save</button>
+                <span class="muted" data-message></span>
+              </form>
+            </div>
           </div>
         </details>
         {% endfor %}
@@ -83,6 +107,18 @@
       const message = form.querySelector("[data-message]");
       message.textContent = response.ok ? "Saved. This remains capability evidence, not proof." : ((await response.json()).error || "Could not save.");
       if (response.ok) window.setTimeout(() => window.location.reload(), 500);
+    }));
+
+    document.querySelectorAll(".preset-btn").forEach((btn) => btn.addEventListener("click", () => {
+      const editor = btn.closest(".confidence-editor");
+      const form = editor.querySelector("form");
+      form.querySelector('[name="proficiency"]').value = btn.dataset.value;
+      form.querySelector('[name="confidence"]').value = btn.dataset.value;
+      editor.querySelectorAll(".preset-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      const evidence = form.querySelector('[name="evidence"]');
+      if (!evidence.value.trim()) {
+        evidence.value = btn.dataset.level + " confidence, marked directly on the Skills page.";
+      }
     }));
 
     const filterInput = document.getElementById("skill-filter");
