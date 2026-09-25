@@ -103,6 +103,10 @@
 </div>
 {% else %}
 <div class="empty-state">
-  No jobs yet — run <code>hanarr search</code> or click "Run search now" above.
+  {% if onboarding and not onboarding.all_done %}
+  Add your resume and search preferences above to get started.
+  {% else %}
+  No jobs yet — click "Run search now" above.
+  {% endif %}
 </div>
 {% endif %}

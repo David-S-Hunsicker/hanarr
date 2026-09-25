@@ -1,0 +1,10 @@
+{% if onboarding and not onboarding.all_done %}
+<div class="banner notice onboarding-banner">
+  <strong>Get set up:</strong>
+  <ul class="checklist">
+    <li class="{{ 'done' if onboarding.resume_done else '' }}"><span class="check">{{ "✓" if onboarding.resume_done else "○" }}</span> <a href="/config?tab=app#resume">Add your resume</a></li>
+    <li class="{{ 'done' if onboarding.preferences_done else '' }}"><span class="check">{{ "✓" if onboarding.preferences_done else "○" }}</span> <a href="/config?tab=preferences">Set your target titles</a></li>
+  </ul>
+  <p class="optional-hint">Optional: <a href="/config?tab=app#provider">set up a local AI model</a> for better match quality — search still works without one, using keyword matching.</p>
+</div>
+{% endif %}

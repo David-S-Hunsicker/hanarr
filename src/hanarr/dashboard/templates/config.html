@@ -108,6 +108,15 @@
     .banner.error ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     .banner.notice { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
     .banner .restart-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+    .onboarding-banner .checklist { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+    .onboarding-banner .checklist li { display: flex; align-items: baseline; gap: 0.4rem; }
+    .onboarding-banner .checklist .check { color: var(--text-muted); width: 1em; }
+    .onboarding-banner .checklist li.done .check { color: var(--status-good); }
+    .onboarding-banner .checklist a { color: var(--accent); font-weight: 550; text-decoration: none; }
+    .onboarding-banner .checklist a:hover { text-decoration: underline; }
+    .onboarding-banner .optional-hint { margin: 0.6rem 0 0; color: var(--text-muted); }
+    .onboarding-banner .optional-hint a { color: var(--accent); text-decoration: none; }
+    .onboarding-banner .optional-hint a:hover { text-decoration: underline; }
     .restart-btn {
       font: inherit;
       font-size: 0.8rem;
@@ -231,6 +240,8 @@
     <a class="tab" href="/applications">Applications</a>
     <a class="tab active" href="/config">Settings</a>
   </nav>
+
+  {% include "_onboarding_banner.html" %}
 
   <div class="tabs">
     <a class="tab {% if active_tab == 'preferences' %}active{% endif %}" href="/config?tab=preferences">Preferences &amp; matching</a>
@@ -421,7 +432,7 @@
         </div>
       </div>
 
-      <fieldset>
+      <fieldset id="resume">
         <legend>Resume</legend>
         <div class="field">
           <label>Current resume</label>
@@ -448,7 +459,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="provider">
         <legend>LLM</legend>
         <div class="banner notice">
           <strong>Local provider status</strong><br>

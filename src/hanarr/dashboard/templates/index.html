@@ -94,6 +94,17 @@
       gap: 0.5rem;
       margin-bottom: 1rem;
     }
+    .banner { border-radius: 8px; padding: 0.7rem 1rem; font-size: 0.85rem; margin-bottom: 1rem; }
+    .banner.notice { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
+    .onboarding-banner .checklist { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+    .onboarding-banner .checklist li { display: flex; align-items: baseline; gap: 0.4rem; }
+    .onboarding-banner .checklist .check { color: var(--text-muted); width: 1em; }
+    .onboarding-banner .checklist li.done .check { color: var(--status-good); }
+    .onboarding-banner .checklist a { color: var(--accent); font-weight: 550; text-decoration: none; }
+    .onboarding-banner .checklist a:hover { text-decoration: underline; }
+    .onboarding-banner .optional-hint { margin: 0.6rem 0 0; color: var(--text-muted); }
+    .onboarding-banner .optional-hint a { color: var(--accent); text-decoration: none; }
+    .onboarding-banner .optional-hint a:hover { text-decoration: underline; }
     .nav-link {
       font-size: 0.85rem;
       font-weight: 550;
@@ -388,6 +399,8 @@
     <a class="tab" href="/applications">Applications</a>
     <a class="tab" href="/config">Settings</a>
   </nav>
+
+  {% include "_onboarding_banner.html" %}
 
   <div class="stats-bar" id="stats-bar-content">
     {% include "_stats_bar.html" %}

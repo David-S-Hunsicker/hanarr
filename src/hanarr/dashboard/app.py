@@ -441,6 +441,22 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         response.set_cookie(PROFILE_COOKIE, str(profile_id), max_age=60 * 60 * 24 * 365, samesite="lax")
         return response
 
+    def _onboarding_status(profile, settings: Settings) -> dict:
+        """Whether the active profile has what it needs for a search to be
+        useful. Computed fresh from existing data on every render -- no
+        persisted "setup complete" flag to drift from reality. Local LLM
+        setup is deliberately not part of `all_done`: search still works
+        (rule-based keyword fallback) without it, it's just better with
+        one, so it's surfaced as an optional suggestion, not a checklist
+        item that blocks the banner from going away."""
+        resume_done = bool(profile.resume_text)
+        preferences_done = bool(settings.preferences.target_titles)
+        return {
+            "resume_done": resume_done,
+            "preferences_done": preferences_done,
+            "all_done": resume_done and preferences_done,
+        }
+
     def _job_list_context(session, profile, status: str | None) -> dict:
         """Everything the jobs list + stats bar + filter pills need --
         shared between the full index page and the /jobs/panel partial the
@@ -497,6 +513,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             "gap_by_job": gap_by_job,
             "projects": [project_status(project) for project in projects],
             "score_impact_by_job": score_impact_by_job,
+            "onboarding": _onboarding_status(profile, settings),
         }
 
     @app.get("/jobs/panel")
@@ -1190,6 +1207,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "provider_diagnostics": provider_diagnostics,
                 "resume_upload": _resume_upload_status(_active_profile_id(request)),
                 "active_profile": _active_profile_summary(request),
+                "onboarding": _onboarding_status_for_request(request),
             },
         )
 
@@ -1200,6 +1218,11 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
             return {"id": profile.id, "name": profile.name}
+
+    def _onboarding_status_for_request(request: Request) -> dict:
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            return _onboarding_status(profile, settings)
 
     def _resume_upload_status(profile_id: int | None = None) -> dict:
         """For server-rendered template context; parsed_at is a raw datetime
@@ -1299,6 +1322,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                     "provider_diagnostics": _provider_diagnostics(),
                     "resume_upload": _resume_upload_status(_active_profile_id(request)),
                     "active_profile": _active_profile_summary(request),
+                    "onboarding": _onboarding_status_for_request(request),
                 },
             )
 

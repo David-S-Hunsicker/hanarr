@@ -1038,3 +1038,58 @@ def test_all_pages_share_identical_shell_layout_values(tmp_path):
 
     h1_sizes = {page: first(r"h1[^{]*\{[^}]*font-size:\s*([\d.]+rem)", html) for page, html in bodies.items()}
     assert len(set(h1_sizes.values())) == 1, f"h1 font-size differs across pages: {h1_sizes}"
+
+
+def test_onboarding_banner_shows_incomplete_items_on_jobs_and_settings(tmp_path):
+    """A brand-new profile (no resume, no target titles) must see a clear
+    "get set up" checklist on both the Jobs page and Settings, not the old
+    empty-state text that referenced a `hanarr search` CLI command a
+    packaged-app user doesn't have."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ("/", "/config"):
+        html = client.get(page).text
+        assert "Get set up" in html
+        assert "Add your resume" in html
+        assert "Set your target titles" in html
+        assert "set up a local AI model" in html
+        assert "hanarr search" not in html
+
+    empty_state = client.get("/").text
+    assert "Add your resume and search preferences above to get started." in empty_state
+
+
+def test_onboarding_banner_hides_once_resume_and_titles_are_set(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.target_titles = ["Software Engineer"]
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Jane Doe. Senior Engineer."
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    for page in ("/", "/config"):
+        html = client.get(page).text
+        assert "Get set up" not in html
+
+    empty_state = client.get("/").text
+    assert 'No jobs yet — click "Run search now" above.' in empty_state
+    assert "hanarr search" not in empty_state
+
+
+def test_onboarding_banner_shows_partial_progress(tmp_path):
+    """Resume uploaded but no target titles yet -- the resume item should
+    show as done, titles as not, and the banner should still be visible
+    since all_done requires both."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Jane Doe. Senior Engineer."
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    html = client.get("/").text
+    assert "Get set up" in html
+    assert '<li class="done"><span class="check">✓</span> <a href="/config?tab=app#resume">Add your resume</a></li>' in html
+    assert '<li class=""><span class="check">○</span> <a href="/config?tab=preferences">Set your target titles</a></li>' in html
