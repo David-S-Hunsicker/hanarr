@@ -441,69 +441,94 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
         response.set_cookie(PROFILE_COOKIE, str(profile_id), max_age=60 * 60 * 24 * 365, samesite="lax")
         return response
 
+    def _job_list_context(session, profile, status: str | None) -> dict:
+        """Everything the jobs list + stats bar + filter pills need --
+        shared between the full index page and the /jobs/panel partial the
+        page polls while a search is running, so the two can never drift
+        out of sync with each other."""
+        query = session.query(JobPosting).filter(JobPosting.profile_id == profile.id)
+        if status:
+            query = query.filter(JobPosting.status == ApplicationStatus(status))
+        jobs = query.order_by(JobPosting.fit_score.desc()).all()
+
+        # "Considered" = every posting fetched and scored (matched or
+        # not), regardless of the current status filter above — this is
+        # a standing total, not affected by which status tab is open.
+        considered_count = (
+            session.query(SeenPosting).filter(SeenPosting.profile_id == profile.id).count()
+        )
+        matched_count = (
+            session.query(JobPosting).filter(JobPosting.profile_id == profile.id).count()
+        )
+
+        status_counts_rows = (
+            session.query(JobPosting.status, func.count(JobPosting.id))
+            .filter(JobPosting.profile_id == profile.id)
+            .group_by(JobPosting.status)
+            .all()
+        )
+        status_counts = {s.value: 0 for s in ApplicationStatus}
+        for status_value, count in status_counts_rows:
+            status_counts[status_value.value] = count
+        gap_by_job = {
+            item["job"]["id"]: item
+            for item in saved_job_gaps(session, profile)
+        }
+        projects = (
+            session.query(Project)
+            .filter(Project.profile_id == profile.id)
+            .order_by(Project.id.desc())
+            .limit(10)
+            .all()
+        )
+        score_impact_by_job = {}
+        for impact in resume_page_status(profile, session)["score_impacts"]:
+            # Resume status returns newest snapshots first; keep that
+            # explanation when a job has been rematched more than once.
+            score_impact_by_job.setdefault(impact["job_id"], impact)
+
+        return {
+            "jobs": jobs,
+            "statuses": [s.value for s in ApplicationStatus],
+            "current_filter": status or "",
+            "considered_count": considered_count,
+            "matched_count": matched_count,
+            "status_counts": status_counts,
+            "gap_by_job": gap_by_job,
+            "projects": [project_status(project) for project in projects],
+            "score_impact_by_job": score_impact_by_job,
+        }
+
+    @app.get("/jobs/panel")
+    def jobs_panel(request: Request, status: str | None = None):
+        """Polled by the dashboard while a search is running so newly
+        matched jobs (and the stats bar / filter counts) appear as they're
+        scored, instead of only after a full page reload once the search
+        finishes."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            context = _job_list_context(session, profile, status)
+        return JSONResponse({
+            "stats_html": templates.env.get_template("_stats_bar.html").render(context),
+            "jobs_html": templates.env.get_template("_jobs_panel.html").render(context),
+        })
+
     @app.get("/")
     def index(request: Request, status: str | None = None):
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
-            query = session.query(JobPosting).filter(JobPosting.profile_id == profile.id)
-            if status:
-                query = query.filter(JobPosting.status == ApplicationStatus(status))
-            jobs = query.order_by(JobPosting.fit_score.desc()).all()
+            context = _job_list_context(session, profile, status)
             reminders = get_due_reminders(session, profile)
-
-            # "Considered" = every posting fetched and scored (matched or
-            # not), regardless of the current status filter above — this is
-            # a standing total, not affected by which status tab is open.
-            considered_count = (
-                session.query(SeenPosting).filter(SeenPosting.profile_id == profile.id).count()
-            )
-            matched_count = (
-                session.query(JobPosting).filter(JobPosting.profile_id == profile.id).count()
-            )
-
-            status_counts_rows = (
-                session.query(JobPosting.status, func.count(JobPosting.id))
-                .filter(JobPosting.profile_id == profile.id)
-                .group_by(JobPosting.status)
-                .all()
-            )
-            status_counts = {s.value: 0 for s in ApplicationStatus}
-            for status_value, count in status_counts_rows:
-                status_counts[status_value.value] = count
-            gap_by_job = {
-                item["job"]["id"]: item
-                for item in saved_job_gaps(session, profile)
-            }
-            projects = (
-                session.query(Project)
-                .filter(Project.profile_id == profile.id)
-                .order_by(Project.id.desc())
-                .limit(10)
-                .all()
-            )
-            score_impact_by_job = {}
-            for impact in resume_page_status(profile, session)["score_impacts"]:
-                # Resume status returns newest snapshots first; keep that
-                # explanation when a job has been rematched more than once.
-                score_impact_by_job.setdefault(impact["job_id"], impact)
 
             return templates.TemplateResponse(
                 request=request,
                 name="index.html",
                 context={
-                    "jobs": jobs,
+                    **context,
                     "reminders": reminders,
-                    "statuses": [s.value for s in ApplicationStatus],
-                    "current_filter": status or "",
                     "search_running": state["search_running"],
                     "last_search_result": state["last_search_result"],
                     "run_id": state["run_id"],
-                    "considered_count": considered_count,
-                    "matched_count": matched_count,
-                    "status_counts": status_counts,
-                    "gap_by_job": gap_by_job,
-                    "projects": [project_status(project) for project in projects],
-                    "score_impact_by_job": score_impact_by_job,
                     "active_profile": {"id": profile.id, "name": profile.name},
                     **_scheduler_status(profile.id),
                 },

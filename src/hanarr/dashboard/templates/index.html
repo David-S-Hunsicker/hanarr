@@ -388,10 +388,8 @@
     <a class="tab" href="/config">Settings</a>
   </nav>
 
-  <div class="stats-bar">
-    <span><strong>{{ considered_count }}</strong> considered</span>
-    <span class="stats-sep">·</span>
-    <span><strong>{{ matched_count }}</strong> matched</span>
+  <div class="stats-bar" id="stats-bar-content">
+    {% include "_stats_bar.html" %}
   </div>
 
   {% if last_search_label or next_search_label %}
@@ -440,114 +438,9 @@
   </div>
   {% endif %}
 
-  <div class="filters">
-    <a href="/" class="{% if not current_filter %}active{% endif %}">All ({{ matched_count }})</a>
-    {% for s in statuses %}
-    <a href="/?status={{ s }}" class="{% if s == current_filter %}active{% endif %}">{{ s }} ({{ status_counts[s] }})</a>
-    {% endfor %}
+  <div id="jobs-panel">
+    {% include "_jobs_panel.html" %}
   </div>
-
-  {% if jobs %}
-  {% if projects %}
-  <section class="reminders">
-    <h2>Coaching projects</h2>
-    <ul>
-      {% for project in projects %}
-      <li><strong>{{ project.title }}</strong> — {{ project.status }} · {{ project.tasks|length }} tasks</li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
-  <div class="job-list">
-    {% for job in jobs %}
-    <div class="job-card" id="job-{{ job.id }}">
-      {% if job.fit_score is not none %}
-        {% if job.fit_score >= 75 %}
-        <div class="score-badge score-high">{{ "%.0f"|format(job.fit_score) }}</div>
-        {% elif job.fit_score >= 50 %}
-        <div class="score-badge score-mid">{{ "%.0f"|format(job.fit_score) }}</div>
-        {% else %}
-        <div class="score-badge score-low">{{ "%.0f"|format(job.fit_score) }}</div>
-        {% endif %}
-      {% else %}
-        <div class="score-badge score-low">–</div>
-      {% endif %}
-
-      <div class="job-main">
-        <div class="job-title-row">
-          <a class="job-title" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.title }}</a>
-          {% if job.posted_at|is_recent_posting %}<span class="pill new-badge">New</span>{% endif %}
-        </div>
-        <div class="job-company">{{ job.company }}</div>
-        {% set impact = score_impact_by_job.get(job.id) %}
-        {% if impact %}
-        <div class="score-impact">Resume impact: {{ "%.0f"|format(impact.before_score) if impact.before_score is not none else "—" }} → {{ "%.0f"|format(impact.after_score) }}{% if impact.delta is not none %} <strong>({{ "%+.0f"|format(impact.delta) }})</strong>{% endif %} · <a href="/resume">why this changed</a></div>
-        {% endif %}
-        <div class="job-meta">
-          {% if job.remote %}<span class="pill remote">Remote</span>{% endif %}
-          {% if job.location %}<span class="pill">{{ job.location }}</span>{% endif %}
-          {% if job.salary_min or job.salary_max %}
-          <span class="pill">
-            {% if job.salary_min and job.salary_max %}${{ "%.0f"|format(job.salary_min) }}–${{ "%.0f"|format(job.salary_max) }}
-            {% elif job.salary_min %}${{ "%.0f"|format(job.salary_min) }}+
-            {% else %}up to ${{ "%.0f"|format(job.salary_max) }}{% endif %}
-          </span>
-          {% endif %}
-          {% set age = job.posted_at|posting_age %}
-          {% if age %}<span class="pill" title="{{ job.posted_at.strftime('%Y-%m-%d') }}">{{ age }}</span>{% endif %}
-          <span class="pill">{{ job.source }}</span>
-          {% set gap = gap_by_job.get(job.id) %}
-          {% if gap %}
-            {% set missing = gap.gap_counts.get('missing', 0) %}
-            {% set partial = gap.gap_counts.get('partial', 0) %}
-            {% if missing or partial %}
-            <span class="pill gap-indicator">{{ missing + partial }} gap{% if missing + partial != 1 %}s{% endif %}</span>
-            {% else %}
-            <span class="pill gap-indicator good">Fit analyzed</span>
-            {% endif %}
-          {% endif %}
-        </div>
-        {% if job.fit_rationale %}
-        <details class="job-rationale">
-          <summary>Why this score</summary>
-          <p>{{ job.fit_rationale }}</p>
-        </details>
-        {% endif %}
-        {% if gap %}
-        <details class="job-gaps">
-          <summary>View fit analysis</summary>
-          <ul>
-            {% for item in gap.gaps %}
-            <li class="{{ item.status }}"><strong>{{ item.skill.name }}</strong> — {{ item.status }}{% if item.evidence %}; {{ item.evidence }}{% endif %}</li>
-            {% if item.status in ["missing", "partial"] %}
-            <li><button type="button" class="project-action" data-job-id="{{ job.id }}" data-skill-id="{{ item.skill.id }}">Start project for {{ item.skill.name }}</button></li>
-            {% endif %}
-            {% endfor %}
-          </ul>
-        </details>
-        {% endif %}
-      </div>
-
-      <div class="job-actions">
-        {% if not gap %}
-        <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
-        {% endif %}
-        <form method="post" action="/jobs/{{ job.id }}/status">
-          <select class="status-select" name="new_status" onchange="this.form.submit()">
-            {% for s in statuses %}
-            <option value="{{ s }}" {% if s == job.status.value %}selected{% endif %}>{{ s }}</option>
-            {% endfor %}
-          </select>
-        </form>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty-state">
-    No jobs yet — run <code>hanarr search</code> or click "Run search now" above.
-  </div>
-  {% endif %}
 
   <script>
     (function () {
@@ -561,41 +454,64 @@
       const barFill = document.getElementById("progress-bar-fill");
       const logEl = document.getElementById("progress-log");
 
-      document.querySelectorAll(".fit-action").forEach((button) => {
-        button.addEventListener("click", function () {
-          button.disabled = true;
-          button.textContent = "Analyzing…";
-          fetch("/api/jobs/" + button.dataset.jobId + "/skill-gaps/analyze", { method: "POST" })
-            .then((response) => {
-              if (!response.ok) throw new Error("analysis failed");
-              return response.json();
-            })
-            .then(() => window.location.reload())
-            .catch(() => {
-              button.disabled = false;
-              button.textContent = "Try fit analysis again";
-            });
+      function bindJobCardHandlers() {
+        // Called on load, and again after every /jobs/panel swap -- a
+        // fresh innerHTML has none of the listeners bound below.
+        document.querySelectorAll(".fit-action").forEach((button) => {
+          button.addEventListener("click", function () {
+            button.disabled = true;
+            button.textContent = "Analyzing…";
+            fetch("/api/jobs/" + button.dataset.jobId + "/skill-gaps/analyze", { method: "POST" })
+              .then((response) => {
+                if (!response.ok) throw new Error("analysis failed");
+                return response.json();
+              })
+              .then(() => window.location.reload())
+              .catch(() => {
+                button.disabled = false;
+                button.textContent = "Try fit analysis again";
+              });
 
+          });
         });
-      });
-      document.querySelectorAll(".project-action").forEach((button) => {
-        button.addEventListener("click", function () {
-          button.disabled = true;
-          fetch("/api/coaching-projects", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-              mode: "posting_specific",
-              job_id: Number(button.dataset.jobId),
-              skill_id: Number(button.dataset.skillId)
-            })
-          }).then((response) => {
-            if (!response.ok) throw new Error("project creation failed");
-            return response.json();
-          }).then(() => window.location.reload())
-            .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
+        document.querySelectorAll(".project-action").forEach((button) => {
+          button.addEventListener("click", function () {
+            button.disabled = true;
+            fetch("/api/coaching-projects", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                mode: "posting_specific",
+                job_id: Number(button.dataset.jobId),
+                skill_id: Number(button.dataset.skillId)
+              })
+            }).then((response) => {
+              if (!response.ok) throw new Error("project creation failed");
+              return response.json();
+            }).then(() => window.location.reload())
+              .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
+          });
         });
-      });
+      }
+      bindJobCardHandlers();
+
+      const statsBarEl = document.getElementById("stats-bar-content");
+      const jobsPanelEl = document.getElementById("jobs-panel");
+      let lastRenderedMatchedCount = null;
+
+      function refreshJobsPanel() {
+        const params = new URLSearchParams(window.location.search);
+        const statusFilter = params.get("status") || "";
+        const url = statusFilter ? "/jobs/panel?status=" + encodeURIComponent(statusFilter) : "/jobs/panel";
+        fetch(url)
+          .then((r) => r.json())
+          .then((data) => {
+            statsBarEl.innerHTML = data.stats_html;
+            jobsPanelEl.innerHTML = data.jobs_html;
+            bindJobCardHandlers();
+          })
+          .catch(() => {});
+      }
 
       let seenRunId = {{ run_id }};
       let pollTimer = null;
@@ -640,6 +556,15 @@
         fetch("/search/status")
           .then((r) => r.json())
           .then((data) => {
+            // matched_count is this run's live in-memory counter (resets
+            // each run) -- refresh the jobs list + stats/filter counts as
+            // soon as it changes, instead of waiting for the run to finish
+            // and the page to fully reload.
+            if (lastRenderedMatchedCount !== null && data.matched_count !== lastRenderedMatchedCount) {
+              refreshJobsPanel();
+            }
+            lastRenderedMatchedCount = data.matched_count;
+
             if (data.search_running) {
               searchBtn.disabled = true;
               searchBtn.textContent = "Search running…";

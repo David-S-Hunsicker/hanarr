@@ -503,6 +503,67 @@ def test_index_shows_considered_matched_and_per_status_counts(tmp_path):
     assert "All (3)" in html
 
 
+def test_jobs_panel_matches_index_page_content(tmp_path):
+    """"When a new job is scored the numbers and page should automatically
+    update" -- the dashboard polls /jobs/panel while a search runs and
+    swaps its stats_html/jobs_html into the page instead of waiting for a
+    full reload. Its content must exactly match what the full index page
+    would render for the same filter, or the two would visibly drift."""
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(SeenPosting(profile_id=profile.id, source="test", external_id="0"))
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="0", company="Acme",
+                title="Backend Engineer", url="u", fit_score=80, status=ApplicationStatus.NEW,
+            )
+        )
+        session.commit()
+
+    client = TestClient(create_app(settings))
+
+    panel = client.get("/jobs/panel").json()
+    assert "Backend Engineer" in panel["jobs_html"]
+    assert "1" in panel["stats_html"] and "considered" in panel["stats_html"]
+
+    index_html = client.get("/").text
+    assert "Backend Engineer" in index_html
+    # The partial's fragments must be a subset of what index.html rendered
+    # for the same data, proving the two share the same underlying context
+    # rather than two independently-maintained copies that could drift.
+    assert panel["jobs_html"].strip() in index_html
+
+
+def test_jobs_panel_respects_status_filter(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="0", company="Acme",
+                title="New Job", url="u", fit_score=80, status=ApplicationStatus.NEW,
+            )
+        )
+        session.add(
+            JobPosting(
+                profile_id=profile.id, source="test", external_id="1", company="Acme",
+                title="Applied Job", url="u", fit_score=80, status=ApplicationStatus.APPLIED,
+            )
+        )
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    panel = client.get("/jobs/panel", params={"status": "applied"}).json()
+
+    assert "Applied Job" in panel["jobs_html"]
+    assert "New Job" not in panel["jobs_html"]
+
+
 def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     settings.matching.min_fit_score = 0
