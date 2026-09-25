@@ -32,6 +32,8 @@
     .diff-del { background:rgba(163,51,51,.12); color:#a33; }
     .diff-hunk { color:var(--accent); opacity:.85; }
     .diff-ctx { color:var(--muted); }
+    .pill-list { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.3rem; }
+    .extraction-warning { border-left:4px solid var(--warn); background:var(--page); border-radius:6px; padding:.6rem .8rem; margin-top:.9rem; font-size:.85rem; }
   </style>
 </head>
 <body>
@@ -68,12 +70,28 @@
     <div class="card">
       {% if resume.extracted_profile.summary %}<p>{{ resume.extracted_profile.summary }}</p>{% endif %}
       <div class="grid">
-        <div><div class="label">Titles</div><p>{{ resume.extracted_profile.titles|join(", ") or "Not extracted" }}</p></div>
-        <div><div class="label">Seniority</div><p>{{ resume.extracted_profile.seniority or "Not extracted" }}{% if resume.extracted_profile.years_experience %} · {{ resume.extracted_profile.years_experience }} years{% endif %}</p></div>
-        <div><div class="label">Skills</div><p>{{ resume.extracted_profile.skills|join(", ") or "Not extracted" }}</p></div>
-        <div><div class="label">Industries</div><p>{{ resume.extracted_profile.industries|join(", ") or "Not extracted" }}</p></div>
+        <div>
+          <div class="label">Titles</div>
+          {% if resume.extracted_profile.titles %}<div class="pill-list">{% for title in resume.extracted_profile.titles %}<span class="pill">{{ title }}</span>{% endfor %}</div>{% else %}<p class="muted">Not extracted</p>{% endif %}
+        </div>
+        <div>
+          <div class="label">Seniority</div>
+          <p>{{ resume.extracted_profile.seniority or "Not extracted" }}{% if resume.extracted_profile.years_experience %} · {{ resume.extracted_profile.years_experience }} years{% endif %}</p>
+        </div>
+        <div>
+          <div class="label">Industries</div>
+          {% if resume.extracted_profile.industries %}<div class="pill-list">{% for industry in resume.extracted_profile.industries %}<span class="pill">{{ industry }}</span>{% endfor %}</div>{% else %}<p class="muted">Not extracted</p>{% endif %}
+        </div>
       </div>
-      {% if resume.extracted_profile._extraction_error %}<p class="muted">Extraction fallback: {{ resume.extracted_profile._extraction_error }}</p>{% endif %}
+      <div style="margin-top:.9rem;">
+        <div class="label">Skills ({{ resume.extracted_profile.skills|length }}) &middot; <a href="/skills">view on Skills page</a></div>
+        {% if resume.extracted_profile.skills %}<div class="pill-list">{% for skill in resume.extracted_profile.skills %}<span class="pill">{{ skill }}</span>{% endfor %}</div>{% else %}<p class="muted">Not extracted</p>{% endif %}
+      </div>
+      {% if resume.extracted_profile._extraction_error %}
+      <div class="extraction-warning">
+        <strong>Structured extraction failed on the last parse</strong> — titles/skills/seniority above may be stale or empty; job matching still uses the raw resume text. {{ resume.extracted_profile._extraction_error }}
+      </div>
+      {% endif %}
     </div>
   </section>
 

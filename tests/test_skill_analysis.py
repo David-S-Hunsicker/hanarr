@@ -12,6 +12,7 @@ from hanarr.models import (
     JobSkillRequirement,
     ProfileSkill,
     Project,
+    ProjectEvaluation,
     ProjectMode,
     ProjectSkill,
     ProvenSkill,
@@ -204,6 +205,53 @@ def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_pa
     )
     assert updated.status_code == 200
     assert updated.json()["proven"] is False
+
+
+def test_skills_page_groups_proven_and_unproven_and_has_a_filter_box(tmp_path):
+    """Regression test: with dozens of resume-extracted skills, one full
+    card per skill made the page an unscannable wall -- skills must be
+    grouped (proven vs not) with a compact collapsed row, and a filter box
+    must be present to narrow by name."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_summary_json = json.dumps({"skills": ["Python", "SQL"]})
+        python_skill = Skill(name="Python", slug="python")
+        sql_skill = Skill(name="SQL", slug="sql")
+        session.add_all([python_skill, sql_skill])
+        session.flush()
+        project = Project(
+            profile_id=profile.id, title="Python API project",
+            mode=ProjectMode.REUSABLE_SKILL, target_outcome="Working API",
+        )
+        project.skills.append(ProjectSkill(skill_id=python_skill.id, target_level=.9))
+        session.add(project)
+        session.commit()
+        python_skill_id, project_id = python_skill.id, project.id
+
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        evaluation = ProjectEvaluation(
+            submission_id=1, attempt_number=1, evaluator="deterministic", passed=True,
+            score=90.0, outcome="passed",
+        )
+        session.add(evaluation)
+        session.flush()
+        session.add(ProvenSkill(
+            profile_id=profile.id, skill_id=python_skill_id, project_id=project_id,
+            evaluation_id=evaluation.id, evidence="Shipped a production API",
+        ))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    page = client.get("/skills").text
+    assert page.count('id="skill-filter"') == 1
+
+    proven_section = page.split("Not proven yet")[0]
+    assert "Python" in proven_section
+    unproven_section = page.split("Not proven yet")[1]
+    assert "SQL" in unproven_section
 
 
 def test_skill_override_requires_evidence_and_never_creates_proof(tmp_path):

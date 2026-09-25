@@ -147,3 +147,35 @@ def test_resume_page_explains_matcher_source_profile_and_score_impact(tmp_path):
     assert "Backend Engineer" in response.text
     assert "Builds reliable services." in response.text
     assert "No approved resume has been rematched yet." in response.text
+    # Titles/skills/industries render as individual pills, not one long
+    # comma-joined line -- important once a real resume yields dozens of
+    # skills (see resume.html's .pill-list).
+    assert '<div class="pill-list"><span class="pill">Backend Engineer</span></div>' in response.text
+    assert '<span class="pill">Python</span>' in response.text
+    assert '<span class="pill">SQL</span>' in response.text
+    assert '<span class="pill">SaaS</span>' in response.text
+
+
+def test_resume_page_shows_extraction_error_as_a_visible_warning(tmp_path):
+    """Regression test: an extraction failure used to be a single muted
+    footnote line, easy to miss -- must render as a distinct warning
+    calling out that titles/skills above may be stale."""
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.llm.provider = "none"
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Backend engineer."
+        profile.resume_summary_json = json.dumps({
+            "titles": [], "years_experience": None, "skills": [], "industries": [],
+            "seniority": None, "summary": "",
+            "_extraction_error": "Client error '404 Not Found' for url 'http://127.0.0.1:11434/api/chat'",
+        })
+        session.add(ResumeVersion(profile_id=profile.id, content=profile.resume_text, is_active=True))
+        session.commit()
+
+    response = TestClient(create_app(settings)).get("/resume")
+    assert response.status_code == 200
+    assert '<div class="extraction-warning">' in response.text
+    assert "Structured extraction failed on the last parse" in response.text
+    assert "404 Not Found" in response.text

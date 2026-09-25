@@ -9,29 +9,69 @@
     @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; } }
     * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,sans-serif; }
     @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
-    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1.05rem; margin-bottom:.75rem; } h3 { font-size:1rem; }
+    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; } h2 { font-size:1rem; margin-bottom:.6rem; display:flex; align-items:baseline; gap:.5rem; } h2 .group-count { font-size:.8rem; font-weight:500; color:var(--muted); }
     .header { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; } .muted, .meta { color:var(--muted); }
     .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.7rem; } .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; } .nav a:hover { border-color:var(--accent); color:var(--accent); } .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-    .section { margin:1.5rem 0; } .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:.7rem 0; } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:.7rem; } .label { font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; } .good { color:var(--good); } .warn { color:var(--warn); } .list { margin:.4rem 0 0; padding-left:1.1rem; } details { margin-top:.7rem; } summary { cursor:pointer; color:var(--accent); } form { display:grid; gap:.45rem; max-width:34rem; margin-top:.8rem; } input, textarea, button { font:inherit; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); } textarea { min-height:4rem; } button { cursor:pointer; justify-self:start; } .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+    .section { margin:1.5rem 0; } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:.7rem; } .label { font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; } .good { color:var(--good); } .warn { color:var(--warn); } .list { margin:.4rem 0 0; padding-left:1.1rem; } summary { cursor:pointer; } form { display:grid; gap:.45rem; max-width:34rem; margin-top:.8rem; } input, textarea, button { font:inherit; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); } textarea { min-height:4rem; } button { cursor:pointer; justify-self:start; } .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
+
+    .filter-bar { margin:1rem 0; }
+    .filter-bar input { width:100%; max-width:24rem; padding:.5rem .7rem; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); }
+    .skill-group { margin-bottom:1.5rem; }
+    .skill-row { background:var(--surface); border:1px solid var(--border); border-radius:8px; margin:.4rem 0; overflow:hidden; }
+    .skill-row summary { list-style:none; padding:.55rem .8rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .skill-row summary::-webkit-details-marker { display:none; }
+    .skill-row summary::before { content:"›"; display:inline-block; width:.9em; color:var(--muted); transition:transform .12s ease; }
+    .skill-row[open] summary::before { transform:rotate(90deg); }
+    .skill-row .skill-name { font-weight:600; margin-right:auto; }
+    .skill-row .skill-hint { font-size:.78rem; color:var(--muted); }
+    .skill-row .skill-body { padding:0 1rem 1rem; border-top:1px solid var(--border); }
+    .skill-row.no-match { display:none; }
+    .skill-group.no-visible-rows { display:none; }
   </style>
 </head>
 <body>
   <div class="header"><h1>Skills</h1><span class="meta">Capability, evidence, and wording are tracked separately.</span>{% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}</div>
   <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a class="active" href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
   <p class="muted">A resume mention is not proof. A project becomes proven only after a passing evaluation; corrections below update capability evidence without creating a proven-skill record.</p>
+
+  {% if skills %}
+  <div class="filter-bar">
+    <input type="text" id="skill-filter" placeholder="Filter skills by name… ({{ skills|length }} total)" autocomplete="off">
+  </div>
+  {% endif %}
+
   <section class="section">
     {% if skills %}
-      {% for skill in skills %}
-      <article class="card">
-        <h2>{{ skill.name }} {% if skill.proven %}<span class="pill good">Proven</span>{% else %}<span class="pill warn">Not proven</span>{% endif %}</h2>
-        <div class="grid">
-          <div><div class="label">Capability</div><p>{% if skill.capability.proficiency is not none %}Current level: {{ "%.0f"|format(skill.capability.proficiency * 100) }}%{% else %}Current level: not recorded{% endif %}<br>{% if skill.capability.confidence is not none %}Confidence: {{ "%.0f"|format(skill.capability.confidence * 100) }}%{% else %}Confidence: not recorded{% endif %}<br><span class="muted">Source: {{ skill.capability.source }}</span></p><p>{{ skill.capability.evidence or "No capability evidence recorded." }}</p></div>
-          <div><div class="label">Project evidence</div>{% if skill.projects %}<ul class="list">{% for project in skill.projects %}<li><a href="/coaching">{{ project.title }}</a> · {{ project.status }}{% if project.target_level is not none %} · target {{ "%.0f"|format(project.target_level * 100) }}%{% endif %}{% if project.evidence %}<br><span class="muted">{{ project.evidence }}</span>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="muted">No coaching project evidence yet.</p>{% endif %}{% if skill.proven %}<p class="good"><strong>Passed evidence:</strong> {{ skill.proven.evidence }}</p>{% endif %}</div>
-          <div><div class="label">Resume wording</div><p>{% if skill.resume_wording %}Mentioned in the stored resume profile summary.{% else %}No resume wording recorded for this skill.{% endif %}</p><div class="label">Affected jobs</div>{% if skill.jobs %}<ul class="list">{% for job in skill.jobs %}<li><a href="/#job-{{ job.id }}">{{ job.title }} · {{ job.company }}</a> · {{ job.status }} ({{ job.requirement }}) · <a href="{{ job.url }}" target="_blank" rel="noopener">posting [open]</a></li>{% endfor %}</ul>{% else %}<p class="muted">No analyzed jobs yet.</p>{% endif %}</div>
-        </div>
-        {% if skill.market_demand %}<p class="meta"><strong>Market priority:</strong> {{ skill.market_demand.priority_score }} · {{ skill.market_demand.affected_job_count }} affected job{{ "" if skill.market_demand.affected_job_count == 1 else "s" }} · {{ skill.market_demand.required_count }} required / {{ skill.market_demand.preferred_count }} preferred · {{ skill.market_demand.estimated_effort }} effort</p>{% endif %}
-        <details><summary>Correct capability evidence</summary><form data-skill-id="{{ skill.id }}"><label>Current level (0 to 1)<input name="proficiency" type="number" min="0" max="1" step=".05" value="{{ skill.capability.proficiency if skill.capability.proficiency is not none else '' }}"></label><label>Confidence (0 to 1)<input name="confidence" type="number" min="0" max="1" step=".05" value="{{ skill.capability.confidence if skill.capability.confidence is not none else '' }}"></label><label>Evidence<textarea name="evidence" required>{{ skill.capability.evidence }}</textarea></label><button type="submit">Save correction</button><span class="muted" data-message></span></form></details>
-      </article>
+      {% set proven_skills = skills|selectattr("proven")|list %}
+      {% set unproven_skills = skills|rejectattr("proven")|list %}
+      {% for group_name, group_skills in [("Proven", proven_skills), ("Not proven yet", unproven_skills)] %}
+      {% if group_skills %}
+      <div class="skill-group" data-group>
+        <h2>{{ group_name }} <span class="group-count">({{ group_skills|length }})</span></h2>
+        {% for skill in group_skills %}
+        <details class="skill-row" data-skill-name="{{ skill.name|lower }}">
+          <summary>
+            <span class="skill-name">{{ skill.name }}</span>
+            {% if skill.capability.proficiency is not none %}<span class="pill">{{ "%.0f"|format(skill.capability.proficiency * 100) }}%</span>{% endif %}
+            <span class="pill {{ 'good' if skill.proven else 'warn' }}">{{ 'Proven' if skill.proven else 'Not proven' }}</span>
+            <span class="skill-hint">
+              {% if skill.projects %}{{ skill.projects|length }} project{{ "" if skill.projects|length == 1 else "s" }}{% endif %}
+              {% if skill.jobs %}{% if skill.projects %} · {% endif %}{{ skill.jobs|length }} job{{ "" if skill.jobs|length == 1 else "s" }}{% endif %}
+            </span>
+          </summary>
+          <div class="skill-body">
+            <div class="grid">
+              <div><div class="label">Capability</div><p>{% if skill.capability.proficiency is not none %}Current level: {{ "%.0f"|format(skill.capability.proficiency * 100) }}%{% else %}Current level: not recorded{% endif %}<br>{% if skill.capability.confidence is not none %}Confidence: {{ "%.0f"|format(skill.capability.confidence * 100) }}%{% else %}Confidence: not recorded{% endif %}<br><span class="muted">Source: {{ skill.capability.source }}</span></p><p>{{ skill.capability.evidence or "No capability evidence recorded." }}</p></div>
+              <div><div class="label">Project evidence</div>{% if skill.projects %}<ul class="list">{% for project in skill.projects %}<li><a href="/coaching">{{ project.title }}</a> · {{ project.status }}{% if project.target_level is not none %} · target {{ "%.0f"|format(project.target_level * 100) }}%{% endif %}{% if project.evidence %}<br><span class="muted">{{ project.evidence }}</span>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="muted">No coaching project evidence yet.</p>{% endif %}{% if skill.proven %}<p class="good"><strong>Passed evidence:</strong> {{ skill.proven.evidence }}</p>{% endif %}</div>
+              <div><div class="label">Resume wording</div><p>{% if skill.resume_wording %}Mentioned in the stored resume profile summary.{% else %}No resume wording recorded for this skill.{% endif %}</p><div class="label">Affected jobs</div>{% if skill.jobs %}<ul class="list">{% for job in skill.jobs %}<li><a href="/#job-{{ job.id }}">{{ job.title }} · {{ job.company }}</a> · {{ job.status }} ({{ job.requirement }}) · <a href="{{ job.url }}" target="_blank" rel="noopener">posting [open]</a></li>{% endfor %}</ul>{% else %}<p class="muted">No analyzed jobs yet.</p>{% endif %}</div>
+            </div>
+            {% if skill.market_demand %}<p class="meta"><strong>Market priority:</strong> {{ skill.market_demand.priority_score }} · {{ skill.market_demand.affected_job_count }} affected job{{ "" if skill.market_demand.affected_job_count == 1 else "s" }} · {{ skill.market_demand.required_count }} required / {{ skill.market_demand.preferred_count }} preferred · {{ skill.market_demand.estimated_effort }} effort</p>{% endif %}
+            <details><summary>Correct capability evidence</summary><form data-skill-id="{{ skill.id }}"><label>Current level (0 to 1)<input name="proficiency" type="number" min="0" max="1" step=".05" value="{{ skill.capability.proficiency if skill.capability.proficiency is not none else '' }}"></label><label>Confidence (0 to 1)<input name="confidence" type="number" min="0" max="1" step=".05" value="{{ skill.capability.confidence if skill.capability.confidence is not none else '' }}"></label><label>Evidence<textarea name="evidence" required>{{ skill.capability.evidence }}</textarea></label><button type="submit">Save correction</button><span class="muted" data-message></span></form></details>
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% endfor %}
     {% else %}<div class="empty">No skills are available yet. Upload or re-parse a resume, or analyze a saved job.</div>{% endif %}
   </section>
@@ -44,6 +84,23 @@
       message.textContent = response.ok ? "Saved. This remains capability evidence, not proof." : ((await response.json()).error || "Could not save.");
       if (response.ok) window.setTimeout(() => window.location.reload(), 500);
     }));
+
+    const filterInput = document.getElementById("skill-filter");
+    if (filterInput) {
+      const rows = Array.from(document.querySelectorAll(".skill-row"));
+      const groups = Array.from(document.querySelectorAll(".skill-group"));
+      filterInput.addEventListener("input", () => {
+        const query = filterInput.value.trim().toLowerCase();
+        rows.forEach((row) => {
+          const matches = !query || row.dataset.skillName.includes(query);
+          row.classList.toggle("no-match", !matches);
+        });
+        groups.forEach((group) => {
+          const hasVisible = group.querySelector(".skill-row:not(.no-match)") !== null;
+          group.classList.toggle("no-visible-rows", !hasVisible);
+        });
+      });
+    }
   </script>
 </body>
 </html>
