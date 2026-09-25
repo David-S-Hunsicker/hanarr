@@ -14,7 +14,7 @@ from .config import DEFAULT_CONFIG_PATH, load_settings, save_settings_to_yaml
 from .db import get_or_create_profile, make_session_factory
 from .llm import build_llm_client
 from .models import ApplicationStatus, JobPosting, ResumeVersion, utc_now
-from .pipeline import run_search_cycle
+from .pipeline import LLMUnavailableError, run_search_cycle
 from .reminders import (
     deliver_reminders,
     get_due_reminders,
@@ -93,9 +93,12 @@ def search(ctx: click.Context):
     settings = load_settings(ctx.obj["config_path"])
     session_factory = make_session_factory(settings)
     llm = build_llm_client(settings.llm)
-    with session_factory() as session:
-        profile = get_or_create_profile(session, settings)
-        n = run_search_cycle(session, settings, profile, llm)
+    try:
+        with session_factory() as session:
+            profile = get_or_create_profile(session, settings)
+            n = run_search_cycle(session, settings, profile, llm)
+    except LLMUnavailableError as exc:
+        raise click.ClickException(str(exc))
     console.print(f"[green]Search complete.[/green] {n} new posting(s) matched and stored.")
 
 

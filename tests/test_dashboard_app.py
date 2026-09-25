@@ -206,6 +206,35 @@ def _make_isolated_settings(tmp_path):
     return settings
 
 
+def test_manual_search_surfaces_a_clean_error_when_llm_is_unavailable(tmp_path, monkeypatch):
+    """A configured-but-unreachable LLM must show a clear, specific error
+    on the dashboard -- not a generic "check server logs" guess, and not
+    silently proceed to fall back to rule-based scoring on every posting."""
+    settings = _make_isolated_settings(tmp_path)
+
+    def _raise_unavailable(session, settings, profile, llm, **kwargs):
+        raise pipeline_mod.LLMUnavailableError(
+            "Ollama isn't reachable at http://127.0.0.1:11434 — start Ollama and try again."
+        )
+
+    monkeypatch.setattr(app_mod, "run_search_cycle", _raise_unavailable)
+
+    app = create_app(settings)
+    client = TestClient(app)
+
+    client.post("/search", follow_redirects=False)
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/search/status").json()
+        if not s["search_running"]:
+            final = s
+            break
+
+    assert final is not None, "search did not finish in time"
+    assert "Ollama isn't reachable" in final["last_search_result"]
+
+
 def test_profiles_page_lists_and_creates_and_switches(tmp_path):
     """"We do need to add profiles for multiple people" -- local profile
     slots, no auth. Creating one and switching sets a cookie the rest of
