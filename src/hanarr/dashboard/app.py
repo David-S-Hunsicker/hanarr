@@ -95,6 +95,7 @@ from .config_form import (
     apply_preferences_form,
     apply_schedule_reminders_form,
     apply_updates_form,
+    persist_secrets_from_form,
     save_settings_to_yaml,
     settings_to_dict,
     validate_and_build,
@@ -1460,6 +1461,7 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
             setattr(settings, field, getattr(new_settings, field))
 
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
+        persist_secrets_from_form(form_dict)
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
 
     @app.post("/config/suggest-keywords")

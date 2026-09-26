@@ -15,6 +15,8 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
+from . import secrets_store
+
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 EXAMPLE_CONFIG_PATH = Path("config.example.yaml")
 
@@ -236,11 +238,15 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
 
     settings = Settings(**raw)
 
-    # Secrets come from the environment, never from config.yaml, so a
-    # config file is always safe to hand to a friend or commit by mistake
-    # minus the personal preferences it already excludes.
+    # Secrets never live in config.yaml, so a config file is always safe to
+    # hand to a friend or commit by mistake minus the personal preferences
+    # it already excludes. The OS credential store (see secrets_store.py),
+    # written to via the Settings UI, is checked first; a plain .env
+    # variable is the fallback for anyone who set one up before that UI
+    # existed, or who prefers managing it that way.
+    anthropic_key = secrets_store.get_secret(secrets_store.ANTHROPIC_API_KEY) or os.getenv("ANTHROPIC_API_KEY")
     if settings.llm.provider == "anthropic" and not settings.llm.api_key:
-        settings.llm.api_key = os.getenv("ANTHROPIC_API_KEY")
+        settings.llm.api_key = anthropic_key
     for route in (
         settings.agents.default,
         settings.agents.profiler,
@@ -251,9 +257,11 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
         *settings.agents.tasks.values(),
     ):
         if route.provider == "anthropic" and not route.api_key:
-            route.api_key = os.getenv("ANTHROPIC_API_KEY")
+            route.api_key = anthropic_key
     if settings.reminders.email.enabled and not settings.reminders.email.smtp_password:
-        settings.reminders.email.smtp_password = os.getenv("SMTP_PASSWORD")
+        settings.reminders.email.smtp_password = (
+            secrets_store.get_secret(secrets_store.SMTP_PASSWORD) or os.getenv("SMTP_PASSWORD")
+        )
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     return settings

@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from .. import secrets_store
 from ..config import Settings
 from ..config import save_settings_to_yaml as _save_settings_to_yaml
 from ..matching import EMPLOYMENT_TYPES, SENIORITY_LEVELS
@@ -105,6 +106,15 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     dashboard["host"] = form.get("dashboard_host", dashboard["host"])
     dashboard["port"] = _int_or_none(form.get("dashboard_port")) or dashboard["port"]
 
+    # The key itself is never stored in config.yaml (see secrets_store.py) --
+    # only reflected here in memory so the rest of Settings validates and the
+    # running app has it immediately. persist_secrets_from_form() is what
+    # actually writes it to the OS credential store once the save succeeds.
+    if "anthropic_api_key_clear" in form:
+        llm["api_key"] = None
+    elif form.get("anthropic_api_key", "").strip():
+        llm["api_key"] = form["anthropic_api_key"].strip()
+
     data["profile"] = profile
     data["llm"] = llm
     data["dashboard"] = dashboard
@@ -146,10 +156,32 @@ def apply_schedule_reminders_form(current: dict[str, Any], form: dict[str, str])
     email["smtp_user"] = form.get("smtp_user", email["smtp_user"])
     email["to_address"] = form.get("to_address", email["to_address"])
 
+    # Same OS-credential-store handoff as the Anthropic key above -- never
+    # written to config.yaml, only reflected in memory here.
+    if "smtp_password_clear" in form:
+        email["smtp_password"] = None
+    elif form.get("smtp_password", "").strip():
+        email["smtp_password"] = form["smtp_password"].strip()
+
     reminders["email"] = email
     data["schedule"] = schedule
     data["reminders"] = reminders
     return data
+
+
+def persist_secrets_from_form(form: dict[str, str]) -> None:
+    """Writes/clears secrets in the OS credential store as a side effect of
+    a successful config save. Called separately from apply_*_form (which
+    stay pure dict transforms) once validation has actually passed."""
+    if "anthropic_api_key_clear" in form:
+        secrets_store.clear_secret(secrets_store.ANTHROPIC_API_KEY)
+    elif form.get("anthropic_api_key", "").strip():
+        secrets_store.set_secret(secrets_store.ANTHROPIC_API_KEY, form["anthropic_api_key"].strip())
+
+    if "smtp_password_clear" in form:
+        secrets_store.clear_secret(secrets_store.SMTP_PASSWORD)
+    elif form.get("smtp_password", "").strip():
+        secrets_store.set_secret(secrets_store.SMTP_PASSWORD, form["smtp_password"].strip())
 
 
 def _int_or_none(raw: str | None) -> int | None:

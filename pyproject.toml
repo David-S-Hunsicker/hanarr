@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.6",
     "apscheduler>=3.10",
     "tzlocal>=5.0",
+    "keyring>=24.0",
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "jinja2>=3.1",

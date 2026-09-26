@@ -544,7 +544,23 @@
             <input type="number" id="llm_timeout_seconds" name="llm_timeout_seconds" value="{{ settings.llm.timeout_seconds|int }}">
           </div>
         </div>
-        <div class="hint">The Anthropic API key is read from ANTHROPIC_API_KEY in .env, never edited here.</div>
+        <div class="field">
+          <label for="anthropic_api_key">Anthropic API key</label>
+          <input type="password" id="anthropic_api_key" name="anthropic_api_key" autocomplete="off"
+                 placeholder="{% if settings.llm.api_key %}•••• (already set){% else %}sk-ant-...{% endif %}">
+          {% if settings.llm.api_key %}
+          <div class="checkbox-row">
+            <input type="checkbox" id="anthropic_api_key_clear" name="anthropic_api_key_clear">
+            <label for="anthropic_api_key_clear">Clear the stored key</label>
+          </div>
+          {% endif %}
+          <div class="hint">
+            Handed off to your operating system's own credential manager (e.g. Windows Credential
+            Manager) as soon as you save -- Hanarr itself never stores this value anywhere: not in
+            config.yaml, not in its database, not in any file it writes. Only your OS can unlock it,
+            and only for your own logged-in account. Leave blank to keep whatever key is already saved.
+          </div>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -696,7 +712,23 @@
             <input type="text" id="to_address" name="to_address" value="{{ settings.reminders.email.to_address }}">
           </div>
         </div>
-        <div class="hint">SMTP password is read from SMTP_PASSWORD in .env, never edited here.</div>
+        <div class="field">
+          <label for="smtp_password">SMTP password</label>
+          <input type="password" id="smtp_password" name="smtp_password" autocomplete="off"
+                 placeholder="{% if settings.reminders.email.smtp_password %}•••• (already set){% else %}Password{% endif %}">
+          {% if settings.reminders.email.smtp_password %}
+          <div class="checkbox-row">
+            <input type="checkbox" id="smtp_password_clear" name="smtp_password_clear">
+            <label for="smtp_password_clear">Clear the stored password</label>
+          </div>
+          {% endif %}
+          <div class="hint">
+            Handed off to your operating system's own credential manager (e.g. Windows Credential
+            Manager) as soon as you save -- Hanarr itself never stores this value anywhere: not in
+            config.yaml, not in its database, not in any file it writes. Only your OS can unlock it,
+            and only for your own logged-in account. Leave blank to keep whatever password is already saved.
+          </div>
+        </div>
       </fieldset>
 
       <div class="save-row"><button type="submit" class="save">Save scheduling &amp; reminders</button></div>

@@ -6,6 +6,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+import keyring
+import keyring.errors
+import pytest
+
 import hanarr.dashboard.app as app_mod
 import hanarr.pipeline as pipeline_mod
 from hanarr.config import Settings
@@ -1460,7 +1464,11 @@ def test_schedule_form_rejects_an_interval_below_the_safety_minimum(tmp_path):
     assert "search_interval_hours" in response.text
 
 
-def test_schedule_form_saves_daily_mode_and_time_of_day(tmp_path):
+def test_schedule_form_saves_daily_mode_and_time_of_day(tmp_path, monkeypatch):
+    # save_settings_to_yaml writes to a relative "config.yaml" -- chdir into
+    # tmp_path so a successful save never touches the real repo checkout's
+    # config.yaml.
+    monkeypatch.chdir(tmp_path)
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
@@ -1506,3 +1514,149 @@ def test_schedule_tab_shows_local_timezone_next_to_the_daily_time_field(tmp_path
     assert 'id="search_time_of_day"' in html
     import tzlocal
     assert str(tzlocal.get_localzone()) in html
+
+
+class _FakeKeyringBackend(keyring.backend.KeyringBackend):
+    """In-memory stand-in for the OS credential store, so these tests never
+    touch the real Windows Credential Manager / macOS Keychain."""
+    priority = 1
+
+    def __init__(self):
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service, username):
+        return self._store.get((service, username))
+
+    def set_password(self, service, username, password):
+        self._store[(service, username)] = password
+
+    def delete_password(self, service, username):
+        if (service, username) not in self._store:
+            raise keyring.errors.PasswordDeleteError("not found")
+        del self._store[(service, username)]
+
+
+@pytest.fixture
+def fake_keyring(monkeypatch):
+    backend = _FakeKeyringBackend()
+    monkeypatch.setattr(keyring, "get_password", backend.get_password)
+    monkeypatch.setattr(keyring, "set_password", backend.set_password)
+    monkeypatch.setattr(keyring, "delete_password", backend.delete_password)
+    return backend
+
+
+def test_saving_an_anthropic_key_stores_it_in_keyring_not_config_yaml(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)  # a successful save must never touch the real repo's config.yaml
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": "anthropic",
+            "llm_model": "claude-haiku-4-5",
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+            "anthropic_api_key": "sk-ant-super-secret",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.llm.api_key == "sk-ant-super-secret"
+    assert fake_keyring._store[("hanarr", "anthropic_api_key")] == "sk-ant-super-secret"
+
+    config_yaml = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "sk-ant-super-secret" not in config_yaml
+    assert "api_key" not in config_yaml
+
+
+def test_blank_anthropic_key_field_leaves_the_stored_key_unchanged(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)  # a successful save must never touch the real repo's config.yaml
+    settings = _make_isolated_settings(tmp_path)
+    fake_keyring.set_password("hanarr", "anthropic_api_key", "already-stored")
+    settings.llm.api_key = "already-stored"
+    client = TestClient(create_app(settings))
+
+    client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": "anthropic",
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+            "anthropic_api_key": "",
+        },
+        follow_redirects=False,
+    )
+
+    assert settings.llm.api_key == "already-stored"
+    assert fake_keyring._store[("hanarr", "anthropic_api_key")] == "already-stored"
+
+
+def test_clearing_the_anthropic_key_checkbox_removes_it_from_keyring(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)  # a successful save must never touch the real repo's config.yaml
+    settings = _make_isolated_settings(tmp_path)
+    fake_keyring.set_password("hanarr", "anthropic_api_key", "already-stored")
+    settings.llm.api_key = "already-stored"
+    client = TestClient(create_app(settings))
+
+    client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": "anthropic",
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+            "anthropic_api_key": "",
+            "anthropic_api_key_clear": "on",
+        },
+        follow_redirects=False,
+    )
+
+    assert settings.llm.api_key is None
+    assert ("hanarr", "anthropic_api_key") not in fake_keyring._store
+
+
+def test_config_page_never_renders_the_actual_stored_key(tmp_path, fake_keyring):
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.api_key = "sk-ant-should-not-leak"
+    client = TestClient(create_app(settings))
+
+    html = client.get("/config", params={"tab": "app"}).text
+
+    assert "sk-ant-should-not-leak" not in html
+    assert "already set" in html
+
+
+def test_saving_smtp_password_stores_it_in_keyring_not_config_yaml(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)  # a successful save must never touch the real repo's config.yaml
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/schedule",
+        data={
+            "search_interval_hours": "6",
+            "reminder_check_interval_hours": "1",
+            "follow_up_after_days": "7",
+            "smtp_password": "hunter2",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.reminders.email.smtp_password == "hunter2"
+    assert fake_keyring._store[("hanarr", "smtp_password")] == "hunter2"
+
+    config_yaml = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "hunter2" not in config_yaml

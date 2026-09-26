@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from hanarr import secrets_store
 from hanarr.config import ScheduleConfig, Settings, load_settings
 
 
@@ -71,6 +72,31 @@ def test_missing_config_and_missing_template_still_loads_defaults(tmp_path, monk
 
     assert not config_path.exists()
     assert settings.dashboard.launch_mode == "none"
+
+
+def test_load_settings_reads_anthropic_key_from_keyring_before_env(tmp_path, monkeypatch):
+    """The OS credential store (written to via the Settings UI) is the
+    primary source; a plain ANTHROPIC_API_KEY env var is only a fallback
+    for anyone who set one up before that UI existed."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("llm:\n  provider: anthropic\n", encoding="utf-8")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-env")
+    monkeypatch.setattr(secrets_store, "get_secret", lambda name: "from-keyring")
+
+    settings = load_settings(tmp_path / "config.yaml")
+
+    assert settings.llm.api_key == "from-keyring"
+
+
+def test_load_settings_falls_back_to_env_when_keyring_has_no_value(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("llm:\n  provider: anthropic\n", encoding="utf-8")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-env")
+    monkeypatch.setattr(secrets_store, "get_secret", lambda name: None)
+
+    settings = load_settings(tmp_path / "config.yaml")
+
+    assert settings.llm.api_key == "from-env"
 
 
 def test_existing_config_is_left_untouched(tmp_path, monkeypatch):
