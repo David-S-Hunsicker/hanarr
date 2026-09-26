@@ -18,6 +18,9 @@
     .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
     .nav a:hover { border-color:var(--accent); color:var(--accent); }
     .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
     .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.9rem 1rem; margin:.6rem 0; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
     .pill { display:inline-block; border:1px solid var(--good); color:var(--good); border-radius:999px; padding:.15rem .55rem; font-size:.78rem; font-weight:600; }
     button, input[type=text] { font:inherit; }
@@ -33,6 +36,7 @@
     <a class="nav-link" href="/">&larr; Back to jobs</a>
   </div>
   <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
+  {% include "_search_activity_badge.html" %}
   <p class="muted">Local profiles let more than one person use this instance -- each has their own resume, jobs, applications, skills, and coaching projects. Search preferences (target titles, locations, connectors, LLM, schedule) are shared across every profile. There's no login; switching just tells this browser which profile to act as.</p>
 
   <h2>Switch profile</h2>

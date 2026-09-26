@@ -617,9 +617,13 @@
                 : (sourcesTotal > 0 ? Math.min(100, Math.round((sourcesDone / sourcesTotal) * 100)) : 0);
               barFill.style.width = pct + "%";
 
-              headline.textContent = data.current_source
+              // A scheduled run happens with nobody having clicked
+              // anything -- say so plainly, since that's exactly the case
+              // where GPU/CPU load could otherwise catch someone off guard.
+              const triggerLabel = data.trigger === "scheduled" ? " (automatic background search)" : "";
+              headline.textContent = (data.current_source
                 ? "Searching " + data.current_source + "…"
-                : "Working…";
+                : "Working…") + triggerLabel;
               // already_seen_count is visible evidence that a search
               // resumed after an interruption instead of redoing
               // already-scored work -- only worth showing once it's
@@ -627,9 +631,10 @@
               // cluttered with "0 already seen".
               const alreadySeen = data.already_seen_count || 0;
               const alreadySeenNote = alreadySeen > 0 ? " (" + alreadySeen + " already seen, skipped)" : "";
+              const scoringNote = " · " + (data.scoring_count || 0) + " scored by LLM";
               countLabel.textContent = (consideredTotal > 0
                 ? consideredDone + " / " + consideredTotal + " considered · " + data.matched_count + " matched"
-                : sourcesDone + " / " + sourcesTotal + " source(s) · " + data.matched_count + " matched") + alreadySeenNote;
+                : sourcesDone + " / " + sourcesTotal + " source(s) · " + data.matched_count + " matched") + scoringNote + alreadySeenNote;
               renderLog(data.log || []);
 
               wasRunning = true;

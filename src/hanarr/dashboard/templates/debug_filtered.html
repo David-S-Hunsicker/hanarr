@@ -14,6 +14,9 @@
     .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.5rem; }
     .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
     .nav a:hover { border-color:var(--accent); color:var(--accent); }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
     .intro { color:var(--muted); margin:0 0 1.4rem; max-width:720px; }
     .banner { border-radius:8px; padding:.7rem 1rem; font-size:.85rem; margin-bottom:1.4rem; background:var(--surface); border:1px dashed var(--border); color:var(--muted); }
     table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
@@ -36,6 +39,7 @@
   <nav class="nav" aria-label="Main navigation">
     <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
   </nav>
+  {% include "_search_activity_badge.html" %}
   <p class="intro">Postings fetched during the most recent search, but rejected before reaching your Jobs list -- either by a preference rule (prefilter) or by scoring below your minimum fit score. This is not saved between server restarts and only reflects the last search run, not history. Useful for spotting a preference that's too strict.</p>
   {% if search_running %}<div class="banner">A search is running now -- this list is filling in live; refresh to see more.</div>{% endif %}
   {% if filtered %}

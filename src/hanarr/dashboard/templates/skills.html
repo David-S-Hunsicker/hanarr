@@ -12,6 +12,9 @@
     h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; font-weight:650; } h2 { font-size:1rem; margin-bottom:.6rem; display:flex; align-items:baseline; gap:.5rem; } h2 .group-count { font-size:.8rem; font-weight:500; color:var(--muted); }
     .header { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; } .muted, .meta { color:var(--muted); }
     .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.5rem; } .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; } .nav a:hover { border-color:var(--accent); color:var(--accent); } .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
     .section { margin:1.5rem 0; } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:.7rem; } .label { font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; } .good { color:var(--good); } .warn { color:var(--warn); } .list { margin:.4rem 0 0; padding-left:1.1rem; } summary { cursor:pointer; } form { display:grid; gap:.45rem; max-width:34rem; margin-top:.8rem; } input, textarea, button { font:inherit; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); } textarea { min-height:4rem; } button { cursor:pointer; justify-self:start; } .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
 
     .filter-bar { margin:1rem 0; }
@@ -39,6 +42,7 @@
 <body>
   <div class="header"><h1>Skills</h1><span class="meta">Capability, evidence, and wording are tracked separately.</span>{% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}</div>
   <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a class="active" href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a></nav>
+  {% include "_search_activity_badge.html" %}
   <p class="muted">A resume mention is not proof. A project becomes proven only after a passing evaluation; corrections below update capability evidence without creating a proven-skill record.</p>
 
   {% if skills %}

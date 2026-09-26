@@ -15,6 +15,9 @@
     .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
     .nav a:hover { border-color:var(--accent); color:var(--accent); }
     .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
     .section { margin:1.5rem 0; } .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:.7rem 0; }
     .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:.7rem; } .label { font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
     .status { border-left:4px solid var(--good); } .status.not-ready { border-left-color:var(--warn); } .pill { display:inline-block; border:1px solid var(--border); border-radius:999px; padding:.15rem .5rem; font-size:.78rem; }
@@ -41,6 +44,7 @@
   <nav class="nav" aria-label="Main navigation">
     <a href="/">Jobs</a><a href="/coaching">Coaching</a><a class="active" href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
   </nav>
+  {% include "_search_activity_badge.html" %}
 
   <section class="section">
     <h2>Matching source</h2>

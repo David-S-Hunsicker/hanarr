@@ -134,8 +134,13 @@ class AgentsConfig(BaseModel):
 
 
 class ScheduleConfig(BaseModel):
-    search_interval_hours: int = 6
-    reminder_check_interval_hours: int = 1
+    # A floor, not just a default -- an accidental 0 or negative interval
+    # would make APScheduler fire back-to-back with no real gap, which for
+    # the search job means near-continuous LLM/GPU load. 1 hour is still
+    # frequent; anyone who deliberately wants less often can go arbitrarily
+    # high (days = hours * 24), just never lower than this.
+    search_interval_hours: int = Field(default=6, ge=1)
+    reminder_check_interval_hours: int = Field(default=1, ge=1)
 
 
 class EmailReminderConfig(BaseModel):

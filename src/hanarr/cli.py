@@ -239,13 +239,17 @@ def serve(ctx: click.Context, launch_mode: str | None):
             console.print("[green]Backfilled the resume filename shown in Settings from your saved profile.[/green]")
 
     from .scheduler import start_scheduler
+    from .search_state import new_search_state
 
-    scheduler = start_scheduler(settings)
+    # Shared with the scheduler so a scheduled search shows up on the
+    # dashboard identically to a manual one -- see search_state.py.
+    search_state = new_search_state()
+    scheduler = start_scheduler(settings, search_state=search_state)
 
     from .dashboard.app import create_app
     from .launch import DashboardLaunchConfig, launch_dashboard
 
-    app = create_app(settings, scheduler=scheduler)
+    app = create_app(settings, scheduler=scheduler, search_state=search_state)
     mode = launch_mode or settings.dashboard.launch_mode
     launch_config = DashboardLaunchConfig(
         mode=mode,

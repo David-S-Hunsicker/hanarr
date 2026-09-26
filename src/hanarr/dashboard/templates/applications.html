@@ -15,6 +15,9 @@
     .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
     .nav a:hover { border-color:var(--accent); color:var(--accent); }
     .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
     .intro { color:var(--muted); margin:0 0 1.4rem; max-width:640px; }
     .summary { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
     .summary .pill { font-size:.82rem; padding:.3rem .7rem; }
@@ -38,6 +41,7 @@
   <nav class="nav" aria-label="Main navigation">
     <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a class="active" href="/applications">Applications</a><a href="/config">Settings</a>
   </nav>
+  {% include "_search_activity_badge.html" %}
   <p class="intro">
     Jobs move here once you've made a decision about them on the Jobs page — applied, interviewing,
     an offer, rejected, or dismissed. New and unreviewed postings stay on Jobs, which is for

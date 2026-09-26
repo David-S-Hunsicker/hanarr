@@ -1,0 +1,23 @@
+<div id="search-activity-badge" class="search-activity-badge" hidden>
+  <a href="/"><span id="search-activity-text"></span> &middot; view progress</a>
+</div>
+<script>
+  (function () {
+    var badge = document.getElementById("search-activity-badge");
+    var text = document.getElementById("search-activity-text");
+    if (!badge) return;
+    function poll() {
+      fetch("/search/status").then(function (r) { return r.json(); }).then(function (data) {
+        if (data.search_running) {
+          badge.hidden = false;
+          var label = data.trigger === "scheduled" ? "Automatic search running" : "Search running";
+          text.textContent = label + " — " + (data.scoring_count || 0) + " scored by LLM so far";
+        } else {
+          badge.hidden = true;
+        }
+      }).catch(function () {});
+    }
+    poll();
+    setInterval(poll, 3000);
+  })();
+</script>

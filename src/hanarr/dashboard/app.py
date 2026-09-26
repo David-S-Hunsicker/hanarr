@@ -58,6 +58,7 @@ from ..models import (
 )
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
+from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
 from ..resume import (
     ALLOWED_RESUME_EXTENSIONS,
     MAX_RESUME_BYTES,
@@ -174,11 +175,16 @@ def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = N
     return 0 <= delta_seconds < within_days * 86400
 
 
-def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
+def create_app(settings: Settings, scheduler: Any = None, search_state: dict | None = None) -> FastAPI:
     """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
     through so the restart route can shut it down cleanly before
     re-executing the process. Optional — tests and other callers that don't
-    run the scheduler can omit it; the restart route just skips that step."""
+    run the scheduler can omit it; the restart route just skips that step.
+
+    `search_state` is the same shared dict passed to start_scheduler(), so
+    a scheduled background search shows up here identically to a manual
+    one -- pass the same object to both, or omit it entirely (tests, or
+    any caller that doesn't run a scheduler) and one is created fresh."""
     app = FastAPI(title="Hanarr")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
@@ -192,105 +198,21 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
     evaluator_llm = orchestrator.client_for("evaluator")
     resume_writer_llm = orchestrator.client_for("resume_writer")
 
-    # Simple in-memory state so the page can show live progress without a
-    # job queue — this dashboard is single-user, single-process, so a plain
-    # dict plus a bounded activity log is enough. `run_id` lets the browser
-    # tell "still the same run" apart from "a new one started" across polls.
-    MAX_LOG_ENTRIES = 25
-    # Deliberately larger than MAX_LOG_ENTRIES -- the activity log is a
-    # scrolling narrative of the run, but the filtered-postings list is a
-    # reference someone tunes preferences against afterward, so it's worth
-    # keeping more of it. Still bounded: a huge run with a badly-tuned
-    # prefilter shouldn't grow this without limit.
-    MAX_FILTERED_LOG_ENTRIES = 300
-    state = {
-        "search_running": False,
-        "run_id": 0,
-        "sources_done": 0,
-        "sources_total": 0,
-        "current_source": None,
-        "matched_count": 0,
-        # considered_total grows as each source's fetch completes (we don't
-        # know the grand total upfront — sources are fetched one at a
-        # time); considered_done counts postings actually looked at
-        # (skipped or scored, either way) toward that running total.
-        "considered_total": 0,
-        "considered_done": 0,
-        # Postings skipped because they were already scored in a previous
-        # run (SeenPosting dedup) -- visible evidence that an interrupted
-        # search "resumes" rather than redoing already-scored work when
-        # restarted, since the expensive part (the LLM call) isn't repeated
-        # for these.
-        "already_seen_count": 0,
-        "log": [],
-        # Ephemeral, not persisted -- only reflects the most recent search
-        # run on this server process, reset at the start of the next one.
-        # Feeds the "why was this filtered out" debug view.
-        "filtered_log": [],
-        "last_search_result": None,
-    }
+    # Shared with the background scheduler (see search_state.py) so a
+    # scheduled run shows up here identically to a manual one, instead of
+    # happening invisibly. `run_id` lets the browser tell "still the same
+    # run" apart from "a new one started" across polls.
+    state = search_state if search_state is not None else new_search_state()
     stop_event = threading.Event()
 
     def _log_event(entry: dict) -> None:
-        entry["at"] = time.time()
-        state["log"].append(entry)
-        if len(state["log"]) > MAX_LOG_ENTRIES:
-            state["log"] = state["log"][-MAX_LOG_ENTRIES:]
+        search_log_event(state, entry)
 
     def _on_progress(event: dict) -> None:
-        kind = event["event"]
-        if kind == "considered" and event.get("rejected"):
-            state["filtered_log"].append({
-                "title": event.get("title", ""),
-                "company": event.get("company", ""),
-                "source": event.get("source", ""),
-                "reason": event.get("reason", ""),
-            })
-            if len(state["filtered_log"]) > MAX_FILTERED_LOG_ENTRIES:
-                state["filtered_log"] = state["filtered_log"][-MAX_FILTERED_LOG_ENTRIES:]
-        if kind == "source_start":
-            state["current_source"] = event["source"]
-            _log_event({"kind": "source_start", "text": f"Searching {event['source']}…"})
-        elif kind == "source_fetched":
-            state["considered_total"] += event["count"]
-            _log_event({"kind": "info", "text": f"{event['source']}: {event['count']} posting(s) fetched"})
-        elif kind == "source_error":
-            _log_event({"kind": "error", "text": f"{event['source']}: fetch failed, skipping"})
-        elif kind == "scoring":
-            _log_event({"kind": "scoring", "text": f"Scoring: {event['title']} at {event['company']}"})
-        elif kind == "considered":
-            state["considered_done"] += 1
-            if event.get("already_seen"):
-                state["already_seen_count"] += 1
-        elif kind == "matched":
-            state["matched_count"] += 1
-            score = event["fit_score"]
-            _log_event(
-                {
-                    "kind": "matched",
-                    "text": f"Matched ({score:.0f}): {event['title']} at {event['company']}",
-                }
-            )
-        elif kind == "source_done":
-            state["sources_done"] += 1
-            state["current_source"] = None
-        elif kind == "complete":
-            _log_event({"kind": "done", "text": f"Search complete — {event['new_count']} new posting(s)."})
-        elif kind == "stopped":
-            _log_event({"kind": "error", "text": f"Search stopped — {event['new_count']} new posting(s) kept."})
+        search_on_progress(state, event)
 
     def _run_search_in_background(run_id: int, profile_id: int | None = None):
-        state["search_running"] = True
-        state["run_id"] = run_id
-        state["sources_done"] = 0
-        state["sources_total"] = len(settings.sources.__class__.model_fields)
-        state["current_source"] = None
-        state["matched_count"] = 0
-        state["considered_total"] = 0
-        state["considered_done"] = 0
-        state["already_seen_count"] = 0
-        state["log"] = []
-        state["filtered_log"] = []
+        reset_for_run(state, run_id, "manual")
         stop_event.clear()
         try:
             from ..connectors import build_enabled_connectors
@@ -1316,6 +1238,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
             {
                 "search_running": state["search_running"],
                 "run_id": state["run_id"],
+                "trigger": state["trigger"],
                 "sources_done": state["sources_done"],
                 "sources_total": state["sources_total"],
                 "current_source": state["current_source"],
@@ -1323,6 +1246,7 @@ def create_app(settings: Settings, scheduler: Any = None) -> FastAPI:
                 "considered_total": state["considered_total"],
                 "considered_done": state["considered_done"],
                 "already_seen_count": state["already_seen_count"],
+                "scoring_count": state["scoring_count"],
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),

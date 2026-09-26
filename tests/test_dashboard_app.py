@@ -15,6 +15,7 @@ from hanarr.db import get_or_create_profile, make_session_factory
 from hanarr.llm.base import LLMClient
 from hanarr.models import ApplicationStatus, JobPosting, Profile, Reminder, ReminderType, ResumeVersion, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
+from hanarr.search_state import new_search_state
 
 
 def test_task_is_stuck_false_when_not_running():
@@ -1388,3 +1389,72 @@ def test_search_status_reports_already_seen_count_for_resumed_postings(tmp_path,
 
     assert final is not None, "search did not finish in time"
     assert final["already_seen_count"] == 1
+
+
+def test_search_status_shows_a_scheduled_run_via_the_shared_search_state(tmp_path):
+    """"A user won't know that Ollama is consuming resources unless the
+    application is showing that." Before search_state was shared between
+    the scheduler and the dashboard, a scheduled search had no callback at
+    all and updated nothing the dashboard could see. Passing the same
+    dict both places (as cli.py's `serve` command does) must make a
+    scheduled run visible through the exact same /search/status route a
+    manual run uses."""
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    app = create_app(settings, search_state=search_state)
+    client = TestClient(app)
+
+    # Simulates the scheduler's background thread updating the same
+    # shared object, entirely independent of any request the dashboard
+    # itself has handled.
+    from hanarr.search_state import on_progress, reset_for_run
+    reset_for_run(search_state, 1, "scheduled")
+    on_progress(search_state, {"event": "scoring", "title": "Engineer", "company": "Acme"})
+
+    status = client.get("/search/status").json()
+    assert status["search_running"] is True
+    assert status["trigger"] == "scheduled"
+    assert status["scoring_count"] == 1
+
+
+def test_search_activity_badge_present_on_every_non_jobs_page(tmp_path):
+    """A scheduled search can start while the user is on any page, not
+    just Jobs -- the site-wide badge (polling /search/status) must be
+    present everywhere else so background LLM activity is never silently
+    invisible just because of which page happens to be open."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ["/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/debug/filtered"]:
+        html = client.get(page).text
+        assert 'id="search-activity-badge"' in html, f"{page} is missing the search activity badge"
+
+
+def test_schedule_tab_displays_hours_or_days_based_on_the_stored_interval(tmp_path):
+    """The stored config only ever has hours -- the Settings UI shows it
+    as whichever unit divides evenly, so "every 3 days" doesn't force the
+    user to do hours*24 math themselves."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.schedule.search_interval_hours = 6
+    client = TestClient(create_app(settings))
+    html = client.get("/config", params={"tab": "schedule"}).text
+    assert 'id="search_interval_value" min="1" value="6"' in html
+    assert '<option value="hours" selected>Hours</option>' in html
+
+    settings.schedule.search_interval_hours = 72
+    html = client.get("/config", params={"tab": "schedule"}).text
+    assert 'id="search_interval_value" min="1" value="3"' in html
+    assert '<option value="days" selected>Days</option>' in html
+
+
+def test_schedule_form_rejects_an_interval_below_the_safety_minimum(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/schedule",
+        data={"search_interval_hours": "-5", "reminder_check_interval_hours": "1", "follow_up_after_days": "7"},
+    )
+    assert response.status_code == 200
+    assert "Couldn" in response.text  # the shared error banner's "Couldn't save" heading
+    assert "search_interval_hours" in response.text

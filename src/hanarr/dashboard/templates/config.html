@@ -108,6 +108,9 @@
     .banner.error ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     .banner.notice { background: var(--surface-1); border: 1px dashed var(--border); color: var(--text-secondary); }
     .banner .restart-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+    .search-activity-badge { display: inline-flex; background: var(--surface-1); border: 1px solid var(--accent); border-radius: 999px; padding: 0.35rem 0.8rem; font-size: 0.82rem; margin: 0 0 1rem; }
+    .search-activity-badge a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .search-activity-badge a:hover { text-decoration: underline; }
     .onboarding-banner .checklist { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
     .onboarding-banner .checklist li { display: flex; align-items: baseline; gap: 0.4rem; }
     .onboarding-banner .checklist .check { color: var(--text-muted); width: 1em; }
@@ -243,6 +246,7 @@
     <a class="tab active" href="/config">Settings</a>
   </nav>
 
+  {% include "_search_activity_badge.html" %}
   {% include "_onboarding_banner.html" %}
 
   <div class="tabs">
@@ -605,14 +609,31 @@
 
       <fieldset>
         <legend>Scheduling</legend>
+        {% set _search_hrs = settings.schedule.search_interval_hours %}
+        {% set search_interval_unit = 'days' if (_search_hrs % 24 == 0 and _search_hrs >= 24) else 'hours' %}
+        {% set search_interval_value = (_search_hrs // 24) if search_interval_unit == 'days' else _search_hrs %}
         <div class="row">
           <div class="field">
-            <label for="search_interval_hours">Search every (hours)</label>
-            <input type="number" id="search_interval_hours" name="search_interval_hours" value="{{ settings.schedule.search_interval_hours }}">
+            <label for="search_interval_value">Search every</label>
+            <div style="display:flex; gap:.5rem;">
+              <input type="number" id="search_interval_value" min="1" value="{{ search_interval_value }}" style="max-width:7rem;">
+              <select id="search_interval_unit">
+                <option value="hours" {% if search_interval_unit == 'hours' %}selected{% endif %}>Hours</option>
+                <option value="days" {% if search_interval_unit == 'days' %}selected{% endif %}>Days</option>
+              </select>
+            </div>
+            <input type="hidden" id="search_interval_hours" name="search_interval_hours" value="{{ settings.schedule.search_interval_hours }}">
+            <div class="hint">
+              Minimum 1 hour. A background search uses real CPU/GPU time through your configured
+              LLM -- searching less often means less load on your machine, at the cost of seeing
+              new postings later. The status badge shown across the dashboard while a search
+              (manual or automatic) is running always says so.
+            </div>
           </div>
           <div class="field">
             <label for="reminder_check_interval_hours">Check reminders every (hours)</label>
-            <input type="number" id="reminder_check_interval_hours" name="reminder_check_interval_hours" value="{{ settings.schedule.reminder_check_interval_hours }}">
+            <input type="number" id="reminder_check_interval_hours" name="reminder_check_interval_hours" value="{{ settings.schedule.reminder_check_interval_hours }}" min="1">
+            <div class="hint">Reminder checks don't call the LLM, so this is cheap regardless of interval.</div>
           </div>
         </div>
       </fieldset>
@@ -662,6 +683,28 @@
     </form>
     {% endif %}
   </div>
+
+  {% if active_tab == 'schedule' %}
+  <script>
+    (function () {
+      const valueInput = document.getElementById("search_interval_value");
+      const unitSelect = document.getElementById("search_interval_unit");
+      const hoursInput = document.getElementById("search_interval_hours");
+      if (!valueInput || !unitSelect || !hoursInput) return;
+
+      function sync() {
+        const value = Math.max(1, parseInt(valueInput.value, 10) || 1);
+        const multiplier = unitSelect.value === "days" ? 24 : 1;
+        hoursInput.value = value * multiplier;
+      }
+      valueInput.addEventListener("input", sync);
+      unitSelect.addEventListener("change", sync);
+      const form = hoursInput.closest("form");
+      if (form) form.addEventListener("submit", sync);
+      sync();
+    })();
+  </script>
+  {% endif %}
 
   {% if active_tab == 'preferences' %}
   <script>

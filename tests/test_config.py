@@ -1,6 +1,28 @@
 from pathlib import Path
 
-from hanarr.config import load_settings
+import pytest
+from pydantic import ValidationError
+
+from hanarr.config import ScheduleConfig, Settings, load_settings
+
+
+def test_schedule_config_rejects_search_interval_below_one_hour():
+    """"People won't want to burn out their machines" -- an accidental 0
+    or negative search_interval_hours would make APScheduler fire the
+    search job (real LLM/GPU load) back-to-back with no real gap."""
+    with pytest.raises(ValidationError):
+        ScheduleConfig(search_interval_hours=0)
+    with pytest.raises(ValidationError):
+        ScheduleConfig(search_interval_hours=-5)
+    ScheduleConfig(search_interval_hours=1)  # the floor itself is allowed
+
+
+def test_schedule_config_allows_multi_day_intervals():
+    """Days are just hours * 24 under the hood -- no separate unit
+    concept in the stored config, so nothing stops someone from
+    configuring "every 3 days" (72) or longer."""
+    settings = Settings(schedule=ScheduleConfig(search_interval_hours=72))
+    assert settings.schedule.search_interval_hours == 72
 
 
 def test_missing_config_is_copied_from_template_instead_of_raising(tmp_path, monkeypatch):

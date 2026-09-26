@@ -26,6 +26,9 @@
     .nav a { color: var(--muted); padding: .45rem .9rem; text-decoration: none; font-size: .85rem; font-weight: 600; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); transition: background .12s ease, color .12s ease, border-color .12s ease; }
     .nav a:hover { border-color: var(--accent); color: var(--accent); }
     .nav a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .search-activity-badge { display: inline-flex; background: var(--surface); border: 1px solid var(--accent); border-radius: 999px; padding: .35rem .8rem; font-size: .82rem; margin: 0 0 1rem; }
+    .search-activity-badge a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .search-activity-badge a:hover { text-decoration: underline; }
     .intro { color: var(--muted); margin: 0 0 1.4rem; max-width: 680px; }
     .section { margin: 1.5rem 0; } .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: .7rem 0; }
     .card h3 { margin: 0 0 .35rem; font-size: 1.15rem; font-weight: 700; } .meta, .description { color: var(--muted); font-size: .9rem; }
@@ -69,6 +72,7 @@
     <a href="/">Jobs</a><a class="active" href="/coaching">Coaching</a>
     <a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a>
   </nav>
+  {% include "_search_activity_badge.html" %}
   <p class="intro">Review suggested gaps, opt into a project, and keep its next task visible. Projects never submit an application or change your resume automatically.</p>
 
   <section class="section">
