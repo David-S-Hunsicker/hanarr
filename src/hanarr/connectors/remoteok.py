@@ -28,7 +28,7 @@ class RemoteOKConnector(Connector):
             )
             resp.raise_for_status()
             data = resp.json()
-        except httpx.HTTPError:
+        except (httpx.HTTPError, OSError):
             return []
 
         postings: list[RawJobPosting] = []

@@ -229,7 +229,7 @@ def pull_model(
                         on_progress(event)
     except SetupError:
         raise
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, OSError) as exc:
         raise SetupError("Model download failed; check that Ollama is running and reachable.") from exc
     finally:
         if close_client:
@@ -361,7 +361,7 @@ def detect_ollama(
                 )
             )
         reachable = True
-    except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+    except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError) as exc:
         service_error = str(exc) or exc.__class__.__name__
 
     hardware = detect_hardware(data_path)

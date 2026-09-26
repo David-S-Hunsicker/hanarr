@@ -269,6 +269,18 @@ def test_remoteok_connector_skips_legend_row_and_filters_tags():
 
 
 @respx.mock
+def test_remoteok_connector_skips_board_without_crashing_on_oserror():
+    """Regression test: on machines running TLS-inspecting security software,
+    httpx can raise a plain OSError/PermissionError (not an httpx.HTTPError)
+    even for http:// requests, while honoring SSLKEYLOGFILE during TLS
+    context setup. One bad board's connection failure shouldn't crash the
+    whole search run."""
+    respx.get("https://remoteok.com/api").mock(side_effect=PermissionError("Permission denied"))
+    connector = RemoteOKConnector()
+    assert connector.fetch() == []
+
+
+@respx.mock
 def test_remoteok_connector_parses_date_as_naive_utc():
     respx.get("https://remoteok.com/api").mock(
         return_value=httpx.Response(

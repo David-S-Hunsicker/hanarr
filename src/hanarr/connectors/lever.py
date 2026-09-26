@@ -42,7 +42,7 @@ class LeverConnector(Connector):
                 )
                 resp.raise_for_status()
                 jobs = resp.json()
-            except httpx.HTTPError:
+            except (httpx.HTTPError, OSError):
                 continue  # one bad company shouldn't kill the whole search run
 
             for job in jobs:

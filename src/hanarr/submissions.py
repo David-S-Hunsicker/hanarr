@@ -311,7 +311,7 @@ def fetch_github_submission(
             commit = _github_api_get(
                 http_client, f"{GITHUB_API_BASE}/repos/{owner}/{repository}/commits/{resolved_ref}"
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, OSError) as exc:
             raise ValueError(f"Could not reach GitHub to fetch this submission: {exc}") from exc
     finally:
         if client is None:

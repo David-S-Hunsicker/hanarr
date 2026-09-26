@@ -125,7 +125,7 @@ def check_for_update(settings: Settings, client: httpx.Client | None = None) -> 
         if settings.updates.github_repository and not settings.updates.endpoint:
             payload = _github_payload(payload)
         release = parse_release_metadata(payload)
-    except (httpx.HTTPError, ValueError, UpdateCheckError) as exc:
+    except (httpx.HTTPError, OSError, ValueError, UpdateCheckError) as exc:
         if isinstance(exc, UpdateCheckError):
             raise
         raise UpdateCheckError(f"Could not check releases: {exc}") from exc

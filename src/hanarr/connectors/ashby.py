@@ -42,7 +42,7 @@ class AshbyConnector(Connector):
                 )
                 resp.raise_for_status()
                 jobs = resp.json().get("jobs", [])
-            except httpx.HTTPError:
+            except (httpx.HTTPError, OSError):
                 continue  # one bad board shouldn't kill the whole search run
 
             for job in jobs:

@@ -21,7 +21,7 @@ class ArbeitnowConnector(Connector):
             resp = httpx.get(API_URL, timeout=30.0)
             resp.raise_for_status()
             data = resp.json().get("data", [])
-        except httpx.HTTPError:
+        except (httpx.HTTPError, OSError):
             return []
 
         postings: list[RawJobPosting] = []

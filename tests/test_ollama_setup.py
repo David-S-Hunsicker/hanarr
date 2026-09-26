@@ -144,6 +144,32 @@ def test_detect_ollama_is_usable_when_service_is_unavailable(monkeypatch, tmp_pa
     assert diagnostics.configured_model_available is False
 
 
+def test_detect_ollama_is_usable_when_the_request_raises_a_plain_oserror(monkeypatch, tmp_path: Path):
+    """Regression test: on machines running TLS-inspecting security software,
+    ssl.create_default_context() (invoked by httpx even for plain http://
+    requests, and patched by truststore) can raise PermissionError -- an
+    OSError, not an httpx.HTTPError -- while honoring SSLKEYLOGFILE. This
+    must degrade to an unreachable-service diagnosis, not crash the caller
+    (which previously surfaced as an uncaught 500 on the dashboard)."""
+
+    def fail(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr("hanarr.ollama_setup.shutil.which", lambda _: None)
+    monkeypatch.setattr("hanarr.ollama_setup.WINDOWS_DEFAULT_OLLAMA_PATH", tmp_path / "not-installed" / "ollama.exe")
+    monkeypatch.setattr("hanarr.ollama_setup.httpx.get", fail)
+    monkeypatch.setattr(
+        "hanarr.ollama_setup.detect_hardware",
+        lambda _: HardwareInfo(None, None, "unknown"),
+    )
+
+    diagnostics = detect_ollama("qwen2.5:7b", data_path=tmp_path)
+
+    assert diagnostics.service_reachable is False
+    assert "Permission denied" in diagnostics.service_error
+    assert diagnostics.configured_model_available is False
+
+
 def test_installer_download_requires_consent_and_does_not_create_a_file(tmp_path: Path):
     destination = tmp_path / "setup" / "OllamaSetup.exe"
 
