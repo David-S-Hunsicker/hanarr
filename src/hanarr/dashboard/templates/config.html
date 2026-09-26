@@ -257,7 +257,7 @@
   </div>
 
   {% if saved %}
-  <div class="banner success">Saved. Preference and matching changes apply on the next search — app config and scheduling changes need a restart of <code>hanarr serve</code>.</div>
+  <div class="banner success">Saved. Preference and matching changes apply on the next search — app config and scheduling changes need Hanarr restarted.</div>
   {% endif %}
   {% if errors %}
   <div class="banner error">
@@ -444,8 +444,8 @@
     <form method="post" action="/config/app">
       <div class="banner notice">
         <div class="restart-row">
-          <span>Changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
-          <button type="button" class="restart-btn">Save &amp; restart server</button>
+          <span>Changes on this tab take effect the next time Hanarr restarts.</span>
+          <button type="button" class="restart-btn">Save &amp; restart Hanarr</button>
         </div>
       </div>
 
@@ -602,8 +602,8 @@
     <form method="post" action="/config/schedule">
       <div class="banner notice">
         <div class="restart-row">
-          <span>Interval changes on this tab take effect the next time <code>hanarr serve</code> starts.</span>
-          <button type="button" class="restart-btn">Save &amp; restart server</button>
+          <span>Interval changes on this tab take effect the next time Hanarr restarts.</span>
+          <button type="button" class="restart-btn">Save &amp; restart Hanarr</button>
         </div>
       </div>
 
@@ -1014,7 +1014,7 @@
               if (data.error) {
                 showStatus(data.error, true);
               } else if (data.phase === "success") {
-                showStatus("Downloaded. Save app config, then restart the server to use it.", false);
+                showStatus("Downloaded. Save app config, then restart Hanarr to use it.", false);
                 downloadSection.hidden = true;
               } else if (data.phase === "cancelled") {
                 showStatus("Download cancelled.", false);
@@ -1117,7 +1117,7 @@
       }
 
       restartBtn.addEventListener("click", function () {
-        if (!window.confirm("Save these settings and restart the server now? Any in-progress search or upload will be interrupted.")) {
+        if (!window.confirm("Save these settings and restart Hanarr now? Any in-progress search or upload will be interrupted.")) {
           return;
         }
         const form = restartBtn.closest("form");

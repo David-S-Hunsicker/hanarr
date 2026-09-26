@@ -1194,7 +1194,7 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
     def _scheduler_status(profile_id: int | None = None) -> dict:
         """Next-scheduled-run labels, and the last search's persisted
         outcome (which survives a restart, unlike `state`, so this doesn't
-        go blank every time "Save & restart server" is used). `scheduler`
+        go blank every time "Save & restart Hanarr" is used). `scheduler`
         is only available when `hanarr serve` actually started one (see
         create_app's own docstring); routes that run without it (tests,
         the restart-in-progress moment) just show nothing scheduled rather
