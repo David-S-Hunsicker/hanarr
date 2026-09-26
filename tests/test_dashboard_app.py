@@ -1458,3 +1458,51 @@ def test_schedule_form_rejects_an_interval_below_the_safety_minimum(tmp_path):
     assert response.status_code == 200
     assert "Couldn" in response.text  # the shared error banner's "Couldn't save" heading
     assert "search_interval_hours" in response.text
+
+
+def test_schedule_form_saves_daily_mode_and_time_of_day(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/schedule",
+        data={
+            "search_interval_hours": "6",
+            "reminder_check_interval_hours": "1",
+            "follow_up_after_days": "7",
+            "search_schedule_mode": "daily",
+            "search_time_of_day": "09:15",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert settings.schedule.search_schedule_mode == "daily"
+    assert settings.schedule.search_time_of_day == "09:15"
+
+
+def test_schedule_form_rejects_an_invalid_time_of_day(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/schedule",
+        data={
+            "search_interval_hours": "6",
+            "reminder_check_interval_hours": "1",
+            "follow_up_after_days": "7",
+            "search_schedule_mode": "daily",
+            "search_time_of_day": "not-a-time",
+        },
+    )
+    assert response.status_code == 200
+    assert "Couldn" in response.text
+    assert "search_time_of_day" in response.text
+
+
+def test_schedule_tab_shows_local_timezone_next_to_the_daily_time_field(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    html = client.get("/config", params={"tab": "schedule"}).text
+    assert 'id="search_time_of_day"' in html
+    import tzlocal
+    assert str(tzlocal.get_localzone()) in html

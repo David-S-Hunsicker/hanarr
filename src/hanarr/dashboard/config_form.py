@@ -132,6 +132,8 @@ def apply_schedule_reminders_form(current: dict[str, Any], form: dict[str, str])
     schedule["reminder_check_interval_hours"] = (
         _int_or_none(form.get("reminder_check_interval_hours")) or schedule["reminder_check_interval_hours"]
     )
+    schedule["search_schedule_mode"] = form.get("search_schedule_mode", schedule["search_schedule_mode"])
+    schedule["search_time_of_day"] = form.get("search_time_of_day", schedule["search_time_of_day"]).strip() or schedule["search_time_of_day"]
 
     reminders["follow_up_after_days"] = (
         _int_or_none(form.get("follow_up_after_days")) or reminders["follow_up_after_days"]

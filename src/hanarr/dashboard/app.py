@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+import tzlocal
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -1303,6 +1304,7 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                 "resume_upload": _resume_upload_status(_active_profile_id(request)),
                 "active_profile": _active_profile_summary(request),
                 "onboarding": _onboarding_status_for_request(request),
+                "local_timezone": str(tzlocal.get_localzone()),
             },
         )
 
@@ -1441,6 +1443,7 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                     "resume_upload": _resume_upload_status(_active_profile_id(request)),
                     "active_profile": _active_profile_summary(request),
                     "onboarding": _onboarding_status_for_request(request),
+                    "local_timezone": str(tzlocal.get_localzone()),
                 },
             )
 

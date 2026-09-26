@@ -25,6 +25,24 @@ def test_schedule_config_allows_multi_day_intervals():
     assert settings.schedule.search_interval_hours == 72
 
 
+def test_schedule_config_normalizes_time_of_day_to_zero_padded_hh_mm():
+    schedule = ScheduleConfig(search_time_of_day="9:5")
+    assert schedule.search_time_of_day == "09:05"
+
+
+def test_schedule_config_rejects_an_invalid_time_of_day():
+    with pytest.raises(ValidationError):
+        ScheduleConfig(search_time_of_day="25:00")
+    with pytest.raises(ValidationError):
+        ScheduleConfig(search_time_of_day="not-a-time")
+
+
+def test_schedule_config_daily_mode_defaults_to_nine_am():
+    schedule = ScheduleConfig()
+    assert schedule.search_schedule_mode == "interval"
+    assert schedule.search_time_of_day == "09:00"
+
+
 def test_missing_config_is_copied_from_template_instead_of_raising(tmp_path, monkeypatch):
     """A missing config.yaml is a first-run signal, not an error: load_settings
     must copy config.example.yaml into place and load normally rather than

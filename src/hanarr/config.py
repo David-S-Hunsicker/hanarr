@@ -141,6 +141,26 @@ class ScheduleConfig(BaseModel):
     # high (days = hours * 24), just never lower than this.
     search_interval_hours: int = Field(default=6, ge=1)
     reminder_check_interval_hours: int = Field(default=1, ge=1)
+    # "interval" (the original behavior -- every N hours starting from
+    # whenever hanarr serve was launched) or "daily" (a fixed clock time,
+    # once a day). search_time_of_day is only read when mode is "daily".
+    search_schedule_mode: Literal["interval", "daily"] = "interval"
+    search_time_of_day: str = "09:00"
+
+    @field_validator("search_time_of_day")
+    @classmethod
+    def _validate_time_of_day(cls, value: str) -> str:
+        """Stored as "HH:MM" in 24-hour, local time -- interpreted by the
+        scheduler using this machine's local timezone (see scheduler.py),
+        not UTC, since "daily at 9am" should mean 9am where the user is."""
+        try:
+            hour_str, minute_str = value.split(":")
+            hour, minute = int(hour_str), int(minute_str)
+        except ValueError:
+            raise ValueError('search_time_of_day must be in "HH:MM" 24-hour format') from None
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError('search_time_of_day must be in "HH:MM" 24-hour format')
+        return f"{hour:02d}:{minute:02d}"
 
 
 class EmailReminderConfig(BaseModel):

@@ -1,3 +1,7 @@
+import tzlocal
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+
 import hanarr.scheduler as scheduler_mod
 from hanarr.config import Settings
 from hanarr.db import make_session_factory, get_or_create_profile
@@ -145,3 +149,33 @@ def test_scheduled_search_skips_when_one_is_already_running(tmp_path, monkeypatc
         scheduler.shutdown(wait=False)
 
     assert call_count == 0, "a scheduled search must not start while another search is running"
+
+
+def test_search_job_uses_an_interval_trigger_by_default(tmp_path):
+    settings = _settings(tmp_path)
+    scheduler = scheduler_mod.start_scheduler(settings)
+    try:
+        assert isinstance(scheduler.get_job("search").trigger, IntervalTrigger)
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+def test_daily_mode_uses_a_cron_trigger_pinned_to_local_time(tmp_path):
+    """Regression test: "daily at 9am" must mean 9am on this machine, not
+    UTC or whatever timezone the scheduler happens to default to -- the
+    trigger's timezone is set explicitly from tzlocal rather than left
+    implicit."""
+    settings = _settings(tmp_path)
+    settings.schedule.search_schedule_mode = "daily"
+    settings.schedule.search_time_of_day = "14:30"
+
+    scheduler = scheduler_mod.start_scheduler(settings)
+    try:
+        trigger = scheduler.get_job("search").trigger
+        assert isinstance(trigger, CronTrigger)
+        assert str(trigger.timezone) == str(tzlocal.get_localzone())
+        fields = {f.name: str(f) for f in trigger.fields}
+        assert fields["hour"] == "14"
+        assert fields["minute"] == "30"
+    finally:
+        scheduler.shutdown(wait=False)

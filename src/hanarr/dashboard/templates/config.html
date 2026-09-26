@@ -612,7 +612,18 @@
         {% set _search_hrs = settings.schedule.search_interval_hours %}
         {% set search_interval_unit = 'days' if (_search_hrs % 24 == 0 and _search_hrs >= 24) else 'hours' %}
         {% set search_interval_value = (_search_hrs // 24) if search_interval_unit == 'days' else _search_hrs %}
-        <div class="row">
+        <div class="field">
+          <label>Automatic search runs</label>
+          <div class="checkbox-row">
+            <input type="radio" id="search_schedule_mode_interval" name="search_schedule_mode" value="interval" {% if settings.schedule.search_schedule_mode == 'interval' %}checked{% endif %}>
+            <label for="search_schedule_mode_interval">On a repeating interval</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="radio" id="search_schedule_mode_daily" name="search_schedule_mode" value="daily" {% if settings.schedule.search_schedule_mode == 'daily' %}checked{% endif %}>
+            <label for="search_schedule_mode_daily">Once a day, at a specific time</label>
+          </div>
+        </div>
+        <div class="row" id="search_schedule_interval_row">
           <div class="field">
             <label for="search_interval_value">Search every</label>
             <div style="display:flex; gap:.5rem;">
@@ -630,6 +641,15 @@
               (manual or automatic) is running always says so.
             </div>
           </div>
+        </div>
+        <div class="row" id="search_schedule_daily_row">
+          <div class="field">
+            <label for="search_time_of_day">Run search at</label>
+            <input type="time" id="search_time_of_day" name="search_time_of_day" value="{{ settings.schedule.search_time_of_day }}">
+            <div class="hint">Your computer's local time ({{ local_timezone }}), once every day.</div>
+          </div>
+        </div>
+        <div class="row">
           <div class="field">
             <label for="reminder_check_interval_hours">Check reminders every (hours)</label>
             <input type="number" id="reminder_check_interval_hours" name="reminder_check_interval_hours" value="{{ settings.schedule.reminder_check_interval_hours }}" min="1">
@@ -701,6 +721,20 @@
       unitSelect.addEventListener("change", sync);
       const form = hoursInput.closest("form");
       if (form) form.addEventListener("submit", sync);
+      sync();
+    })();
+    (function () {
+      const modeRadios = document.querySelectorAll('input[name="search_schedule_mode"]');
+      const intervalRow = document.getElementById("search_schedule_interval_row");
+      const dailyRow = document.getElementById("search_schedule_daily_row");
+      if (!modeRadios.length || !intervalRow || !dailyRow) return;
+
+      function sync() {
+        const daily = document.getElementById("search_schedule_mode_daily").checked;
+        intervalRow.style.display = daily ? "none" : "";
+        dailyRow.style.display = daily ? "" : "none";
+      }
+      modeRadios.forEach((radio) => radio.addEventListener("change", sync));
       sync();
     })();
   </script>

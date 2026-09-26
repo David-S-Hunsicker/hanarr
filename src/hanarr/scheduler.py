@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import logging
 
+import tzlocal
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from .config import Settings
 from .db import get_or_create_profile, list_profiles, make_session_factory
@@ -89,12 +92,20 @@ def start_scheduler(settings: Settings, search_state: dict | None = None) -> Bac
                 due = get_due_reminders(session, profile)
                 deliver_reminders(due, settings.reminders)
 
+    if settings.schedule.search_schedule_mode == "daily":
+        hour, minute = (int(part) for part in settings.schedule.search_time_of_day.split(":"))
+        # Named explicitly rather than left to CronTrigger's own default --
+        # "daily at 9am" should mean 9am on this machine, not UTC, and
+        # naming the zone here makes that a guarantee instead of an
+        # implicit default that could silently change with the environment.
+        search_trigger = CronTrigger(hour=hour, minute=minute, timezone=tzlocal.get_localzone())
+    else:
+        search_trigger = IntervalTrigger(hours=settings.schedule.search_interval_hours)
+
     # Explicit ids so the dashboard can look these jobs up by name (to show
     # "next scheduled search"/"next reminder check") rather than relying on
     # APScheduler's auto-generated ids, which aren't predictable.
-    scheduler.add_job(
-        _search_job, "interval", hours=settings.schedule.search_interval_hours, id="search"
-    )
+    scheduler.add_job(_search_job, search_trigger, id="search")
     scheduler.add_job(
         _reminder_job, "interval", hours=settings.schedule.reminder_check_interval_hours, id="reminders"
     )
