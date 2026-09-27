@@ -59,15 +59,18 @@ def test_windows_workflow_tests_preflights_builds_and_only_uploads_success():
     assert "installer/output/*.sha256" in source
 
 
-def test_manual_release_workflow_builds_and_creates_a_draft():
+def test_manual_release_workflow_builds_and_publishes_release():
     source = (ROOT / ".github" / "workflows" / "publish-windows-release.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in source
     assert "contents: write" in source
+    assert "Release — Publish Windows Installer" in source
     assert "git describe --tags --exact-match HEAD" in source
     assert "packaging\\release-metadata.json" in source
     assert "pyproject.toml" in source
-    assert "--draft" in source
+    assert "Publish GitHub Release" in source
+    assert "--draft" not in source
     assert "--verify-tag" in source
+    assert "Unsigned Windows installer." in source
     assert "Hanarr-Setup-$env:RELEASE_VERSION.sha256" in source
 
 

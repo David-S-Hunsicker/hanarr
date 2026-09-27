@@ -1,10 +1,10 @@
-name: Publish Windows release
+name: Release — Publish Windows Installer
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to build and publish as a draft (for example, v0.1.0)
+        description: Existing version tag to build and publish (for example, v0.1.0)
         required: true
         type: string
 
@@ -85,7 +85,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  create-draft:
+  publish-release:
     needs: build
     runs-on: windows-latest
     permissions:
@@ -98,7 +98,7 @@ jobs:
           name: hanarr-windows-release
           path: installer/output
 
-      - name: Create draft GitHub Release
+      - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,8 +108,8 @@ jobs:
         run: |
           gh release create "$env:RELEASE_TAG" `
             --verify-tag `
-            --draft `
             --title "Hanarr $env:RELEASE_VERSION" `
+            --notes "Unsigned Windows installer. Windows may display an unknown-publisher or SmartScreen warning." `
             --generate-notes `
             "installer/output/Hanarr-Setup-$env:RELEASE_VERSION.exe" `
             "installer/output/Hanarr-Setup-$env:RELEASE_VERSION.sha256" `

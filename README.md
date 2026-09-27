@@ -171,13 +171,14 @@ buildable packaging path, not a signed or released artifact;
 the installer never installs Ollama and the existing explicit-consent setup flow remains in charge
 of optional provider actions.
 
-The Windows installer workflow runs the test suite and packaging preflight on a Windows runner,
-then builds and uploads the unsigned installer only after a real PyInstaller/Inno Setup build
-produces a non-empty executable. Successful builds also include a SHA-256 sidecar and release
-metadata. To prepare an unsigned release, manually run **Publish Windows release** in GitHub
-Actions with an existing `vX.Y.Z` tag that matches both version fields. It tests and builds from
-that tag, then creates a draft GitHub Release with the installer, SHA-256 checksum, and metadata.
-Review and publish the draft manually; no signing secret is required. Windows may warn that the
+The **CI — Test and Build Windows Installer** workflow runs the test suite and packaging preflight
+on a Windows runner, then builds and uploads the unsigned installer only after a real
+PyInstaller/Inno Setup build produces a non-empty executable. Successful builds also include a
+SHA-256 sidecar and release metadata. To publish an unsigned release, manually run
+**Release — Publish Windows Installer** in GitHub Actions with an existing `vX.Y.Z` tag that
+matches both version fields. It tests and builds from that tag, then publishes a GitHub Release
+with the installer, SHA-256 checksum, metadata, and an unsigned-installer warning. The workflow
+run is the publication approval; no signing secret is required. Windows may warn that the
 installer's publisher is unknown. The installer never installs Ollama, and applying updates from
 within Hanarr is not implemented.
 

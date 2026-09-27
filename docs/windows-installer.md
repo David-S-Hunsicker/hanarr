@@ -39,27 +39,28 @@ not claim that artifact is signed or released. A successful compiler exit is not
 the script also checks that the expected non-empty installer artifact exists.
 
 The checked-in version is recorded in both `packaging/release-metadata.json` and
-`pyproject.toml`; keep them aligned. The repository workflow in
+`pyproject.toml`; keep them aligned. **CI — Test and Build Windows Installer** in
 `.github/workflows/windows-installer.yml` installs the test and packaging dependencies plus Inno
 Setup, runs the full tests and `-ValidateOnly` preflight, and uploads the installer only after the
 build and artifact checks succeed. Missing tools fail the job; they never produce a
 success-shaped artifact. The uploaded artifact is explicitly unsigned and is not a release.
 
-To prepare a release, create and push a stable version tag (for example, `v0.1.0`) on a commit
-where both version fields match. From GitHub Actions, manually run **Publish Windows release**
-against the default branch and enter that existing tag. The workflow checks out the tag, verifies
-the tag and both version fields match, runs the tests and packaging checks, builds the installer,
-and creates a **draft** GitHub Release containing the unsigned installer, SHA-256 file, and
-metadata. Review the draft and its generated notes, then publish it manually. The workflow does
-not sign artifacts; Windows may show an unknown-publisher or SmartScreen warning. No signing
-secret is required.
+To publish a release, create and push a stable version tag (for example, `v0.1.0`) on a commit
+where both version fields match. From GitHub Actions, manually run **Release — Publish Windows
+Installer** against the default branch and enter that existing tag. The workflow checks out the
+tag, verifies the tag and both version fields match, runs the tests and packaging checks, builds
+the installer, and publishes a GitHub Release containing the unsigned installer, SHA-256 file,
+metadata, generated notes, and an unsigned-installer warning. The manual workflow run is the
+publication approval; there is no draft-review step. The workflow does not sign artifacts, and
+Windows may show an unknown-publisher or SmartScreen warning. No signing secret is required.
 
 ## Release-readiness validation
 
 Before publishing the first public release, perform and record a clean Windows machine or VM test
-of installation, launch, upgrade, and uninstall/data preservation. The workflow creates a draft
-for human review; it does not perform this manual test or publish the release automatically.
-Retain the exact release tag/commit and artifact SHA-256 for the release record.
+of installation, launch, upgrade, and uninstall/data preservation. The workflow publishes
+automatically after the manually requested tagged build passes; it does not perform this manual
+test. Download and inspect the published assets before announcing the first release. Retain the
+exact release tag/commit and artifact SHA-256 for the release record.
 
 On a clean Windows machine or VM with no Python, terminal tooling, or pre-existing
 Hanarr installation:
