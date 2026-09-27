@@ -166,6 +166,18 @@
     .suggest-btn:disabled { border-color: var(--border); color: var(--text-muted); cursor: default; }
     .suggest-status { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
     .suggest-status.error { color: var(--status-critical); }
+    .spinner {
+      display: inline-block;
+      width: 0.85em;
+      height: 0.85em;
+      border: 2px solid var(--text-muted);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin-right: 0.4em;
+      vertical-align: -0.15em;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .progress-bar-track { height: 6px; border-radius: 999px; background: var(--gridline); overflow: hidden; margin: 0.5rem 0; }
     .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; width: 0%; transition: width 0.3s ease; }
     .field input[type="text"],
@@ -468,6 +480,13 @@
           <div class="label-row">
             <label for="resume-file-input">Upload a resume</label>
           </div>
+          {% if settings.llm.provider == "ollama" and not provider_diagnostics.executable_path %}
+          <div class="hint" style="color: var(--status-warning);">
+            Ollama isn't installed yet — <a href="#provider">install it below</a> first so this resume gets
+            full structured extraction (titles, skills, seniority). You can still upload now; extraction can
+            be retried later from the Resume page once Ollama is set up.
+          </div>
+          {% endif %}
           <input type="file" id="resume-file-input" accept=".pdf,.txt,.md" hidden>
           <button type="button" class="suggest-btn" id="resume-upload-btn">Choose file…</button>
           <span class="suggest-status" id="resume-upload-filename"></span>
@@ -499,7 +518,7 @@
           <strong>Optional local setup</strong>
           <div class="hint">Hanarr checks first. It will not install software, start Ollama, or change providers automatically.</div>
           <button type="button" class="suggest-btn" data-setup-action="ollama_installer">Check for Ollama / stage installer</button>
-          <div class="suggest-status" id="ollama-setup-status" hidden></div>
+          <div class="suggest-status" id="ollama-setup-status" hidden><span class="spinner" id="ollama-setup-spinner" hidden></span><span id="ollama-setup-status-text"></span></div>
         </div>
         <div class="row">
           <div class="field">
@@ -933,13 +952,16 @@
   <script>
     (function () {
       const status = document.getElementById("ollama-setup-status");
+      const spinner = document.getElementById("ollama-setup-spinner");
+      const statusText = document.getElementById("ollama-setup-status-text");
       const buttons = document.querySelectorAll("[data-setup-action]");
       if (!status || !buttons.length) return;
 
-      function show(text, error) {
+      function show(text, error, busy) {
         status.hidden = false;
-        status.textContent = text;
+        statusText.textContent = text;
         status.className = "suggest-status" + (error ? " error" : "");
+        spinner.hidden = !busy;
       }
 
       function request(action, consent) {
@@ -960,30 +982,30 @@
       buttons.forEach((button) => button.addEventListener("click", function () {
         const action = button.dataset.setupAction;
         button.disabled = true;
-        show("Checking local Ollama state…", false);
+        show("Checking local Ollama state…", false, true);
         request(action, false).then(({ ok, data }) => {
           if (!ok || data.status === "error" || data.status === "unavailable") {
-            show(data.error || "Setup is unavailable.", true);
+            show(data.error || "Setup is unavailable.", true, false);
             return;
           }
           if (data.status === "already_installed" || data.status === "already_available") {
-            show(action === "model" ? "The configured model is already available." : "Ollama is already installed; no download is needed.", false);
+            show(action === "model" ? "The configured model is already available." : "Ollama is already installed; no download is needed.", false, false);
             return;
           }
           const text = offerText(data.offer);
           if (!window.confirm(text + "\n\nProceed with this download?")) {
-            show("No changes made. Setup was declined.", false);
+            show("No changes made. Setup was declined.", false, false);
             return;
           }
-          show("Downloading with the confirmed limits…", false);
+          show("Downloading with the confirmed limits — this can take a few minutes…", false, true);
           return request(action, true).then(({ ok: confirmed, data: result }) => {
             if (!confirmed || result.status === "error") {
-              show(result.error || "Setup failed; no silent retry was attempted.", true);
+              show(result.error || "Setup failed; no silent retry was attempted.", true, false);
             } else {
-              show(result.message || "Setup completed. Review any staged files before running them.", false);
+              show(result.message || "Setup completed. Review any staged files before running them.", false, false);
             }
           });
-        }).catch(() => show("Lost connection during setup; no silent retry was attempted.", true))
+        }).catch(() => show("Lost connection during setup; no silent retry was attempted.", true, false))
           .finally(() => { button.disabled = false; });
       }));
     })();

@@ -123,6 +123,51 @@ def test_dashboard_uses_hanarr_product_name(tmp_path):
     assert "Hanarr" in TestClient(app).get("/").text
 
 
+def test_app_tab_prompts_to_install_ollama_near_the_resume_upload(tmp_path, monkeypatch):
+    """Reported scenario: a user uploaded their resume before installing
+    Ollama, silently getting only raw-text matching instead of structured
+    extraction. Nudge them at the point of upload, not just after the
+    fact on the Resume page."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=None, executable_version=None,
+        service_reachable=False, service_error="offline", installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=False,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "app"}).text
+
+    assert "Ollama isn't installed yet" in html
+    assert "install it below" in html
+
+
+def test_app_tab_does_not_prompt_to_install_ollama_when_already_installed(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=r"C:\Ollama\ollama.exe", executable_version="test",
+        service_reachable=True, service_error=None, installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=True,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "app"}).text
+
+    assert "Ollama isn't installed yet" not in html
+
+
+def test_app_tab_does_not_prompt_to_install_ollama_when_provider_is_not_ollama(tmp_path):
+    settings = _make_isolated_settings(tmp_path)  # provider = "none"
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "app"}).text
+    assert "Ollama isn't installed yet" not in html
+
+
 def test_provider_setup_decline_returns_offer_without_download(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     settings.llm.model = "qwen2.5:7b"
