@@ -1,4 +1,4 @@
-name: Windows installer
+name: CI — Test and Build Windows Installer
 
 on:
   push:

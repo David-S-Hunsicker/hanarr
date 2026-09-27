@@ -982,12 +982,13 @@ runtime includes the application and Python dependencies but does not install or
 the existing explicit-consent setup flow remains responsible for optional provider actions.
 
 The Windows build and release-automation milestones are implemented:
-`.github/workflows/windows-installer.yml` runs the full tests, installs the Windows packaging
-tools, runs the deterministic preflight, and builds the installer on `windows-latest`.
-`.github/workflows/publish-windows-release.yml` is manually triggered with an existing version
-tag, validates that tag against both version fields, rebuilds and verifies the installer, and
-creates a draft GitHub Release with installer, SHA-256, and metadata assets. Review and public
-publication remain manual, and the workflow does not sign the installer.
+`.github/workflows/windows-installer.yml` (**CI — Test and Build Windows Installer**) runs the
+full tests, installs the Windows packaging tools, runs the deterministic preflight, and builds the
+installer on `windows-latest`. `.github/workflows/publish-windows-release.yml`
+(**Release — Publish Windows Installer**) is manually triggered with an existing version tag,
+validates that tag against both version fields, rebuilds and verifies the unsigned installer, and
+publishes a GitHub Release with installer, SHA-256, metadata, and generated notes. The manual
+workflow run is the publication approval; no draft click or signing secret is required.
 `packaging/release-metadata.json` is the checked-in version contract. A
 successful build emits the unsigned installer, SHA-256 sidecar, and output metadata; artifact
 upload is conditional on the real build succeeding and missing tools fail the workflow.
