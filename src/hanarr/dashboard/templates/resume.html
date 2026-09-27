@@ -94,6 +94,10 @@
       {% if resume.extracted_profile._extraction_error %}
       <div class="extraction-warning">
         <strong>Structured extraction failed on the last parse</strong> — titles/skills/seniority above may be stale or empty; job matching still uses the raw resume text. {{ resume.extracted_profile._extraction_error }}
+        <div class="actions">
+          <button type="button" id="retry-extraction-btn" onclick="retryExtraction()">Retry extraction</button>
+          <span class="muted" id="retry-extraction-status"></span>
+        </div>
       </div>
       {% endif %}
     </div>
@@ -148,6 +152,24 @@
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({label: input.value}),
       });
       if (!response.ok) { window.alert((await response.json()).error || "Could not save label."); } else { window.location.reload(); }
+    }
+    async function retryExtraction() {
+      const btn = document.getElementById("retry-extraction-btn");
+      const statusEl = document.getElementById("retry-extraction-status");
+      btn.disabled = true;
+      statusEl.textContent = "Retrying…";
+      const response = await fetch("/config/resume/reparse", {method: "POST"});
+      if (!response.ok) {
+        statusEl.textContent = (await response.json()).error || "Could not start retry.";
+        btn.disabled = false;
+        return;
+      }
+      const poll = async () => {
+        const status = await (await fetch("/config/resume/status")).json();
+        if (status.running) { setTimeout(poll, 1500); return; }
+        window.location.reload();
+      };
+      setTimeout(poll, 1000);
     }
   </script>
 </body>

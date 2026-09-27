@@ -64,6 +64,7 @@ from ..resume import (
     ALLOWED_RESUME_EXTENSIONS,
     MAX_RESUME_BYTES,
     parse_and_store_resume,
+    retry_resume_extraction,
     suggest_boost_keywords,
 )
 from ..resume_loop import (
@@ -361,6 +362,41 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                     f"Couldn't read the uploaded file ({e}) — make sure it's a valid PDF, "
                     f"or upload a .txt/.md instead."
                 )
+        finally:
+            if resume_state["run_id"] == run_id:
+                resume_state["running"] = False
+
+    def _retry_resume_extraction_in_background(run_id: int, profile_id: int | None = None):
+        """Same shared resume_state/thread pattern as an upload's re-parse,
+        but re-runs extraction on the already-stored raw text instead of
+        re-reading a file -- for retrying after a first parse failed (e.g.
+        no LLM was available yet) without needing the file again."""
+        resume_state["running"] = True
+        resume_state["run_id"] = run_id
+        resume_state["result"] = None
+        resume_state["error"] = None
+        resume_state["started_at"] = time.time()
+        try:
+            with session_factory() as session:
+                profile, summary, prefs_changed = retry_resume_extraction(
+                    session, settings, profiler_llm, profile_id=profile_id,
+                )
+                if resume_state["run_id"] != run_id:
+                    return
+                if summary.get("_extraction_error"):
+                    resume_state["error"] = (
+                        f"Extraction failed again ({summary['_extraction_error']}); "
+                        f"still falling back to raw-text matching."
+                    )
+                else:
+                    titles = ", ".join(summary.get("titles") or []) or "none detected"
+                    skills = ", ".join((summary.get("skills") or [])[:6]) or "none detected"
+                    note = " Preferences updated from the resume." if prefs_changed else ""
+                    resume_state["result"] = f"Detected titles: {titles}. Top skills: {skills}.{note}"
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Resume extraction retry failed")
+            if resume_state["run_id"] == run_id:
+                resume_state["error"] = f"Retry failed — {e}"
         finally:
             if resume_state["run_id"] == run_id:
                 resume_state["running"] = False
@@ -1568,6 +1604,21 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
             daemon=True,
         ).start()
         return JSONResponse({"run_id": next_run_id, "saved_as": str(dest)})
+
+    @app.post("/config/resume/reparse")
+    def retry_resume_extraction_route(request: Request):
+        if resume_state["running"] and not _task_is_stuck(resume_state):
+            return JSONResponse({"error": "A resume is already being parsed — wait for it to finish."}, status_code=409)
+        profile_id = _active_profile_id(request)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, profile_id)
+            if not profile.resume_text:
+                return JSONResponse({"error": "No resume has been uploaded yet for this profile."}, status_code=400)
+        next_run_id = resume_state["run_id"] + 1
+        threading.Thread(
+            target=_retry_resume_extraction_in_background, args=(next_run_id, profile_id), daemon=True,
+        ).start()
+        return JSONResponse({"run_id": next_run_id})
 
     @app.get("/config/resume/status")
     def resume_status(request: Request):

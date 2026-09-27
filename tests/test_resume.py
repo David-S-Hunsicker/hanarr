@@ -10,6 +10,7 @@ from hanarr.models import Base, ResumeVersion
 from hanarr.resume import (
     autopopulate_preferences_from_resume,
     parse_and_store_resume,
+    retry_resume_extraction,
     suggest_boost_keywords,
 )
 from hanarr.resume_loop import resume_status
@@ -245,6 +246,41 @@ def test_parse_and_store_resume_raises_on_missing_file():
 
     with pytest.raises(FileNotFoundError):
         parse_and_store_resume(session, settings, _FakeLLM({}))
+
+
+def test_retry_resume_extraction_reruns_on_already_stored_text_without_a_file(tmp_path):
+    """The scenario reported: a resume uploaded before Ollama was installed
+    gets a failed extraction with no obvious way to redo it short of
+    re-uploading the same file. retry_resume_extraction must succeed using
+    only the already-stored raw text -- no file on disk required at all."""
+    settings = Settings()
+    session = _make_session()
+    failing_llm = _FakeLLM(RuntimeError("model unreachable"))
+
+    # Seed a profile with stored resume text but a failed extraction, the
+    # same shape a real failed-then-later-installed-Ollama upload leaves.
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer with PyTorch experience.")
+    settings.profile.resume_path = str(resume_file)
+    profile, first_summary, _ = parse_and_store_resume(session, settings, failing_llm)
+    assert first_summary.get("_extraction_error")
+
+    working_llm = _FakeLLM({"titles": ["AI Engineer"], "skills": ["pytorch"]})
+    resume_file.unlink()  # prove the file is genuinely not read again
+
+    profile, summary, prefs_changed = retry_resume_extraction(session, settings, working_llm)
+
+    assert summary["titles"] == ["AI Engineer"]
+    assert prefs_changed is True
+    assert json.loads(profile.resume_summary_json)["titles"] == ["AI Engineer"]
+
+
+def test_retry_resume_extraction_raises_when_nothing_was_ever_uploaded():
+    settings = Settings()
+    session = _make_session()
+
+    with pytest.raises(ValueError, match="No resume has been uploaded"):
+        retry_resume_extraction(session, settings, _FakeLLM({}))
 
 
 def test_parse_and_store_resume_creates_a_resume_version_the_resume_page_can_see(tmp_path):

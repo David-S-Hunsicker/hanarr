@@ -483,6 +483,54 @@ def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
     assert "Profile A Job" not in page_b
 
 
+def test_retry_resume_extraction_route_reruns_without_reuploading(tmp_path, monkeypatch):
+    """The scenario reported: a resume uploaded before Ollama was ready
+    fails extraction with no obvious way to redo it short of re-uploading
+    the same file. The retry route must succeed using only the profile's
+    already-stored text, once a working LLM is available."""
+    monkeypatch.chdir(tmp_path)  # the upload saves a relative config.yaml -- must never touch the real repo's
+    settings = _make_isolated_settings(tmp_path)  # provider = "none" -> upload's extraction fails
+    client = TestClient(create_app(settings))
+
+    upload = client.post("/config/resume", files={"file": ("resume.txt", b"Jane Doe. AI Engineer.", "text/plain")})
+    assert upload.status_code == 200
+    for _ in range(50):
+        status = client.get("/config/resume/status").json()
+        if not status["running"]:
+            break
+        time.sleep(0.05)
+    assert status["error"]  # NullLLMClient raises -> extraction failed on upload
+
+    def fake_retry_resume_extraction(session, settings, llm, *, profile_id=None):
+        from hanarr.db import get_active_profile
+        profile = get_active_profile(session, settings, profile_id)
+        profile.resume_summary_json = '{"titles": ["AI Engineer"], "skills": ["pytorch"]}'
+        session.commit()
+        return profile, {"titles": ["AI Engineer"], "skills": ["pytorch"]}, False
+
+    monkeypatch.setattr(app_mod, "retry_resume_extraction", fake_retry_resume_extraction)
+
+    retry = client.post("/config/resume/reparse")
+    assert retry.status_code == 200
+    for _ in range(50):
+        status = client.get("/config/resume/status").json()
+        if not status["running"]:
+            break
+        time.sleep(0.05)
+    assert status["error"] is None
+    assert "AI Engineer" in status["result"]
+
+
+def test_retry_resume_extraction_route_requires_a_resume_to_already_exist(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/config/resume/reparse")
+
+    assert response.status_code == 400
+    assert "No resume has been uploaded" in response.json()["error"]
+
+
 def test_resume_uploads_for_two_profiles_do_not_collide_on_disk(tmp_path, monkeypatch):
     """Regression test: before per-profile storage, every upload was saved
     to the same fixed resumes/resume.<ext> path regardless of who uploaded

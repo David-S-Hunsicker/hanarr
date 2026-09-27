@@ -209,3 +209,33 @@ def parse_and_store_resume(
         prefs_changed = autopopulate_preferences_from_resume(settings.preferences, summary)
 
     return profile, summary, prefs_changed
+
+
+def retry_resume_extraction(
+    session: Session, settings: Settings, llm: LLMClient, *, profile_id: int | None = None,
+) -> tuple[Profile, dict, bool]:
+    """Re-runs structured extraction on the profile's already-stored raw
+    resume text -- no file re-read or re-upload needed.
+
+    For the case a resume was uploaded before an LLM was ready (e.g.
+    before Ollama was installed), which silently leaves titles/skills/
+    seniority empty with only a "structured extraction failed" note on
+    the Resume page and no obvious way to redo it short of re-uploading
+    the same file. This lets that retry happen directly once a working
+    LLM is available, without needing the original file again.
+
+    Raises ValueError if no resume has been uploaded yet for this profile."""
+    profile = get_active_profile(session, settings, profile_id)
+    if not profile.resume_text:
+        raise ValueError("No resume has been uploaded yet for this profile.")
+
+    summary = extract_profile_summary(profile.resume_text, llm)
+    profile.resume_summary_json = json.dumps(summary)
+    profile.resume_parsed_at = utc_now()
+    session.commit()
+
+    prefs_changed = False
+    if not summary.get("_extraction_error"):
+        prefs_changed = autopopulate_preferences_from_resume(settings.preferences, summary)
+
+    return profile, summary, prefs_changed
