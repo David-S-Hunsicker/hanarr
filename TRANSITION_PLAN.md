@@ -977,17 +977,20 @@ leave provider configuration unchanged. Anthropic remains optional and determini
 fallback behavior is unchanged. Focused tests cover recommendations, parsing, unavailable
 services, dashboard no-op/decline behavior, and setup failure/interruption paths.
 
-No signed/released installer, update service, or first-run wizard has been added. The packaged
+No signed installer, update-install service, or first-run wizard has been added. The packaged
 runtime includes the application and Python dependencies but does not install or bundle Ollama;
 the existing explicit-consent setup flow remains responsible for optional provider actions.
 
-The next bounded release-automation milestone is now implemented:
+The Windows build and release-automation milestones are implemented:
 `.github/workflows/windows-installer.yml` runs the full tests, installs the Windows packaging
 tools, runs the deterministic preflight, and builds the installer on `windows-latest`.
-`packaging/release-metadata.json` is the checked-in version and release-gate contract. A
+`.github/workflows/publish-windows-release.yml` is manually triggered with an existing version
+tag, validates that tag against both version fields, rebuilds and verifies the installer, and
+creates a draft GitHub Release with installer, SHA-256, and metadata assets. Review and public
+publication remain manual, and the workflow does not sign the installer.
+`packaging/release-metadata.json` is the checked-in version contract. A
 successful build emits the unsigned installer, SHA-256 sidecar, and output metadata; artifact
-upload is conditional on the real build succeeding and missing tools fail the workflow. The
-workflow does not publish a GitHub release and does not claim signing or notarization.
+upload is conditional on the real build succeeding and missing tools fail the workflow.
 
 The M5 update-check slice is now implemented without crossing into installation: Settings →
 Updates is opt-in and supports a configured JSON release endpoint or latest GitHub release.

@@ -174,8 +174,12 @@ of optional provider actions.
 The Windows installer workflow runs the test suite and packaging preflight on a Windows runner,
 then builds and uploads the unsigned installer only after a real PyInstaller/Inno Setup build
 produces a non-empty executable. Successful builds also include a SHA-256 sidecar and release
-metadata. The workflow does not claim a release: Authenticode signing remains an explicit
-release gate, and no silent Ollama installation or update service is part of this pipeline.
+metadata. To prepare an unsigned release, manually run **Publish Windows release** in GitHub
+Actions with an existing `vX.Y.Z` tag that matches both version fields. It tests and builds from
+that tag, then creates a draft GitHub Release with the installer, SHA-256 checksum, and metadata.
+Review and publish the draft manually; no signing secret is required. Windows may warn that the
+installer's publisher is unknown. The installer never installs Ollama, and applying updates from
+within Hanarr is not implemented.
 
 Update checks are available in Settings → Updates but are disabled by default. When enabled,
 Hanarr reads either a configured JSON release endpoint or the latest GitHub release, validates

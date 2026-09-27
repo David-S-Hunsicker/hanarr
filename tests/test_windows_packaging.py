@@ -38,11 +38,11 @@ def test_windows_build_script_builds_both_runtimes_before_inno():
     assert "unsigned-success" in source
 
 
-def test_release_metadata_requires_signing_before_release():
+def test_release_metadata_allows_unsigned_release():
     metadata = json.loads((ROOT / "packaging" / "release-metadata.json").read_text(encoding="utf-8"))
     assert metadata["product"] == "Hanarr"
     assert metadata["platform"] == "windows"
-    assert metadata["signing"]["required_for_release"] is True
+    assert metadata["signing"]["required_for_release"] is False
     assert metadata["signing"]["status"] == "not-configured"
 
 
@@ -57,6 +57,18 @@ def test_windows_workflow_tests_preflights_builds_and_only_uploads_success():
     assert "actions/upload-artifact@v4" in source
     assert "if: ${{ success() }}" in source
     assert "installer/output/*.sha256" in source
+
+
+def test_manual_release_workflow_builds_and_creates_a_draft():
+    source = (ROOT / ".github" / "workflows" / "publish-windows-release.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in source
+    assert "contents: write" in source
+    assert "git describe --tags --exact-match HEAD" in source
+    assert "packaging\\release-metadata.json" in source
+    assert "pyproject.toml" in source
+    assert "--draft" in source
+    assert "--verify-tag" in source
+    assert "Hanarr-Setup-$env:RELEASE_VERSION.sha256" in source
 
 
 def test_installer_wires_both_launchers_and_preserves_user_data():

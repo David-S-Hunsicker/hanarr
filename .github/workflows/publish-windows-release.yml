@@ -1,0 +1,116 @@
+name: Publish Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish as a draft (for example, v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate release tag and version
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Release tag must use stable semantic version format, such as v0.1.0."
+          }
+          $version = $Matches.version
+          $metadata = Get-Content -LiteralPath "packaging\release-metadata.json" -Raw | ConvertFrom-Json
+          $packageVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          if ($LASTEXITCODE -ne 0) { throw "Could not read package version from pyproject.toml." }
+          if ($metadata.version -ne $version -or $packageVersion -ne $version) {
+            throw "Tag $env:RELEASE_TAG must match packaging metadata ($($metadata.version)) and package version ($packageVersion)."
+          }
+          $tagAtHead = git describe --tags --exact-match HEAD
+          if ($LASTEXITCODE -ne 0 -or $tagAtHead -ne $env:RELEASE_TAG) {
+            throw "Checked-out commit is not exactly the requested release tag."
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Install test and packaging dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[dev,packaging]"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest -q
+
+      - name: Compile application sources
+        shell: pwsh
+        run: python -m compileall -q src
+
+      - name: Run packaging preflight
+        shell: pwsh
+        run: .\scripts\build_windows.ps1 -ValidateOnly -InnoSetup "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - name: Build unsigned installer and checksums
+        shell: pwsh
+        run: .\scripts\build_windows.ps1 -InnoSetup "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanarr-windows-release
+          path: |
+            installer/output/*.exe
+            installer/output/*.sha256
+            installer/output/*.json
+          if-no-files-found: error
+          retention-days: 1
+
+  create-draft:
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download verified release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: hanarr-windows-release
+          path: installer/output
+
+      - name: Create draft GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "$env:RELEASE_TAG" `
+            --verify-tag `
+            --draft `
+            --title "Hanarr $env:RELEASE_VERSION" `
+            --generate-notes `
+            "installer/output/Hanarr-Setup-$env:RELEASE_VERSION.exe" `
+            "installer/output/Hanarr-Setup-$env:RELEASE_VERSION.sha256" `
+            "installer/output/release-metadata.json"
