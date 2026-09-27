@@ -9,6 +9,7 @@ from hanarr.ollama_setup import (
     SetupError,
     _prefer_ipv4_loopback,
     detect_ollama,
+    installer_offer,
     pull_model,
     recommend_model,
     stage_ollama_installer,
@@ -220,6 +221,90 @@ def test_interrupted_installer_download_cleans_up_staging_file(tmp_path: Path):
 
     assert not destination.exists()
     assert not destination.with_name(".OllamaSetup.exe.part").exists()
+
+
+def test_installer_offer_shows_the_updated_size_estimate(tmp_path: Path):
+    """The displayed size must reflect the raised limit -- the old "up to
+    512 MB" text was itself wrong once the real installer grew past it."""
+    offer = installer_offer(tmp_path / "OllamaSetup.exe")
+    assert "512" not in offer.size
+    assert "1.5 GB" in offer.size
+
+
+def test_installer_byte_limit_exceeds_the_real_installer_size():
+    """Regression test: the real Ollama Windows installer bundles CUDA/ROCm
+    runtime libraries and is ~1.5 GB as of writing -- a user hit "Download
+    exceeded the byte safety limit" against the old 512 MB cap, which was
+    sized for a much smaller installer from long ago."""
+    from hanarr.ollama_setup import OLLAMA_INSTALLER_MAX_BYTES
+
+    realistic_size = int(1.5 * 1024 * 1024 * 1024)
+    assert OLLAMA_INSTALLER_MAX_BYTES > realistic_size
+
+
+def test_installer_download_succeeds_just_under_the_byte_limit(tmp_path: Path, monkeypatch):
+    """Behavioral check of the same cap, at a small scale for test speed."""
+    import hanarr.ollama_setup as ollama_setup_mod
+
+    monkeypatch.setattr(ollama_setup_mod, "OLLAMA_INSTALLER_MAX_BYTES", 1024)
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self, chunk_size):
+            yield b"x" * 1000  # under the 1024-byte patched limit
+
+    class Client:
+        def stream(self, *args, **kwargs):
+            return Response()
+
+    destination = tmp_path / "OllamaSetup.exe"
+    result = stage_ollama_installer(destination, consent=True, client=Client())
+
+    assert result == destination
+    assert destination.stat().st_size == 1000
+
+
+def test_installer_download_still_caps_an_unexpectedly_huge_response(tmp_path: Path, monkeypatch):
+    """The cap must still trigger for something clearly wrong (e.g. a
+    misbehaving/redirected response streaming forever) -- raising the
+    limit for a realistic installer shouldn't make it unbounded. Patches
+    the limit down so this doesn't need to actually write gigabytes."""
+    import hanarr.ollama_setup as ollama_setup_mod
+
+    monkeypatch.setattr(ollama_setup_mod, "OLLAMA_INSTALLER_MAX_BYTES", 1024)
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self, chunk_size):
+            chunk = b"x" * chunk_size
+            while True:
+                yield chunk
+
+    class Client:
+        def stream(self, *args, **kwargs):
+            return Response()
+
+    destination = tmp_path / "OllamaSetup.exe"
+    with pytest.raises(SetupError, match="byte safety limit"):
+        stage_ollama_installer(destination, consent=True, client=Client())
+
+    assert not destination.exists()
 
 
 def test_model_pull_requires_consent_without_contacting_service():

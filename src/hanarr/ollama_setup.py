@@ -16,7 +16,12 @@ import httpx
 
 OLLAMA_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe"
 OLLAMA_LICENSE_URL = "https://github.com/ollama/ollama/blob/main/LICENSE"
-OLLAMA_INSTALLER_MAX_BYTES = 512 * 1024 * 1024
+# The real installer bundles CUDA/ROCm runtime libraries and has grown well
+# past what this limit once assumed -- confirmed at ~1.5 GB as of writing,
+# up from the low hundreds of MB this shipped with originally. This is a
+# safety cap against a redirected/misbehaving response streaming forever,
+# not a tight estimate, so it stays generous above the current real size.
+OLLAMA_INSTALLER_MAX_BYTES = 3 * 1024 * 1024 * 1024
 MODEL_PULL_MAX_BYTES = 20 * 1024 * 1024 * 1024
 
 # Windows per-user installer default; used as a fallback when the executable
@@ -109,7 +114,7 @@ def installer_offer(destination: Path | str) -> SetupOffer:
         source=OLLAMA_INSTALLER_URL,
         license_url=OLLAMA_LICENSE_URL,
         destination=str(Path(destination)),
-        size="up to 512 MB",
+        size="approximately 1.5 GB",
     )
 
 
