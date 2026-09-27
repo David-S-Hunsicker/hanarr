@@ -1598,6 +1598,47 @@ def test_schedule_form_rejects_an_interval_below_the_safety_minimum(tmp_path):
     assert "search_interval_hours" in response.text
 
 
+def test_preferences_autosave_saves_and_returns_json_without_redirecting(tmp_path, monkeypatch):
+    """Preferences fields autosave on blur/tab-navigation (see config.html)
+    by POSTing the same form with an X-Autosave header -- that request
+    wants a small JSON ack back, not the normal full-page redirect, since
+    the page never actually navigates for an autosave."""
+    monkeypatch.chdir(tmp_path)  # the save writes a relative config.yaml -- must never touch the real repo's
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/preferences",
+        data={"target_titles": "Staff Engineer", "min_fit_score": "70"},
+        headers={"X-Autosave": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"saved": True}
+    assert settings.preferences.target_titles == ["Staff Engineer"]
+    assert settings.matching.min_fit_score == 70
+
+
+def test_autosave_returns_json_errors_instead_of_a_rendered_page(tmp_path):
+    """Same _handle_config_post code path, exercised via the schedule tab's
+    existing known validation failure -- proves the autosave error branch
+    returns JSON rather than the HTML error banner."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/schedule",
+        data={"search_interval_hours": "-5", "reminder_check_interval_hours": "1", "follow_up_after_days": "7"},
+        headers={"X-Autosave": "1"},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["saved"] is False
+    assert any("search_interval_hours" in e for e in body["errors"])
+
+
 def test_schedule_form_saves_daily_mode_and_time_of_day(tmp_path, monkeypatch):
     # save_settings_to_yaml writes to a relative "config.yaml" -- chdir into
     # tmp_path so a successful save never touches the real repo checkout's

@@ -1477,6 +1477,13 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
         )
 
     async def _handle_config_post(request: Request, tab: str, apply_fn):
+        # Autosave (Preferences fields saving on blur/tab-away, see
+        # config.html's autosave script) posts the same form to the same
+        # route with this header set, and wants a small JSON ack/error list
+        # back instead of a full re-rendered page or a redirect -- neither
+        # of which the background fetch() call does anything useful with.
+        is_autosave = request.headers.get("x-autosave") == "1"
+
         form = await request.form()
         form_dict = {k: v for k, v in form.items()}
         current = settings_to_dict(settings)
@@ -1484,6 +1491,8 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
         new_settings, errors = validate_and_build(updated_dict)
 
         if errors:
+            if is_autosave:
+                return JSONResponse({"saved": False, "errors": errors}, status_code=400)
             return templates.TemplateResponse(
                 request=request,
                 name="config.html",
@@ -1514,6 +1523,8 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
 
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
         persist_secrets_from_form(form_dict)
+        if is_autosave:
+            return JSONResponse({"saved": True})
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
 
     @app.post("/config/suggest-keywords")

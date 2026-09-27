@@ -449,7 +449,10 @@
         </div>
       </fieldset>
 
-      <div class="save-row"><button type="submit" class="save">Save preferences</button></div>
+      <div class="save-row">
+        <button type="submit" class="save">Save preferences</button>
+        <span class="suggest-status" id="autosave-status"></span>
+      </div>
     </form>
 
     {% elif active_tab == 'app' %}
@@ -853,6 +856,76 @@
             stopPolling();
             showStatus("Couldn't start the suggestion request.", true);
           });
+      });
+    })();
+    (function () {
+      // Autosave: Preferences & matching fields save on blur/change and
+      // whenever the user navigates to another tab, instead of only when
+      // the "Save preferences" button is clicked -- so switching tabs
+      // (a plain link click, not a form submit) never silently discards
+      // edited fields.
+      const form = document.querySelector('form[action="/config/preferences"]');
+      const statusEl = document.getElementById("autosave-status");
+      if (!form || !statusEl) return;
+
+      let dirty = false;
+      let debounceTimer = null;
+
+      function setStatus(text, isError) {
+        statusEl.textContent = text;
+        statusEl.className = "suggest-status" + (isError ? " error" : "");
+      }
+
+      function save() {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+        if (!dirty) return Promise.resolve(true);
+        setStatus("Saving…", false);
+        return fetch(form.action, {
+          method: "POST",
+          headers: { "X-Autosave": "1" },
+          body: new FormData(form),
+        }).then((response) => response.json().then((data) => ({ ok: response.ok, data }))).then(({ ok, data }) => {
+          if (ok && data.saved) {
+            dirty = false;
+            setStatus("Saved", false);
+            return true;
+          }
+          setStatus((data.errors && data.errors[0]) || "Couldn't save.", true);
+          return false;
+        }).catch(() => {
+          setStatus("Couldn't save — lost connection.", true);
+          return false;
+        });
+      }
+
+      function scheduleSave() {
+        dirty = true;
+        setStatus("Unsaved changes…", false);
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(save, 400);
+      }
+
+      form.addEventListener("input", scheduleSave);
+      form.addEventListener("change", scheduleSave);
+      // blur doesn't bubble, but it does fire on ancestors during the
+      // capture phase -- this is what actually saves "on exiting a
+      // field" for text/textarea inputs (change alone only fires for
+      // checkboxes/selects, not for text fields losing focus).
+      form.addEventListener("blur", function () { if (dirty) save(); }, true);
+
+      document.querySelectorAll("a.tab, a.nav-link").forEach((link) => {
+        link.addEventListener("click", function (event) {
+          if (!dirty) return;
+          event.preventDefault();
+          const destination = link.href;
+          save().then((ok) => {
+            if (!ok && !window.confirm("Some preference changes couldn't be saved. Leave this page and discard them anyway?")) {
+              return;
+            }
+            window.location.href = destination;
+          });
+        });
       });
     })();
   </script>
