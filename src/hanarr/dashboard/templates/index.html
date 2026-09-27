@@ -438,7 +438,14 @@
 
   {% if not model_ready %}
   <div class="note" id="model-not-ready-note">
+    {% if model_not_ready_reason == "not_installed" %}
+    Ollama isn't installed on this computer — <a href="/config?tab=app#provider">install it from Settings</a>
+    (a few clicks; nothing is downloaded without your confirmation).
+    {% elif model_not_ready_reason == "not_running" %}
+    Ollama is installed but doesn't seem to be running right now — start it, then refresh this page.
+    {% else %}
     Configured model isn't downloaded yet — <a href="/config?tab=app#provider">set it up in Settings</a>.
+    {% endif %}
   </div>
   {% endif %}
 

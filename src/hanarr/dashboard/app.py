@@ -565,6 +565,8 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
             query = urlencode(params)
             return "/" + (f"?{query}" if query else "")
 
+        model_readiness = _model_readiness()
+
         return {
             "jobs": jobs,
             "statuses": [s.value for s in ApplicationStatus],
@@ -580,18 +582,32 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
             "projects": [project_status(project) for project in projects],
             "score_impact_by_job": score_impact_by_job,
             "onboarding": _onboarding_status(profile, settings),
-            "model_ready": _model_ready(),
+            "model_ready": model_readiness["ready"],
+            "model_not_ready_reason": model_readiness["reason"],
             "job_filter_href": job_filter_href,
         }
 
-    def _model_ready() -> bool:
+    def _model_readiness() -> dict:
         """Only Ollama has a locally-pulled-model concept -- Anthropic (or
         no provider) has nothing to download, so is always "ready" here.
         Cheap: same /api/tags call _provider_diagnostics() already makes
-        for Settings, not a full generation."""
+        for Settings, not a full generation.
+
+        "reason" distinguishes three states that need different prompts:
+        Ollama isn't installed at all (most actionable -- the Jobs page
+        should point straight at the install flow, not a vague "not
+        ready"), it's installed but not currently running, or it's
+        running but the configured model hasn't been pulled yet."""
         if settings.llm.provider != "ollama":
-            return True
-        return _provider_diagnostics().configured_model_available
+            return {"ready": True, "reason": None}
+        diagnostics = _provider_diagnostics()
+        if diagnostics.configured_model_available:
+            return {"ready": True, "reason": None}
+        if diagnostics.executable_path is None:
+            return {"ready": False, "reason": "not_installed"}
+        if not diagnostics.service_reachable:
+            return {"ready": False, "reason": "not_running"}
+        return {"ready": False, "reason": "model_missing"}
 
     @app.get("/jobs/panel")
     def jobs_panel(request: Request, status: str | None = None, sort: str | None = None, recent: str | None = None):

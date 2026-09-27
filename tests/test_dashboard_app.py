@@ -65,6 +65,47 @@ def test_jobs_page_search_enabled_when_ollama_model_is_downloaded(tmp_path, monk
     assert "isn't downloaded yet" not in html
 
 
+def test_jobs_page_prompts_to_install_ollama_when_it_is_not_installed(tmp_path, monkeypatch):
+    """The user reported expecting a prompt to install Ollama when it's
+    missing entirely -- the generic "model isn't downloaded" message
+    doesn't distinguish "no Ollama at all" from "Ollama's running but the
+    model isn't pulled", so someone without Ollama never gets pointed at
+    the (already-existing, consent-gated) install flow."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=None, executable_version=None,
+        service_reachable=False, service_error="offline", installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=False,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert 'id="search-btn" disabled' in html
+    assert "Ollama isn't installed" in html
+    assert '/config?tab=app#provider' in html
+
+
+def test_jobs_page_shows_a_distinct_message_when_ollama_is_installed_but_not_running(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.provider = "ollama"
+    diagnostics = OllamaDiagnostics(
+        executable_path=r"C:\Ollama\ollama.exe", executable_version="test",
+        service_reachable=False, service_error="offline", installed_models=(),
+        configured_model=settings.llm.model, configured_model_available=False,
+        hardware=HardwareInfo(8, 20, "Windows"),
+        recommendation=ModelRecommendation(settings.llm.model, "test", "low"),
+    )
+    monkeypatch.setattr(app_mod, "detect_ollama", lambda *a: diagnostics)
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert 'id="search-btn" disabled' in html
+    assert "doesn't seem to be running" in html
+    assert "Ollama isn't installed" not in html
+
+
 def test_jobs_page_search_enabled_when_provider_is_none(tmp_path):
     """No local model to be "not ready" for when llm.provider isn't
     Ollama -- must never falsely block search."""
