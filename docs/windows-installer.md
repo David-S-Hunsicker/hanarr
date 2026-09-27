@@ -35,36 +35,36 @@ Setup, or a required packaging input is missing. The full script installs the op
 PyInstaller executables, then invokes `installer\hanarr.iss`. It writes an
 **unsigned** `installer\output\Hanarr-Setup-0.1.0.exe`, a SHA-256 sidecar, and output metadata;
 this repository does
-not claim that artifact is signed or released. Release work still requires a
-real Windows clean-machine test, certificate-backed Authenticode signing,
-signature verification, version automation, and publishing. A successful compiler
-exit is not sufficient: the script also checks that the expected non-empty installer
-artifact exists.
+not claim that artifact is signed or released. A successful compiler exit is not sufficient:
+the script also checks that the expected non-empty installer artifact exists.
 
-The checked-in version and release-gate contract is `packaging/release-metadata.json`.
-The repository workflow in `.github/workflows/windows-installer.yml` installs the test and
-packaging dependencies plus Inno Setup, runs the full tests and `-ValidateOnly` preflight, and
-uploads the installer only after the build and artifact checks succeed. Missing tools fail the
-job; they never produce a success-shaped artifact. The uploaded artifact is explicitly unsigned
-and is not a release.
+The checked-in version is recorded in both `packaging/release-metadata.json` and
+`pyproject.toml`; keep them aligned. The repository workflow in
+`.github/workflows/windows-installer.yml` installs the test and packaging dependencies plus Inno
+Setup, runs the full tests and `-ValidateOnly` preflight, and uploads the installer only after the
+build and artifact checks succeed. Missing tools fail the job; they never produce a
+success-shaped artifact. The uploaded artifact is explicitly unsigned and is not a release.
+
+To prepare a release, create and push a stable version tag (for example, `v0.1.0`) on a commit
+where both version fields match. From GitHub Actions, manually run **Publish Windows release**
+against the default branch and enter that existing tag. The workflow checks out the tag, verifies
+the tag and both version fields match, runs the tests and packaging checks, builds the installer,
+and creates a **draft** GitHub Release containing the unsigned installer, SHA-256 file, and
+metadata. Review the draft and its generated notes, then publish it manually. The workflow does
+not sign artifacts; Windows may show an unknown-publisher or SmartScreen warning. No signing
+secret is required.
 
 ## Release-readiness validation
 
-Before release, retain the exact commit, Python/PyInstaller/Inno versions, and SHA-256
-of the unsigned and signed artifacts. Sign the installer and both packaged executables
-with the release certificate using the organization's approved Authenticode process,
-then verify each signature and timestamp with `Get-AuthenticodeSignature`; do not
-describe an unsigned artifact as released.
-
-The `signing.required_for_release` metadata gate must be satisfied before any release
-publication. The current workflow intentionally has no certificate or notarization secret
-configured and only uploads a short-retention CI artifact for inspection; adding signing and
-release publication is a separate, explicitly approved milestone.
+Before publishing the first public release, perform and record a clean Windows machine or VM test
+of installation, launch, upgrade, and uninstall/data preservation. The workflow creates a draft
+for human review; it does not perform this manual test or publish the release automatically.
+Retain the exact release tag/commit and artifact SHA-256 for the release record.
 
 On a clean Windows machine or VM with no Python, terminal tooling, or pre-existing
 Hanarr installation:
 
-1. Install the signed installer as a normal user and verify both Start Menu shortcuts.
+1. Install the unsigned installer as a normal user and verify both Start Menu shortcuts.
 2. Select the optional Desktop shortcut and verify it launches the same backend in
    webview mode; verify the Browser shortcut opens the dashboard in the default browser.
 3. Create representative configuration, resume, and SQLite data under
