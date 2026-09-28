@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from .. import secrets_store
 from ..config import Settings
 from ..config import save_settings_to_yaml as _save_settings_to_yaml
-from ..matching import EMPLOYMENT_TYPES, SENIORITY_LEVELS
+from ..matching import COMMON_DEALBREAKERS, EMPLOYMENT_TYPES, SENIORITY_LEVELS
 
 # Fields the dashboard's structured forms cover, grouped by tab. Anything
 # outside these paths (e.g. secrets like llm.api_key or SMTP password) is
@@ -48,6 +48,16 @@ def settings_to_dict(settings: Settings) -> dict[str, Any]:
     return settings.model_dump(mode="json", exclude={"data_dir"})
 
 
+def custom_dealbreakers(dealbreakers: list[str]) -> list[str]:
+    """The stored dealbreakers list holds both checkbox-selected common
+    entries and freely-typed custom ones, undifferentiated -- this splits
+    out only what doesn't match a common checkbox's label, so the custom
+    textarea doesn't also show (and let someone duplicate) an entry
+    that's already represented by a checked box."""
+    common_labels = {label for _, label in COMMON_DEALBREAKERS}
+    return [d for d in dealbreakers if d not in common_labels]
+
+
 def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
     """Returns an updated copy of the settings dict from the Preferences tab's form fields."""
     data = dict(current)
@@ -70,7 +80,8 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     prefs["company_size_max"] = _int_or_none(form.get("company_size_max"))
     prefs["industries_include"] = _list_from_form(form.get("industries_include", ""))
     prefs["industries_exclude"] = _list_from_form(form.get("industries_exclude", ""))
-    prefs["dealbreakers"] = _list_from_form(form.get("dealbreakers", ""))
+    checked_common = [label for key, label in COMMON_DEALBREAKERS if f"dealbreaker_{key}" in form]
+    prefs["dealbreakers"] = checked_common + _list_from_form(form.get("dealbreakers_custom", ""))
 
     matching["min_fit_score"] = _int_or_none(form.get("min_fit_score")) or 0
 

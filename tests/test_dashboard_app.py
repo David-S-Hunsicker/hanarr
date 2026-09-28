@@ -1568,6 +1568,24 @@ def test_search_activity_badge_present_on_every_non_jobs_page(tmp_path):
         assert 'id="search-activity-badge"' in html, f"{page} is missing the search activity badge"
 
 
+def test_preferences_tab_shows_common_dealbreakers_as_checked_checkboxes(tmp_path):
+    """Common dealbreakers should be checkboxes, not something the user has
+    to type out as free text every time."""
+    from hanarr.matching import COMMON_DEALBREAKERS
+
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.dealbreakers = [COMMON_DEALBREAKERS[0][1], "A fully custom one"]
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "preferences"}).text
+
+    checked_input = f'name="dealbreaker_{COMMON_DEALBREAKERS[0][0]}" checked'
+    unchecked_input = f'name="dealbreaker_{COMMON_DEALBREAKERS[1][0]}" checked'
+    assert checked_input in html
+    assert unchecked_input not in html
+    assert COMMON_DEALBREAKERS[0][1] in html  # the checkbox's own label text
+    assert "A fully custom one" in html  # preserved in the custom textarea
+    assert 'id="dealbreakers_custom"' in html
+
+
 def test_schedule_tab_displays_hours_or_days_based_on_the_stored_interval(tmp_path):
     """The stored config only ever has hours -- the Settings UI shows it
     as whichever unit divides evenly, so "every 3 days" doesn't force the

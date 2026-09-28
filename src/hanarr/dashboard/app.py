@@ -28,6 +28,7 @@ from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
 from ..llm import build_llm_client
+from ..matching import COMMON_DEALBREAKERS
 from ..ollama_setup import (
     SetupCancelled,
     SetupError,
@@ -96,6 +97,7 @@ from .config_form import (
     apply_preferences_form,
     apply_schedule_reminders_form,
     apply_updates_form,
+    custom_dealbreakers,
     persist_secrets_from_form,
     save_settings_to_yaml,
     settings_to_dict,
@@ -1358,6 +1360,8 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                 "active_profile": _active_profile_summary(request),
                 "onboarding": _onboarding_status_for_request(request),
                 "local_timezone": str(tzlocal.get_localzone()),
+                "common_dealbreakers": COMMON_DEALBREAKERS,
+                "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
             },
         )
 
@@ -1506,6 +1510,8 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                     "active_profile": _active_profile_summary(request),
                     "onboarding": _onboarding_status_for_request(request),
                     "local_timezone": str(tzlocal.get_localzone()),
+                    "common_dealbreakers": COMMON_DEALBREAKERS,
+                    "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
                 },
             )
 

@@ -389,8 +389,17 @@
           </div>
         </div>
         <div class="field">
-          <label for="dealbreakers">Dealbreakers</label>
-          <textarea id="dealbreakers" name="dealbreakers">{{ "\n".join(settings.preferences.dealbreakers) }}</textarea>
+          <label>Dealbreakers</label>
+          <div class="checkbox-group">
+            {% for key, label in common_dealbreakers %}
+            <label class="checkbox-chip">
+              <input type="checkbox" name="dealbreaker_{{ key }}" {% if label in settings.preferences.dealbreakers %}checked{% endif %}>
+              {{ label }}
+            </label>
+            {% endfor %}
+          </div>
+          <label for="dealbreakers_custom" class="hint" style="display:block; margin-top:.6rem;">Other dealbreakers (one per line)</label>
+          <textarea id="dealbreakers_custom" name="dealbreakers_custom">{{ "\n".join(dealbreakers_custom) }}</textarea>
           <div class="hint">Free text, considered by the LLM scorer</div>
         </div>
       </fieldset>

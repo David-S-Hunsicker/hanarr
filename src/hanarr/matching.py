@@ -103,6 +103,26 @@ def _detected_title_seniority(title: str) -> str | None:
 
 EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"]
 
+# Common dealbreakers offered as checkboxes in Settings, rather than making
+# everyone type them out as free text -- (key, label) so the key is a stable
+# form-field/storage suffix independent of the label's exact wording. The
+# label itself is what's actually stored in Preferences.dealbreakers (same
+# substring-match and LLM-prompt handling as any custom, freely-typed
+# dealbreaker), so picking a different label here is a wording change, not a
+# schema change. Chosen to apply broadly across job types, not just tech
+# roles -- "requires relocation" is deliberately excluded since
+# willing_to_relocate already covers that.
+COMMON_DEALBREAKERS = [
+    ("on_call", "Requires on-call rotation"),
+    ("travel", "Requires travel"),
+    ("no_salary_disclosed", "No salary or compensation range disclosed"),
+    ("weekend_holiday", "Requires weekend or holiday shifts"),
+    ("security_clearance", "Requires a security clearance"),
+    ("unpaid_equity_only", "Unpaid or equity-only compensation"),
+    ("overnight_shifts", "Requires overnight or graveyard shifts"),
+    ("personal_vehicle", "Requires a personal vehicle"),
+]
+
 
 # A handful of countries commonly seen restricting "remote" roles on
 # Greenhouse/Lever/RemoteOK-style boards, mapped to name variants that show
