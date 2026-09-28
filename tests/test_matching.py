@@ -4,7 +4,13 @@ import json
 from hanarr.config import Preferences
 from hanarr.connectors.base import RawJobPosting
 from hanarr.llm.base import LLMClient
-from hanarr.matching import _rule_based_score, passes_prefilter, prefilter_rejection_reason, score_fit
+from hanarr.matching import (
+    _detected_title_seniority,
+    _rule_based_score,
+    passes_prefilter,
+    prefilter_rejection_reason,
+    score_fit,
+)
 
 
 def make_job(**overrides) -> RawJobPosting:
@@ -176,6 +182,51 @@ def test_prefilter_multi_select_seniority_still_rejects_outside_all_selected():
     job = make_job(title="Software Engineering Intern")
     prefs = Preferences(seniority=["senior", "staff"], remote_ok=True)
     assert passes_prefilter(job, prefs) is False
+
+
+def test_prefilter_now_detects_mid_level_from_a_numbered_title():
+    """Regression test: a user reported a "Software Engineer II" posting
+    (scored 92 by the LLM) reaching the dashboard despite their preference
+    being senior-only. Root cause: _detected_title_seniority had no
+    pattern for "senior" at all, and no handling of "Role <numeral>"
+    leveling -- so a title like "Software Engineer II" was invisible to
+    the seniority check entirely (not even reaching the tolerance
+    comparison), same failure mode as the location-prefilter bug: a
+    detection gap, not an intentional pass. Since mid is one rung from
+    senior and SENIORITY_TOLERANCE stays at 1 by design (user's explicit
+    choice), this specific posting still passes prefilter -- but now
+    because it was correctly evaluated and found within tolerance, not
+    because it was never evaluated at all."""
+    job = make_job(title="Software Engineer II", description="")
+    prefs = Preferences(seniority=["senior"], remote_ok=True, target_titles=["Software Engineer"])
+    assert passes_prefilter(job, prefs) is True  # within the 1-rung tolerance, as intended
+    assert _detected_title_seniority(job.title) == "mid"  # but no longer invisible to the check
+
+
+def test_prefilter_rejects_a_numbered_junior_title_for_a_senior_only_search():
+    """Two rungs from senior (junior vs. senior) -- outside tolerance, and
+    only detectable now that numbered levels are recognized at all."""
+    job = make_job(title="Software Engineer I", description="")
+    prefs = Preferences(seniority=["senior"], remote_ok=True, target_titles=["Software Engineer"])
+    assert passes_prefilter(job, prefs) is False
+
+
+def test_detected_title_seniority_recognizes_senior_and_sr_abbreviation():
+    assert _detected_title_seniority("Senior Software Engineer") == "senior"
+    assert _detected_title_seniority("Sr. Software Engineer") == "senior"
+    assert _detected_title_seniority("Sr Backend Engineer") == "senior"
+
+
+def test_detected_title_seniority_prefers_exec_over_senior_when_both_present():
+    assert _detected_title_seniority("Senior Vice President, Engineering") == "exec"
+
+
+def test_detected_title_seniority_prefers_staff_over_senior_when_both_present():
+    assert _detected_title_seniority("Senior Staff Engineer") == "staff"
+
+
+def test_detected_title_seniority_recognizes_mid_level_wording():
+    assert _detected_title_seniority("Mid-level Software Engineer") == "mid"
 
 
 def test_prefilter_rejects_zero_title_and_keyword_overlap():

@@ -101,13 +101,34 @@ just because a related keyword appears somewhere in the posting."""
 # regex only matches unambiguous title language, not generic words that
 # happen to overlap with normal job titles.
 SENIORITY_LEVELS = ["intern", "junior", "mid", "senior", "staff", "principal", "exec"]
+# Checked in this order (most specific/highest level first) so a title
+# containing more than one signal resolves to the more senior one -- e.g.
+# "Senior Vice President" matches "exec", not "senior"; "Senior Staff
+# Engineer" matches "staff", not "senior".
 SENIORITY_TITLE_PATTERNS = {
-    "intern": r"\bintern(ship)?\b",
-    "junior": r"\bjunior\b|\bjr\.?\b|\bentry[- ]level\b|\bassociate\b",
-    "staff": r"\bstaff\b",
-    "principal": r"\bprincipal\b|\bdistinguished\b",
     "exec": r"\b(vp|vice president|chief|cto|ceo|coo|svp|evp|head of)\b",
+    "principal": r"\bprincipal\b|\bdistinguished\b",
+    "staff": r"\bstaff\b",
+    # "senior"/"sr" were missing here entirely until this was added --
+    # meaning the single most common level word in real job titles (and
+    # the one candidates most often filter on) was never detected at all,
+    # silently skipping the seniority check below for any title using it.
+    "senior": r"\bsenior\b|\bsr\.?\b",
+    "junior": r"\bjunior\b|\bjr\.?\b|\bentry[- ]level\b|\bassociate\b",
+    "mid": r"\bmid[- ]level\b|\bmid[- ]tier\b",
+    "intern": r"\bintern(ship)?\b",
 }
+# "Role II"/"Role III"-style numbered leveling (e.g. "Software Engineer
+# II", "Data Analyst III") is common at large/enterprise employers in
+# place of a level word, and was invisible to detection entirely before
+# this -- mapped using the common I=junior/II=mid/III=senior/IV=staff/
+# V=principal convention. Approximate (numbering schemes vary by company),
+# but a reasonable-by-default guess beats detecting nothing for the many
+# titles that use this convention instead of a level word.
+_NUMERAL_LEVEL_TO_SENIORITY = {"i": "junior", "ii": "mid", "iii": "senior", "iv": "staff", "v": "principal"}
+_NUMERAL_LEVEL_PATTERN = re.compile(
+    r"\b(?:engineer|developer|analyst|scientist|designer|specialist|architect|manager)\s+(i|ii|iii|iv|v)\b"
+)
 # How many rungs of mismatch to tolerate before rejecting. One rung (e.g.
 # senior candidate seeing a staff or mid posting) is normal market noise and
 # often still worth the candidate's attention; two or more (e.g. senior vs.
@@ -120,6 +141,9 @@ def _detected_title_seniority(title: str) -> str | None:
     for level, pattern in SENIORITY_TITLE_PATTERNS.items():
         if re.search(pattern, title_lower):
             return level
+    numeral_match = _NUMERAL_LEVEL_PATTERN.search(title_lower)
+    if numeral_match:
+        return _NUMERAL_LEVEL_TO_SENIORITY.get(numeral_match.group(1))
     return None
 
 
