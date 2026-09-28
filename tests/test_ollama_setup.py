@@ -7,6 +7,7 @@ from hanarr.ollama_setup import (
     HardwareInfo,
     SetupCancelled,
     SetupError,
+    _executable_details,
     _prefer_ipv4_loopback,
     detect_ollama,
     installer_offer,
@@ -34,6 +35,30 @@ def test_prefer_ipv4_loopback_only_rewrites_localhost(url, expected):
     though the service is actually up. Only "localhost" is rewritten; any
     other host (including an already-IPv4 address) passes through untouched."""
     assert _prefer_ipv4_loopback(url) == expected
+
+
+def test_executable_details_suppresses_a_console_window(monkeypatch):
+    """Regression test: a user reported a console window briefly flashing
+    on every tab/page switch in the packaged (windowed, console-less)
+    desktop app. Root cause: detect_ollama() runs on nearly every
+    dashboard render and calls this to get `ollama --version`, spawning a
+    console-subsystem executable -- without suppressing console-window
+    creation, Windows opens a fresh visible console for it every time."""
+    captured = {}
+
+    class Result:
+        stdout = "ollama version 0.1.0"
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return Result()
+
+    monkeypatch.setattr("hanarr.ollama_setup.subprocess.run", fake_run)
+
+    _executable_details(r"C:\Ollama\ollama.exe")
+
+    assert captured.get("creationflags", 0) != 0
 
 
 def test_model_recommendation_is_conservative_and_explained():

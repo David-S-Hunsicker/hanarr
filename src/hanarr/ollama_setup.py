@@ -329,6 +329,14 @@ def _executable_details(path: str | None) -> str | None:
             text=True,
             timeout=3,
             check=False,
+            # detect_ollama() (and this with it) runs on effectively every
+            # dashboard page/tab render -- without this, each call spawns
+            # ollama.exe (a console-subsystem executable) from Hanarr's own
+            # windowed/console-less packaged build, and Windows allocates a
+            # fresh console for it every time: a visible black-window flash
+            # on every single tab switch. getattr guards this being a
+            # Windows-only subprocess flag.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.SubprocessError):
         return None
