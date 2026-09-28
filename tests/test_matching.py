@@ -74,6 +74,55 @@ def test_prefilter_accepts_reasonable_match():
     assert passes_prefilter(job, prefs) is True
 
 
+def test_prefilter_rejects_onsite_posting_in_an_unlisted_city_even_when_onsite_ok():
+    """Regression test: a user reported an on-site San Francisco posting
+    reaching the dashboard (and the LLM) despite San Francisco not being in
+    their locations list. Root cause: onsite_ok=True used to skip the
+    locations check entirely -- treating "I'll consider on-site roles" as
+    "I'll consider on-site roles anywhere in the world" -- so any on-site
+    posting passed the prefilter regardless of prefs.locations. Only
+    willing_to_relocate should bypass the locations list; onsite_ok alone
+    must not."""
+    job = make_job(title="Payroll Specialist", location="San Francisco, CA", remote=False)
+    prefs = Preferences(
+        remote_ok=False, onsite_ok=True, willing_to_relocate=False, locations=["Austin, TX"],
+    )
+
+    assert passes_prefilter(job, prefs) is False
+    reason = prefilter_rejection_reason(job, prefs)
+    assert "San Francisco" in reason
+    assert "isn't one of your accepted locations" in reason
+
+
+def test_prefilter_accepts_onsite_posting_in_a_listed_city():
+    job = make_job(title="Payroll Specialist", location="Austin, TX", remote=False)
+    prefs = Preferences(remote_ok=False, onsite_ok=True, locations=["Austin, TX"])
+
+    assert passes_prefilter(job, prefs) is True
+
+
+def test_prefilter_rejects_onsite_posting_when_onsite_not_accepted_at_all():
+    """A user who hasn't opted into on-site roles at all (onsite_ok=False)
+    and isn't willing to relocate must reject every on-site posting
+    outright -- previously an on-site posting could still slip through if
+    its location happened to match prefs.locations, even with
+    onsite_ok=False, which made that toggle meaningless."""
+    job = make_job(title="Payroll Specialist", location="Austin, TX", remote=False)
+    prefs = Preferences(remote_ok=True, onsite_ok=False, willing_to_relocate=False, locations=["Austin, TX"])
+
+    assert passes_prefilter(job, prefs) is False
+    assert "haven't opted into on-site roles" in prefilter_rejection_reason(job, prefs)
+
+
+def test_prefilter_accepts_any_onsite_location_when_willing_to_relocate():
+    """willing_to_relocate is the one toggle that should bypass the
+    locations list -- its entire purpose is "any on-site city is fine"."""
+    job = make_job(title="Payroll Specialist", location="San Francisco, CA", remote=False)
+    prefs = Preferences(remote_ok=False, onsite_ok=True, willing_to_relocate=True, locations=["Austin, TX"])
+
+    assert passes_prefilter(job, prefs) is True
+
+
 def test_prefilter_rejects_intern_title_for_senior_candidate():
     job = make_job(title="Software Engineering Intern")
     prefs = Preferences(seniority="senior", remote_ok=True)

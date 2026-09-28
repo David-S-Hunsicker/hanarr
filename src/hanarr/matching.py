@@ -10,9 +10,23 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from .config import Preferences
-from .connectors.base import RawJobPosting
+
+if TYPE_CHECKING:
+    # Deferred: connectors/registry.py -> company_categories.py imports
+    # EXAMPLE_TARGET_TITLES from this module, so a real (non-TYPE_CHECKING)
+    # import here -- `from .connectors.base import RawJobPosting` pulls in
+    # connectors/__init__.py, which pulls in registry.py, which pulls in
+    # company_categories.py, which tries to import back from this
+    # not-yet-finished module -- is a circular import that only fails
+    # depending on which module happens to be imported first. RawJobPosting
+    # is only ever used here as a type annotation (this module never
+    # constructs or isinstance-checks it), and `from __future__ import
+    # annotations` above means annotations are never evaluated at runtime,
+    # so this is safe.
+    from .connectors.base import RawJobPosting
 
 # The example template's shipped placeholder (config.example.yaml). A
 # config.yaml that still has exactly this means the user never edited it --
@@ -215,14 +229,27 @@ def prefilter_rejection_reason(job: RawJobPosting, prefs: Preferences) -> str | 
         if hit:
             return f"Matched an excluded industry: {hit!r}"
 
-    if job.remote and not prefs.remote_ok:
-        return "Remote posting, but remote work isn't accepted in your preferences"
-    if not job.remote and not prefs.onsite_ok and not prefs.willing_to_relocate:
-        location_matches = any(
-            loc.lower() in job.location.lower() for loc in prefs.locations if loc.lower() != "remote"
-        )
-        if not location_matches:
-            return f"On-site posting in {job.location!r}, which isn't one of your accepted locations"
+    if job.remote:
+        if not prefs.remote_ok:
+            return "Remote posting, but remote work isn't accepted in your preferences"
+    else:
+        if not prefs.onsite_ok and not prefs.willing_to_relocate:
+            return "On-site posting, but you haven't opted into on-site roles"
+        # willing_to_relocate is the ONLY thing that should bypass the
+        # locations list -- onsite_ok alone means "I'll consider on-site
+        # roles," not "I'll consider on-site roles anywhere in the world."
+        # This used to be `not onsite_ok and not willing_to_relocate`, which
+        # meant setting onsite_ok=True (the common case for anyone open to
+        # in-person work) skipped location matching entirely -- an on-site
+        # posting in any city, anywhere, passed the prefilter regardless of
+        # prefs.locations, and reached the LLM/dashboard already outside
+        # the user's actual location preference.
+        if not prefs.willing_to_relocate:
+            location_matches = any(
+                loc.lower() in job.location.lower() for loc in prefs.locations if loc.lower() != "remote"
+            )
+            if not location_matches:
+                return f"On-site posting in {job.location!r}, which isn't one of your accepted locations"
 
     # A "remote" posting is often remote *within one specific country* —
     # being remote-ok doesn't mean eligible for a "Remote - Canada" role.
