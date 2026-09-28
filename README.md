@@ -1,10 +1,6 @@
 # Hanarr
 
-Hanarr is a local-first career companion. The Python package, CLI command, and on-disk
-database filename are all named `hanarr` — an existing `jobcopilot.db` from before this
-rename is carried forward automatically the first time the app starts.
-
-A configurable, self-hosted job-search foundation. It parses your resume, searches job sources that
+Hanarr is a local-first career companion — a configurable, self-hosted job-search foundation. It parses your resume, searches job sources that
 have legitimate public APIs (no ToS-violating scraping), scores how well each posting fits your
 stated preferences, tracks your application status, and reminds you to follow up or prep for
 interviews. You review matches and make the calls — this handles the searching and bookkeeping so
@@ -28,18 +24,27 @@ recreating legacy rows, and a timestamped SQLite backup is written to `data/back
 upgrade. Migrations are additive; do not delete the database to resolve a migration error.
 At startup, a migration failure stops the process with the database path and the underlying
 error; restore the newest backup in `data/backups/` before retrying. Start the server from the
-repository root so the configured `resumes/` and `data/` paths resolve predictably.
+repository root so the configured `resumes/` and `data/` paths resolve predictably. The database
+file is `data/hanarr.db`; an installation from before the project's rename (when it was still
+named JobCopilot) has its `jobcopilot.db` renamed to `hanarr.db` automatically, once, the first
+time the app starts — nothing to do manually.
 
 ## How it works
 
-1. You write your preferences into `config.yaml` (titles, locations, salary floor, dealbreakers,
-   which job sources to use) and drop your resume in `resumes/`.
-2. `hanarr init` parses your resume into a structured profile using a local LLM.
-3. `hanarr search` (or the scheduler in `hanarr serve`) fetches postings from your enabled
-   sources, rule-filters them against your preferences, and scores the survivors for fit.
-4. You review matches via `hanarr list` or the local dashboard, and mark status as you apply /
-   hear back / interview.
+1. Run `hanarr serve` and open the dashboard. A first-time "Get set up" checklist walks you
+   through the rest — no file editing required.
+2. Upload your resume and set your preferences (target titles, locations, salary floor,
+   dealbreakers, which job sources to enable) on the **Settings** page.
+3. On a schedule you choose, or on demand from the **Jobs** page, Hanarr fetches postings from
+   your enabled sources, rule-filters them against your preferences, and scores the survivors
+   for fit against your resume.
+4. Review matches on **Jobs** and mark status as you apply / hear back / interview.
 5. Marking a job "applied" or "interviewing" schedules a reminder automatically.
+
+Everything above is stored in `config.yaml` and the local SQLite database under the hood, but
+you shouldn't need to open either by hand — the dashboard is the intended way to configure and
+use Hanarr. A CLI (`hanarr init`/`search`/`list`/`status`/`remind`) covers the same actions for
+scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
@@ -87,99 +92,87 @@ pip install -e ".[dev]"
 
 A virtual environment (`python3 -m venv .venv && source .venv/bin/activate`) is optional but recommended to isolate dependencies from other Python projects on your machine.
 
-### 1. Set up a local LLM (recommended default)
+### 1. Start the dashboard
 
-Install [Ollama](https://ollama.com), then pull a model explicitly:
+```bash
+hanarr serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
+```
+
+A brand-new install shows a non-blocking "Get set up" checklist on Jobs and Settings until a
+resume and target titles are in place. Everything from here — resume, preferences, job sources,
+schedule, LLM provider — is done through **Settings**, not by editing a file. The launch mode
+defaults to `none` (open the URL yourself); to have it open a browser or the optional desktop
+webview automatically, set that on Settings → App config, or pass `--launch-mode browser`/
+`webview` for one run. Webview mode needs `pip install -e ".[desktop]"` — see
+[`docs/desktop-launch.md`](docs/desktop-launch.md).
+
+### 2. Add your resume and preferences (Settings)
+
+- **Resume** — Settings → App config → "Choose file…" (`.pdf`/`.txt`/`.md`). Parsed
+  automatically on upload into a structured profile (titles, skills, seniority) used for
+  scoring. If structured extraction fails (most often because a local LLM isn't set up yet —
+  see step 3), the Resume page has a "Retry extraction" button that redoes it later without
+  needing to re-upload.
+- **Preferences** — Settings → Preferences: target titles, locations, salary floor, seniority,
+  employment types, dealbreakers (common ones are checkboxes, plus free text for anything else),
+  and which job sources to enable — see **Job sources** below for what each one needs. Fields
+  save automatically as you edit or navigate away; there's still a Save button too.
+- **Schedule** — Settings → Scheduling & reminders: how often automatic searches run (a
+  repeating interval or a fixed time once a day, in your machine's own local timezone) and how
+  follow-up reminders/email digest work.
+
+### 3. Set up a local LLM (recommended)
+
+Settings → App config reports whether Ollama's executable, local service, and configured model
+are detected, with a hardware-based starting model recommendation and a "Check for Ollama /
+stage installer" button — one explicit click, shows source/license/size before downloading
+anything, Hanarr never installs or starts it on its own. Picking a model that isn't downloaded
+shows a "Download this model" button with a live progress bar. "Run search now" on the Jobs page
+is disabled with a specific reason whenever the model isn't ready — Ollama not installed
+(with a direct link to install it), installed but not running, or running but this model not
+pulled yet — so a broken setup is obvious before you click. You can also install it yourself
+first:
 
 ```bash
 ollama pull qwen2.5:14b   # good balance of quality/speed; a 7B model works too, just less sharp
 ```
 
 No API key, no cost, nothing leaves your machine. If you'd rather use a hosted Claude model
-instead, set `llm.provider: anthropic` and enter your API key on the Settings → App config page —
-it's handed off to your OS's own credential store (Windows Credential Manager, macOS Keychain,
-Linux Secret Service) as soon as you save, never written to `config.yaml` or any file Hanarr
-writes, and the field never re-displays the saved value. A plain `ANTHROPIC_API_KEY` in `.env`
-still works too, as a fallback for anyone who set one up that way before the Settings field
-existed. Using Anthropic incurs API usage costs. Setting `llm.provider: none` skips the LLM
-entirely and falls back to keyword-overlap scoring only.
-
-The Settings → App config page reports whether the Ollama executable, local service, and
-configured model are detected, and shows a conservative hardware-based starting model
-recommendation (RAM and free-storage heuristics only). The model field is a dropdown of what's
-already installed plus that recommendation, with a "Custom model name…" option for anything
-else. Picking a model that isn't downloaded shows a "Download this model" button with a live
-progress bar — still one explicit click, Hanarr never downloads anything on its own, but you see
-real progress instead of a frozen page. "Run search now" on the Jobs page is disabled with a
-specific explanation whenever the configured Ollama model isn't ready — distinguishing "Ollama
-isn't installed at all" (with a direct link to install it) from "installed but not running" from
-"running but this model isn't pulled yet" — so a broken setup is obvious before you click rather
-than after a search silently degrades to keyword matching. The same "Ollama isn't installed"
-nudge appears next to the resume upload control in Settings, since uploading before Ollama is
-set up otherwise silently skips structured extraction (titles/skills/seniority) with no obvious
-way to redo it afterward — the Resume page also has a "Retry extraction" button for exactly that
-case, re-running extraction on the already-stored resume text without needing to re-upload.
-The "Check for Ollama / stage installer" action detects first and shows source, license, size,
-and destination before asking for confirmation, and only downloads a bounded installer into
-`data/setup/` (with a visible progress spinner while checking/downloading) — Hanarr never
-executes it or starts a service. Declining, cancelling, or failing leaves the provider
-configuration and local data unchanged. If Ollama is unavailable, choose `anthropic` explicitly
-or use `none` for deterministic keyword-overlap scoring.
-
-### 2. Configure
-
-```bash
-cp config.example.yaml config.yaml   # hanarr init also does this for you
-```
-
-Edit `config.yaml`: your target titles, locations, salary floor, dealbreakers, and which job
-sources to enable (see **Job sources** below — you need to fill in real company boards/tags for
-most of them to return anything). `config.yaml` is gitignored, so your preferences never get
-committed even if you fork this repo publicly.
-
-Drop your resume at `resumes/resume.md` (or `.txt`/`.pdf`, and update `profile.resume_path` if
-you use a different name/location).
-
-### 3. Initialize
-
-```bash
-hanarr init
-```
-
-This parses your resume and stores the structured profile (skills, titles, seniority) used for
-scoring.
+instead, set the provider to `anthropic` and enter your API key right there in Settings — it's
+handed off to your OS's own credential store (Windows Credential Manager, macOS Keychain, Linux
+Secret Service) as soon as you save, never written to `config.yaml` or any file Hanarr writes,
+and the field never re-displays the saved value. Using Anthropic incurs API usage costs.
+Skipping this entirely (provider `none`) falls back to keyword-overlap scoring only.
 
 ### 4. Run a search
 
+Click "Run search now" on Jobs, or just leave `hanarr serve` running — it searches automatically
+on the schedule you set in step 2. While a search runs, the Jobs page updates live: the job
+list, stats bar, and filter counts refresh as each posting is scored, instead of only after the
+whole run finishes. Mark a job's status (applied / interviewing / etc.) as you go to get
+follow-up reminders automatically.
+
+### Command line (optional)
+
+The dashboard is the intended way to use Hanarr, but the same actions are available without it —
+useful for scripting or a one-off run:
+
 ```bash
-hanarr search        # one-off search cycle
-hanarr list          # see matches, sorted by fit score
+hanarr init                  # parse resumes/resume.md into a structured profile (the dashboard's
+                              # resume upload does this automatically; only needed without it)
+hanarr search                # one-off search cycle
+hanarr list                  # see matches, sorted by fit score
 hanarr status 3 applied      # mark job id 3 as applied -> schedules a follow-up reminder
-hanarr remind        # check for and deliver due reminders
+hanarr remind                # check for and deliver due reminders
 ```
 
-Or run continuously with a background scheduler and a local dashboard:
+`hanarr init` reads `resumes/resume.md` (or `.txt`/`.pdf`; set `profile.resume_path` in
+`config.yaml` for a different name/location) and needs `config.yaml` to already have your
+preferences in it — `cp config.example.yaml config.yaml` first if you're setting up this way
+instead of through the dashboard. `config.yaml` is gitignored, so your preferences never get
+committed even if you fork this repo publicly. See **Configuration reference** below for what's
+in it — but if you're using the dashboard, you shouldn't need to open it directly at all.
 
-```bash
-hanarr serve         # dashboard at http://127.0.0.1:8420, searches + reminders on a timer
-```
-
-While a search runs, the Jobs page updates live — the job list, stats bar, and filter counts
-refresh as each posting is scored, instead of only after the whole run finishes. A brand-new
-install shows a non-blocking "Get set up" checklist on Jobs and Settings until a resume and
-target titles are in place.
-
-The launch mode defaults to `none`, preserving the existing foreground-server behavior. To open
-the local dashboard automatically, choose a mode in `config.yaml`:
-
-```yaml
-dashboard:
-  launch_mode: "browser"  # none | browser | webview
-```
-
-Or select it for one run: `hanarr serve --launch-mode browser`. The optional webview mode
-requires `pip install -e ".[desktop]"` and can be selected with
-`hanarr serve --launch-mode webview`. See [`docs/desktop-launch.md`](docs/desktop-launch.md).
 The Windows packaging foundation is documented in [`docs/windows-installer.md`](docs/windows-installer.md).
 It uses PyInstaller plus Inno Setup, keeps user data in `%LOCALAPPDATA%\Hanarr`, provides Start
 Menu shortcuts and an optional Desktop shortcut, and preserves data on uninstall. Run
@@ -219,25 +212,27 @@ configuration.
 
 ## Job sources
 
-Only sources with legitimate public APIs are included — this project won't add scrapers for
-sites whose Terms of Service prohibit automated access (LinkedIn, Indeed, etc.); that risks your
+Turn sources on and fill in company boards/tags from Settings → Preferences → Job sources. Only
+sources with legitimate public APIs are included — this project won't add scrapers for sites
+whose Terms of Service prohibit automated access (LinkedIn, Indeed, etc.); that risks your
 account and isn't something to build around.
 
 | Source | What it needs | Notes |
 |---|---|---|
-| Greenhouse | `sources.greenhouse.company_boards` — company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug. `config.example.yaml` ships 67 verified boards by default. |
-| Lever | `sources.lever.companies` — company slugs from `jobs.lever.co/<slug>` | Free public API. Fewer large public users than Greenhouse these days; `config.example.yaml` ships 13 verified companies. |
-| Ashby | `sources.ashby.company_boards` — company slugs from `jobs.ashbyhq.com/<slug>` | Free public API, popular with AI-native and recent-generation startups. `config.example.yaml` ships 21 verified boards. |
-| RemoteOK | `sources.remoteok.tags` — optional tag filter | Free public API |
-| Arbeitnow | none | Free public API, mostly EU-heavy listings |
+| Greenhouse | Company slugs from `boards.greenhouse.io/<slug>` | Thousands of companies use Greenhouse; check a company's careers page for the slug. Ships with 67 verified boards enabled by default. |
+| Lever | Company slugs from `jobs.lever.co/<slug>` | Free public API. Fewer large public users than Greenhouse these days; ships with 13 verified companies. |
+| Ashby | Company slugs from `jobs.ashbyhq.com/<slug>` | Free public API, popular with AI-native and recent-generation startups. Ships with 21 verified boards. |
+| RemoteOK | An optional tag filter | Free public API |
+| Arbeitnow | Nothing — just enable it | Free public API, mostly EU-heavy listings |
 
-The shipped default company boards above skew heavily toward VC-funded tech/startup companies —
-fine for a software engineer, but an accounting/payroll/HR/etc. search against all of them gets
-buried in postings from companies that genuinely hire almost entirely engineers. `sources.filter_boards_by_profile`
-(on by default; a checkbox on Settings → Preferences) filters which *default* companies get
-queried based on categories inferred from your resume and target titles — a company you add
-yourself is never affected by this, only the shipped defaults are, and an unclear/empty profile
-disables filtering entirely rather than matching nothing. See `src/hanarr/company_categories.py`.
+The default company boards above skew heavily toward VC-funded tech/startup companies — fine
+for a software engineer, but an accounting/payroll/HR/etc. search against all of them gets
+buried in postings from companies that genuinely hire almost entirely engineers. The "Only query
+default companies that match your resume" checkbox (Settings → Preferences → Job sources, on by
+default) filters which *default* companies get queried based on categories inferred from your
+resume and target titles — a company you add yourself is never affected by this, only the
+shipped defaults are, and an unclear/empty profile disables filtering entirely rather than
+matching nothing. See `src/hanarr/company_categories.py`.
 
 Adding a new source is one file: implement `Connector.fetch()` in `src/hanarr/connectors/`
 returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See
@@ -245,29 +240,26 @@ returning a list of `RawJobPosting`, then register it in `connectors/registry.py
 
 ## Configuration reference
 
-See `config.example.yaml` — every field is commented there. Highlights:
+Everything below has a control on a Settings page — this is the reference for what's stored
+underneath (`config.yaml`, gitignored so it never gets committed) and where to find it if you're
+scripting or reading `config.example.yaml` directly, not instructions for hand-editing a file:
 
-- `preferences.*` — target titles, keyword boosts/excludes, seniority, locations, remote/onsite,
-  salary floor, industries to include/exclude, dealbreakers (the LLM scorer weighs these — common
-  ones like on-call, travel, or undisclosed pay are checkboxes on Settings → Preferences, plus a
-  free-text field for anything else).
-- `matching.min_fit_score` — postings scoring below this are filtered out before they're even
-  stored.
-- `llm.provider` — `ollama` (default, local, free), `anthropic` (hosted, needs API key, has
-  usage costs), or `none` (rule-based keyword scoring only, no LLM calls at all).
-- `agents.*` — specialized roles (`profiler`, `market_analysis`, `curriculum`, `evaluator`,
-  and `resume_writer`) inherit the local-first `llm` settings. Override a role or a named
-  `agents.tasks.*` workflow independently; Anthropic keys are set once on Settings → App config
-  (stored via the OS credential store) and reused across every role.
-- `schedule.*` — how often `hanarr serve` runs searches and checks reminders: either a repeating
-  interval (hours/days) or a fixed time once a day, both configurable on Settings →
-  Scheduling & reminders. A daily time is interpreted in your machine's own local timezone
-  (shown next to the field), not UTC. A minimum-interval floor and a shared "search running"
-  state (visible everywhere via a site-wide activity badge, and distinguishing an automatic run
-  from one you clicked) prevent two searches from overlapping.
-- `sources.filter_boards_by_profile` — see **Job sources** above.
-- `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP
-  (the SMTP password is also stored via the OS credential store, same as the Anthropic key).
+- **Preferences & matching** tab — target titles, keyword boosts/excludes, seniority, locations,
+  remote/onsite, salary floor, industries to include/exclude, dealbreakers (common ones like
+  on-call, travel, or undisclosed pay are checkboxes, plus free text for anything else), minimum
+  fit score, and job sources (see **Job sources** above). Fields autosave.
+- **App config** tab — resume upload, LLM provider (`ollama` default/local/free, `anthropic`
+  hosted with a usage cost, or `none` for rule-based keyword scoring only), model selection and
+  download, and the Anthropic API key (stored via your OS's credential store, never in
+  `config.yaml`). Specialized agent roles (`profiler`, `market_analysis`, `curriculum`,
+  `evaluator`, `resume_writer` — each can independently override the main LLM settings via
+  `agents.*` in `config.yaml`) all reuse that one key.
+- **Scheduling & reminders** tab — how often searches run (a repeating interval or a fixed time
+  once a day, in your machine's own local timezone, not UTC) and how reminders/email digest work
+  (the SMTP password is also stored via your OS's credential store). A minimum-interval floor
+  and a shared "search running" state (visible everywhere via a site-wide activity badge,
+  distinguishing an automatic run from one you clicked) prevent two searches from overlapping.
+- **Updates** tab — see the update-checks paragraph above.
 
 ## Data & privacy
 
