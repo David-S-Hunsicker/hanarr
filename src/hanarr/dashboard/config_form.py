@@ -137,9 +137,12 @@ def apply_updates_form(current: dict[str, Any], form: dict[str, str]) -> dict[st
     data = dict(current)
     updates = dict(data["updates"])
     updates["enabled"] = "updates_enabled" in form
+    updates["auto_update"] = "updates_auto_update" in form
     updates["endpoint"] = form.get("updates_endpoint", "").strip()
     updates["github_repository"] = form.get("updates_github_repository", "").strip()
     updates["timeout_seconds"] = float(_int_or_none(form.get("updates_timeout_seconds")) or updates["timeout_seconds"])
+    updates["check_interval_hours"] = _int_or_none(form.get("updates_check_interval_hours")) or updates["check_interval_hours"]
+    updates["apply_delay_seconds"] = _int_or_none(form.get("updates_apply_delay_seconds")) or updates["apply_delay_seconds"]
     data["updates"] = updates
     return data
 

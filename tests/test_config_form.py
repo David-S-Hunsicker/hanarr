@@ -1,5 +1,11 @@
 from hanarr.config import Settings
-from hanarr.dashboard.config_form import apply_preferences_form, custom_dealbreakers, settings_to_dict, validate_and_build
+from hanarr.dashboard.config_form import (
+    apply_preferences_form,
+    apply_updates_form,
+    custom_dealbreakers,
+    settings_to_dict,
+    validate_and_build,
+)
 from hanarr.matching import COMMON_DEALBREAKERS
 
 
@@ -159,3 +165,36 @@ def test_apply_preferences_form_unchecking_filter_boards_by_profile_turns_it_off
 
     assert not errors
     assert new_settings.sources.filter_boards_by_profile is False
+
+
+def test_apply_updates_form_reads_auto_update_and_intervals():
+    settings = Settings()
+    current = settings_to_dict(settings)
+
+    form = {
+        "updates_enabled": "on",
+        "updates_auto_update": "on",
+        "updates_check_interval_hours": "6",
+        "updates_apply_delay_seconds": "300",
+    }
+    updated = apply_updates_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.updates.enabled is True
+    assert new_settings.updates.auto_update is True
+    assert new_settings.updates.check_interval_hours == 6
+    assert new_settings.updates.apply_delay_seconds == 300
+
+
+def test_apply_updates_form_unchecking_auto_update_turns_it_off():
+    settings = Settings()
+    settings.updates.auto_update = True
+    current = settings_to_dict(settings)
+
+    form = {"updates_enabled": "on"}  # auto_update box left unchecked
+    updated = apply_updates_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.updates.auto_update is False

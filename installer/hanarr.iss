@@ -1,6 +1,6 @@
 #define MyAppName "Hanarr"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.1"
+  #define MyAppVersion "0.1.2"
 #endif
 #define MyAppPublisher "Hanarr"
 #define MyAppExeName "HanarrDesktop.exe"
@@ -20,6 +20,16 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Matches the named mutex packaged.py holds for the process lifetime
+; (HanarrDesktop.exe / HanarrBrowser.exe, whichever launched it) -- lets
+; Setup detect a running instance during an update install and close it
+; (silently, under /VERYSILENT -- see self_update.py's auto-update apply)
+; instead of failing on locked files, then relaunch it once the new
+; files are in place.
+AppMutex=HanarrSingleInstanceMutex
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
+RestartApplications=yes
 
 [Files]
 Source: "..\dist\HanarrDesktop.exe"; DestDir: "{app}"; Flags: ignoreversion

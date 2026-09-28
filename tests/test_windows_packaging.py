@@ -23,6 +23,53 @@ def test_packaged_entry_points_use_explicit_launch_modes():
     assert 'run("webview")' in source
 
 
+def test_installer_declares_app_mutex_and_closes_running_instances_for_updates():
+    """auto-update (self_update.py) launches the new installer silently
+    while the app is still running -- Setup needs AppMutex to detect that
+    (matching the mutex packaged.py holds) and CloseApplications/
+    RestartApplications to close and relaunch it as part of the install,
+    rather than the update failing on locked files."""
+    source = (ROOT / "installer" / "hanarr.iss").read_text(encoding="utf-8")
+    assert "AppMutex=HanarrSingleInstanceMutex" in source
+    assert "CloseApplications=yes" in source
+    assert "RestartApplications=yes" in source
+
+
+def test_packaged_run_holds_a_single_instance_mutex_matching_the_installer(monkeypatch):
+    """The mutex name here must match installer/hanarr.iss's AppMutex
+    exactly, or Setup can't detect the running app during an update."""
+    iss_source = (ROOT / "installer" / "hanarr.iss").read_text(encoding="utf-8")
+    assert "AppMutex=HanarrSingleInstanceMutex" in iss_source
+
+    calls = []
+
+    class FakeKernel32:
+        def CreateMutexW(self, *args):
+            calls.append(args)
+            return 12345
+
+    class FakeWindll:
+        kernel32 = FakeKernel32()
+
+    import ctypes
+
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(), raising=False)
+
+    packaged._hold_single_instance_mutex()
+
+    assert len(calls) == 1
+    assert calls[0][-1] == "HanarrSingleInstanceMutex"
+
+
+def test_hold_single_instance_mutex_does_not_raise_without_win32(monkeypatch):
+    """Best-effort: must not crash startup if ctypes.windll isn't
+    available (e.g. this somehow runs on a non-Windows OS)."""
+    import ctypes
+
+    monkeypatch.delattr(ctypes, "windll", raising=False)
+    packaged._hold_single_instance_mutex()  # must not raise
+
+
 def test_windows_build_script_builds_both_runtimes_before_inno():
     source = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
     assert "Windows packaging preflight failed:" in source

@@ -20,6 +20,7 @@ from hanarr.llm.base import LLMClient
 from hanarr.models import ApplicationStatus, JobPosting, Profile, Reminder, ReminderType, ResumeVersion, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
 from hanarr.search_state import new_search_state
+from hanarr.update_state import new_update_state, reset_for_update
 
 
 def test_task_is_stuck_false_when_not_running():
@@ -316,12 +317,99 @@ def test_update_install_requires_explicit_approval(tmp_path):
     assert response.json()["status"] == "approval_required"
 
 
-def test_update_install_does_not_claim_to_install_even_after_approval(tmp_path):
+def test_update_install_requires_consent(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    response = client.post("/config/update/install", data={})
+    assert response.status_code == 409
+    assert response.json()["status"] == "approval_required"
+
+
+def test_update_install_refuses_outside_a_packaged_build(tmp_path):
+    """A source checkout (what every test runs as) has no installed .exe
+    to replace -- must refuse cleanly rather than attempt anything."""
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
     response = client.post("/config/update/install", data={"consent": "true"})
-    assert response.status_code == 501
-    assert response.json()["status"] == "not_implemented"
+    assert response.status_code == 400
+    assert "packaged" in response.json()["message"].lower() or "source" in response.json()["message"].lower()
+
+
+def test_update_install_refuses_while_a_search_is_running(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    client = TestClient(create_app(settings, search_state=search_state))
+
+    response = client.post("/config/update/install", data={"consent": "true"})
+
+    assert response.status_code == 409
+    assert "search is running" in response.json()["message"]
+
+
+def test_update_install_reports_up_to_date_when_no_newer_release(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "check_for_update", lambda settings: {"status": "up_to_date", "current_version": "9.9.9"})
+    monkeypatch.setattr(app_mod.self_update, "is_packaged_build", lambda: True)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/config/update/install", data={"consent": "true"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "up_to_date"
+
+
+def test_update_install_downloads_verifies_and_applies_when_available(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    release_dict = {
+        "version": "9.9.9",
+        "release_notes_url": "https://example.test/notes",
+        "notes": "",
+        "assets": [{"name": "Hanarr-Setup-9.9.9.exe", "url": "https://example.test/installer", "sha256": "a" * 64, "platform": ""}],
+    }
+    monkeypatch.setattr(app_mod, "check_for_update", lambda settings: {"status": "update_available", "current_version": "0.1.0", "release": release_dict})
+    monkeypatch.setattr(app_mod.self_update, "is_packaged_build", lambda: True)
+    staged = tmp_path / "Hanarr-Setup-9.9.9.exe"
+    monkeypatch.setattr(app_mod.self_update, "download_and_verify_installer", lambda asset, dest, **k: staged)
+    applied = []
+    monkeypatch.setattr(app_mod.self_update, "apply_update", lambda path: applied.append(path))
+    client = TestClient(create_app(settings))
+
+    response = client.post("/config/update/install", data={"consent": "true"})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "applying", "version": "9.9.9"}
+    assert applied == [staged]
+
+
+def test_update_status_route_reports_the_shared_state(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    update_state = new_update_state()
+    reset_for_update(update_state, version="9.9.9", notes_url="https://example.test/notes", installer_path="/tmp/x.exe", apply_at=123.0)
+    client = TestClient(create_app(settings, update_state=update_state))
+
+    response = client.get("/update/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["available"] is True
+    assert body["version"] == "9.9.9"
+    assert body["apply_at"] == 123.0
+    assert "installer_path" not in body  # local filesystem path -- never exposed to the page
+
+
+def test_update_cancel_route_stops_the_countdown_but_keeps_the_staged_installer(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    update_state = new_update_state()
+    reset_for_update(update_state, version="9.9.9", notes_url="x", installer_path="/tmp/x.exe", apply_at=123.0)
+    client = TestClient(create_app(settings, update_state=update_state))
+
+    response = client.post("/update/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancelled"] is True
+    assert update_state["available"] is True  # still staged -- "Install now" must still work
+    assert update_state["installer_path"] == "/tmp/x.exe"
 
 
 def test_resume_upload_enforces_streamed_size_limit(tmp_path, monkeypatch):
@@ -1566,6 +1654,28 @@ def test_search_activity_badge_present_on_every_non_jobs_page(tmp_path):
     for page in ["/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/debug/filtered"]:
         html = client.get(page).text
         assert 'id="search-activity-badge"' in html, f"{page} is missing the search activity badge"
+
+
+def test_update_available_banner_present_on_every_page(tmp_path):
+    """A found update can be staged while the user is on any page -- the
+    banner (polling /update/status) must be present everywhere, including
+    Jobs, which doesn't include the search-activity badge partial."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/debug/filtered"]:
+        html = client.get(page).text
+        assert 'id="update-available-banner"' in html, f"{page} is missing the update-available banner"
+
+
+def test_updates_tab_shows_auto_update_controls(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    settings.updates.auto_update = True
+    settings.updates.check_interval_hours = 12
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "updates"}).text
+
+    assert 'id="updates_auto_update" name="updates_auto_update" checked' in html
+    assert 'id="updates_check_interval_hours" name="updates_check_interval_hours" value="12"' in html
 
 
 def test_preferences_tab_shows_common_dealbreakers_as_checked_checkboxes(tmp_path):

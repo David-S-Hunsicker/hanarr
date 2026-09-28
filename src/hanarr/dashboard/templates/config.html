@@ -259,6 +259,7 @@
   </nav>
 
   {% include "_search_activity_badge.html" %}
+  {% include "_update_available_banner.html" %}
   {% include "_onboarding_banner.html" %}
 
   <div class="tabs">
@@ -627,12 +628,34 @@
       <fieldset>
         <legend>Release metadata</legend>
         <div class="banner notice">
-          Checks are opt-in and read release metadata only. Hanarr never silently downloads,
-          replaces application files, installs Ollama, or changes your local data.
+          Downloaded installers are always checksum-verified before being applied. Hanarr never
+          installs Ollama or touches your local data/config as part of an update.
         </div>
         <div class="checkbox-row">
           <input type="checkbox" id="updates_enabled" name="updates_enabled" {% if settings.updates.enabled %}checked{% endif %}>
           <label for="updates_enabled">Enable update checks</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="updates_auto_update" name="updates_auto_update" {% if settings.updates.auto_update %}checked{% endif %}>
+          <label for="updates_auto_update">Automatically download and install updates</label>
+        </div>
+        <div class="hint">
+          When on, a found update downloads, verifies its checksum, and installs itself after a
+          visible countdown (shown site-wide, with an Update now / Cancel option) -- an
+          in-progress search is never interrupted, so applying waits until the scheduler sees one
+          isn't running. When off, updates are only ever installed by clicking "Install now"
+          below, same as today.
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="updates_check_interval_hours">Check for updates every (hours)</label>
+            <input type="number" id="updates_check_interval_hours" name="updates_check_interval_hours" value="{{ settings.updates.check_interval_hours }}" min="1">
+          </div>
+          <div class="field">
+            <label for="updates_apply_delay_seconds">Auto-install countdown (seconds)</label>
+            <input type="number" id="updates_apply_delay_seconds" name="updates_apply_delay_seconds" value="{{ settings.updates.apply_delay_seconds }}" min="10">
+            <div class="hint">How long the countdown gives you to cancel before installing automatically.</div>
+          </div>
         </div>
         <div class="field">
           <label for="updates_endpoint">Configured release endpoint (JSON)</label>
@@ -650,6 +673,7 @@
         </div>
         <div class="field">
           <button type="button" class="suggest-btn" id="update-check-btn">Check now</button>
+          <button type="button" class="suggest-btn" id="update-install-btn" hidden>Install now</button>
           <span class="suggest-status" id="update-check-status"></span>
         </div>
       </fieldset>
@@ -1212,40 +1236,76 @@
   {% endif %}
   {% if active_tab == 'updates' %}
   <script>
-    document.getElementById("update-check-btn").addEventListener("click", async () => {
+    (function () {
+      const checkBtn = document.getElementById("update-check-btn");
+      const installBtn = document.getElementById("update-install-btn");
       const status = document.getElementById("update-check-status");
-      status.textContent = "Checking…";
-      try {
-        const response = await fetch("/config/update/check");
-        const result = await response.json();
-        if (!response.ok || result.status === "error") {
-          status.textContent = result.error || "Update check failed; you may be offline.";
+
+      checkBtn.addEventListener("click", async () => {
+        status.textContent = "Checking…";
+        installBtn.hidden = true;
+        try {
+          const response = await fetch("/config/update/check");
+          const result = await response.json();
+          if (!response.ok || result.status === "error") {
+            status.textContent = result.error || "Update check failed; you may be offline.";
+            status.className = "suggest-status error";
+            return;
+          }
+          if (result.status === "disabled") {
+            status.textContent = "Update checks are disabled.";
+            return;
+          }
+          const release = result.release;
+          status.className = "suggest-status";
+          status.textContent = "";
+          if (result.status === "update_available") {
+            status.append(`Current ${result.current_version}; latest ${release.version}. `);
+            const link = document.createElement("a");
+            link.href = release.release_notes_url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.textContent = "Release notes";
+            status.append(link, ".");
+            installBtn.hidden = false;
+            installBtn.textContent = `Install ${release.version} now`;
+          } else {
+            status.textContent = `Current ${result.current_version}; no newer release found.`;
+          }
+        } catch (error) {
+          status.textContent = "Update check failed; you may be offline.";
           status.className = "suggest-status error";
+        }
+      });
+
+      installBtn.addEventListener("click", async () => {
+        if (!window.confirm("Download, verify, and install this update now? Hanarr will restart once it's applied.")) {
           return;
         }
-        if (result.status === "disabled") {
-          status.textContent = "Update checks are disabled.";
-          return;
-        }
-        const release = result.release;
+        installBtn.disabled = true;
         status.className = "suggest-status";
-        status.textContent = "";
-        if (result.status === "update_available") {
-          status.append(`Current ${result.current_version}; latest ${release.version}. `);
-          const link = document.createElement("a");
-          link.href = release.release_notes_url;
-          link.target = "_blank";
-          link.rel = "noopener";
-          link.textContent = "Release notes";
-          status.append(link, ". Download/install requires explicit approval and is not available yet.");
-        } else {
-          status.textContent = `Current ${result.current_version}; no newer release found.`;
+        status.textContent = "Downloading and verifying…";
+        try {
+          const response = await fetch("/config/update/install", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "consent=true",
+          });
+          const result = await response.json();
+          if (result.status === "applying") {
+            status.textContent = `Installing ${result.version}… Hanarr will restart shortly.`;
+          } else {
+            status.textContent = result.message || "Could not install the update.";
+            status.className = "suggest-status error";
+            installBtn.disabled = false;
+          }
+        } catch (error) {
+          status.textContent = "Lost connection while installing.";
+          status.className = "suggest-status error";
+          installBtn.disabled = false;
         }
-      } catch (error) {
-        status.textContent = "Update check failed; you may be offline.";
-        status.className = "suggest-status error";
-      }
-    });
+      });
+    })();
   </script>
   {% endif %}
 

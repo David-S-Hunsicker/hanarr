@@ -14,6 +14,28 @@ from .cli import cli
 
 USER_DATA_DIR = Path.home() / "AppData" / "Local" / "Hanarr"
 
+# Kept alive for the process lifetime once set -- see _hold_single_instance_mutex.
+_mutex_handle = None
+
+
+def _hold_single_instance_mutex() -> None:
+    """Creates (and holds for the life of this process) a named Win32
+    mutex matching installer/hanarr.iss's AppMutex directive, so Inno
+    Setup can detect this app is running during an update install and
+    close it (CloseApplications=yes) -- and relaunch it afterward
+    (RestartApplications=yes) -- rather than the install failing on
+    locked files or silently leaving the old version running alongside
+    the new one. Best-effort: any failure here (e.g. ctypes/Win32
+    unavailable) just means that detection doesn't work, not that the
+    app fails to start."""
+    global _mutex_handle
+    try:
+        import ctypes
+
+        _mutex_handle = ctypes.windll.kernel32.CreateMutexW(None, False, "HanarrSingleInstanceMutex")
+    except (AttributeError, OSError):
+        pass
+
 
 def _bundle_root() -> Path:
     return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
@@ -46,6 +68,7 @@ def _ensure_standard_streams() -> None:
 
 def run(mode: str) -> None:
     _ensure_standard_streams()
+    _hold_single_instance_mutex()
     config_path = prepare_user_data()
     cli(["--config", str(config_path), "serve", "--launch-mode", mode], standalone_mode=False)
 

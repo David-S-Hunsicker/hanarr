@@ -196,10 +196,29 @@ class DashboardConfig(BaseModel):
 
 
 class UpdatesConfig(BaseModel):
-    enabled: bool = False
+    # On by default, pointed at this project's own GitHub releases -- a
+    # fresh install checks for updates without any configuration needed.
+    # Still fully opt-out: set enabled=false, or auto_update=false to keep
+    # checking but never auto-apply.
+    enabled: bool = True
     endpoint: str = ""
-    github_repository: str = ""
+    github_repository: str = "David-S-Hunsicker/hanarr"
     timeout_seconds: float = 10.0
+    # When a newer release is found: download, verify its checksum, and
+    # apply it automatically after a visible, cancellable delay (see
+    # scheduler.py/self_update.py) rather than only ever notifying. An
+    # in-progress search is never interrupted -- applying waits until the
+    # scheduler sees no search running. false keeps checking but never
+    # downloads or applies anything -- Settings still shows "Install now"
+    # as a manual, explicit action.
+    auto_update: bool = True
+    # How often the background check runs. A floor, not just a default --
+    # same reasoning as ScheduleConfig's search interval floor.
+    check_interval_hours: int = Field(default=24, ge=1)
+    # How long the "Update ready, installing in Ns" banner counts down
+    # before applying, once found. Long enough to actually notice and
+    # cancel it; not so long that a real update sits pending for ages.
+    apply_delay_seconds: int = Field(default=120, ge=10)
 
 
 class Settings(BaseModel):

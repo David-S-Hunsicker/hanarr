@@ -62,6 +62,8 @@ from ..models import (
 from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
+from .. import self_update
+from ..update_state import new_update_state
 from ..resume import (
     ALLOWED_RESUME_EXTENSIONS,
     MAX_RESUME_BYTES,
@@ -181,16 +183,20 @@ def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = N
     return 0 <= delta_seconds < within_days * 86400
 
 
-def create_app(settings: Settings, scheduler: Any = None, search_state: dict | None = None) -> FastAPI:
+def create_app(
+    settings: Settings, scheduler: Any = None, search_state: dict | None = None, update_state: dict | None = None,
+) -> FastAPI:
     """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
     through so the restart route can shut it down cleanly before
     re-executing the process. Optional — tests and other callers that don't
     run the scheduler can omit it; the restart route just skips that step.
 
-    `search_state` is the same shared dict passed to start_scheduler(), so
-    a scheduled background search shows up here identically to a manual
-    one -- pass the same object to both, or omit it entirely (tests, or
-    any caller that doesn't run a scheduler) and one is created fresh."""
+    `search_state`/`update_state` are the same shared dicts passed to
+    start_scheduler(), so a scheduled background search or a found/staged
+    update shows up here identically to something triggered manually --
+    pass the same objects to both, or omit either entirely (tests, or any
+    caller that doesn't run a scheduler) and a fresh, unshared one is
+    created."""
     app = FastAPI(title="Hanarr")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
@@ -209,6 +215,7 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
     # happening invisibly. `run_id` lets the browser tell "still the same
     # run" apart from "a new one started" across polls.
     state = search_state if search_state is not None else new_search_state()
+    upd_state = update_state if update_state is not None else new_update_state()
     stop_event = threading.Event()
 
     def _log_event(entry: dict) -> None:
@@ -1471,7 +1478,14 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
 
     @app.post("/config/update/install")
     async def update_install(request: Request):
-        """Explicit approval boundary for a future download/install flow."""
+        """Manual, explicit install: the same approval boundary as before,
+        now actually implemented. Checks again, downloads and verifies the
+        installer's checksum, then applies it immediately -- this is the
+        deliberate manual fallback for anyone who cancelled an auto-update
+        countdown, or who has updates.auto_update off and only wants to
+        install on demand. Synchronous: the request blocks until the
+        (few-hundred-MB) download finishes, the same trade-off the Ollama
+        installer download already has."""
         form = await request.form()
         consent = str(form.get("consent", "")).lower() in {"1", "true", "yes", "on"}
         if not consent:
@@ -1479,10 +1493,75 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
                 {"status": "approval_required", "message": "Review release metadata and explicitly approve before downloading or installing."},
                 status_code=409,
             )
-        return JSONResponse(
-            {"status": "not_implemented", "message": "Update download and installation are not implemented; no files were changed."},
-            status_code=501,
-        )
+        if state["search_running"]:
+            return JSONResponse(
+                {"status": "error", "message": "A search is running — try again once it finishes."},
+                status_code=409,
+            )
+        if not self_update.is_packaged_build():
+            return JSONResponse(
+                {"status": "error", "message": "Only the installed app can apply an update; not available when running from source."},
+                status_code=400,
+            )
+
+        try:
+            result = check_for_update(settings)
+        except UpdateCheckError as exc:
+            return JSONResponse({"status": "error", "message": str(exc)}, status_code=502)
+        if result.get("status") != "update_available":
+            return JSONResponse({"status": result.get("status", "up_to_date"), "message": "Already up to date."})
+
+        release_dict = result["release"]
+        release = self_update.release_from_check_result(release_dict)
+        asset = self_update.find_windows_installer_asset(release)
+        if asset is None:
+            return JSONResponse(
+                {"status": "error", "message": "This release has no Windows installer asset."}, status_code=502,
+            )
+
+        destination = settings.data_dir / "updates" / asset.name
+        try:
+            installer_path = self_update.download_and_verify_installer(asset, destination)
+        except self_update.SelfUpdateError as exc:
+            return JSONResponse({"status": "error", "message": str(exc)}, status_code=502)
+
+        upd_state["version"] = release_dict["version"]
+        upd_state["installer_path"] = str(installer_path)
+        upd_state["applying"] = True
+        try:
+            self_update.apply_update(installer_path)
+        except self_update.SelfUpdateError as exc:
+            upd_state["applying"] = False
+            upd_state["error"] = str(exc)[:300]
+            return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
+
+        return JSONResponse({"status": "applying", "version": release_dict["version"]})
+
+    @app.get("/update/status")
+    def update_status():
+        """Polled by the site-wide update banner. Deliberately excludes
+        installer_path (a local filesystem path -- no reason to expose it
+        to the page)."""
+        return JSONResponse({
+            "available": upd_state["available"],
+            "version": upd_state["version"],
+            "notes_url": upd_state["notes_url"],
+            "apply_at": upd_state["apply_at"],
+            "cancelled": upd_state["cancelled"],
+            "applying": upd_state["applying"],
+            "error": upd_state["error"],
+        })
+
+    @app.post("/update/cancel")
+    def cancel_update():
+        """Stops the countdown from auto-applying. Deliberately leaves the
+        already-downloaded, checksum-verified installer staged and
+        `available` true -- Settings' "Install now" (see update_install
+        above) is the standing manual fallback for applying it later,
+        exactly the same installer, without re-downloading."""
+        if upd_state["available"]:
+            upd_state["cancelled"] = True
+        return JSONResponse({"cancelled": upd_state["cancelled"]})
 
     async def _handle_config_post(request: Request, tab: str, apply_fn):
         # Autosave (Preferences fields saving on blur/tab-away, see

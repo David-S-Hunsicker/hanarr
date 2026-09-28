@@ -1,0 +1,72 @@
+<div id="update-available-banner" hidden
+     style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:.5rem; background:#fff8e6; color:#5a4300; border:1px solid #b5790f; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem;">
+  <span id="update-available-text"></span>
+  <button type="button" id="update-install-now-btn"
+          style="font:inherit; border:1px solid #b5790f; border-radius:6px; padding:.15rem .5rem; background:#fff; color:#5a4300; cursor:pointer;">Update now</button>
+  <button type="button" id="update-cancel-btn"
+          style="font:inherit; border:1px solid #b5790f; border-radius:6px; padding:.15rem .5rem; background:#fff; color:#5a4300; cursor:pointer;">Cancel</button>
+</div>
+<script>
+  (function () {
+    var banner = document.getElementById("update-available-banner");
+    var text = document.getElementById("update-available-text");
+    var installBtn = document.getElementById("update-install-now-btn");
+    var cancelBtn = document.getElementById("update-cancel-btn");
+    if (!banner) return;
+
+    function render(data) {
+      if (!data.available || data.cancelled) {
+        banner.hidden = true;
+        return;
+      }
+      banner.hidden = false;
+      if (data.applying) {
+        text.textContent = "Installing Hanarr " + data.version + "… the app will restart shortly.";
+        installBtn.hidden = true;
+        cancelBtn.hidden = true;
+        return;
+      }
+      installBtn.hidden = false;
+      cancelBtn.hidden = false;
+      var remaining = data.apply_at ? Math.max(0, Math.round(data.apply_at - (Date.now() / 1000))) : null;
+      if (remaining === null) {
+        text.textContent = "Hanarr " + data.version + " is ready to install.";
+      } else if (remaining <= 0) {
+        text.textContent = "Hanarr " + data.version + " is ready — installing now…";
+      } else {
+        text.textContent = "Hanarr " + data.version + " is ready — installing in " + remaining + "s.";
+      }
+      if (data.error) {
+        text.textContent += " (" + data.error + ")";
+      }
+    }
+
+    function poll() {
+      fetch("/update/status").then(function (r) { return r.json(); }).then(render).catch(function () {});
+    }
+
+    installBtn.addEventListener("click", function () {
+      installBtn.disabled = true;
+      fetch("/config/update/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "consent=true",
+      }).then(function (r) { return r.json(); }).then(function (data) {
+        if (data.status === "error") {
+          window.alert(data.message || "Could not install the update.");
+          installBtn.disabled = false;
+        } else {
+          poll();
+        }
+      }).catch(function () { installBtn.disabled = false; });
+    });
+
+    cancelBtn.addEventListener("click", function () {
+      fetch("/update/cancel", { method: "POST" }).then(poll).catch(function () {});
+      window.alert('Update cancelled. You can install it anytime from Settings → Updates → "Update now".');
+    });
+
+    poll();
+    setInterval(poll, 5000);
+  })();
+</script>

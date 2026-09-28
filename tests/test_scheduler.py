@@ -1,12 +1,16 @@
+import time
+
 import tzlocal
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 import hanarr.scheduler as scheduler_mod
+import hanarr.self_update as self_update_mod
 from hanarr.config import Settings
 from hanarr.db import make_session_factory, get_or_create_profile
 from hanarr.models import Profile
 from hanarr.search_state import new_search_state
+from hanarr.update_state import new_update_state, reset_for_update
 
 
 def _settings(tmp_path):
@@ -179,3 +183,255 @@ def test_daily_mode_uses_a_cron_trigger_pinned_to_local_time(tmp_path):
         assert fields["minute"] == "30"
     finally:
         scheduler.shutdown(wait=False)
+
+
+def _release_dict(version="0.1.3", exe_name="Hanarr-Setup-0.1.3.exe"):
+    return {
+        "version": version,
+        "release_notes_url": "https://example.test/notes",
+        "notes": "",
+        "assets": [
+            {"name": exe_name, "url": "https://example.test/installer.exe", "sha256": "a" * 64, "platform": ""},
+            {"name": exe_name.replace(".exe", ".sha256"), "url": "https://example.test/checksum", "sha256": "", "platform": ""},
+        ],
+    }
+
+
+def test_update_check_job_does_nothing_when_checks_are_disabled(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    settings.updates.enabled = False
+
+    def fail_if_called(*a, **k):
+        raise AssertionError("check_for_update must not be called when updates are disabled")
+
+    monkeypatch.setattr(scheduler_mod, "check_for_update", fail_if_called)
+
+    scheduler = scheduler_mod.start_scheduler(settings)
+    try:
+        assert scheduler.get_job("update_check") is None
+        assert scheduler.get_job("update_apply_tick") is None
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+def test_update_check_job_does_nothing_when_already_up_to_date(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    settings.updates.auto_update = True
+    monkeypatch.setattr(
+        scheduler_mod, "check_for_update",
+        lambda settings: {"status": "up_to_date", "current_version": "9.9.9"},
+    )
+
+    update_state = new_update_state()
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_check").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["available"] is False
+    assert update_state["last_checked_at"] is not None
+
+
+def test_update_check_job_skips_downloading_when_auto_update_is_off(tmp_path, monkeypatch):
+    """auto_update=False must behave exactly like today's manual
+    "Check now" -- metadata only, never a download."""
+    settings = _settings(tmp_path)
+    settings.updates.auto_update = False
+    monkeypatch.setattr(
+        scheduler_mod, "check_for_update",
+        lambda settings: {"status": "update_available", "current_version": "0.1.0", "release": _release_dict()},
+    )
+
+    def fail_if_called(*a, **k):
+        raise AssertionError("must not download when auto_update is off")
+
+    monkeypatch.setattr(self_update_mod, "download_and_verify_installer", fail_if_called)
+
+    update_state = new_update_state()
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_check").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["available"] is False
+
+
+def test_update_check_job_downloads_and_stages_when_auto_update_is_on(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    settings.updates.auto_update = True
+    settings.updates.apply_delay_seconds = 120
+    monkeypatch.setattr(
+        scheduler_mod, "check_for_update",
+        lambda settings: {"status": "update_available", "current_version": "0.1.0", "release": _release_dict()},
+    )
+
+    staged_path = tmp_path / "Hanarr-Setup-0.1.3.exe"
+    monkeypatch.setattr(self_update_mod, "download_and_verify_installer", lambda asset, dest, **k: staged_path)
+
+    update_state = new_update_state()
+    before = time.time()
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_check").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["available"] is True
+    assert update_state["version"] == "0.1.3"
+    assert update_state["installer_path"] == str(staged_path)
+    assert update_state["apply_at"] >= before + 120
+    assert update_state["cancelled"] is False
+
+
+def test_update_check_job_records_an_error_when_download_fails(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    settings.updates.auto_update = True
+    monkeypatch.setattr(
+        scheduler_mod, "check_for_update",
+        lambda settings: {"status": "update_available", "current_version": "0.1.0", "release": _release_dict()},
+    )
+
+    def fail(*a, **k):
+        raise self_update_mod.SelfUpdateError("checksum mismatch")
+
+    monkeypatch.setattr(self_update_mod, "download_and_verify_installer", fail)
+
+    update_state = new_update_state()
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_check").func()  # must not raise
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["available"] is False
+    assert "checksum mismatch" in update_state["error"]
+
+
+def test_update_apply_tick_does_nothing_when_no_update_is_staged(tmp_path):
+    settings = _settings(tmp_path)
+    update_state = new_update_state()
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()  # must not raise
+    finally:
+        scheduler.shutdown(wait=False)
+    assert update_state["applying"] is False
+
+
+def test_update_apply_tick_waits_until_apply_at_has_passed(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(self_update_mod, "is_packaged_build", lambda: True)
+
+    def fail(path):
+        raise AssertionError("too early")
+
+    monkeypatch.setattr(self_update_mod, "apply_update", fail)
+
+    update_state = new_update_state()
+    reset_for_update(update_state, version="0.1.3", notes_url="x", installer_path="x", apply_at=time.time() + 3600)
+
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["applying"] is False
+
+
+def test_update_apply_tick_never_applies_while_a_search_is_running(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(self_update_mod, "is_packaged_build", lambda: True)
+
+    def fail(path):
+        raise AssertionError("must not apply during a search")
+
+    monkeypatch.setattr(self_update_mod, "apply_update", fail)
+
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    update_state = new_update_state()
+    reset_for_update(update_state, version="0.1.3", notes_url="x", installer_path="x", apply_at=time.time() - 1)
+
+    scheduler = scheduler_mod.start_scheduler(settings, search_state=search_state, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["applying"] is False
+
+
+def test_update_apply_tick_skips_a_cancelled_update(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(self_update_mod, "is_packaged_build", lambda: True)
+
+    def fail(path):
+        raise AssertionError("must not apply a cancelled update")
+
+    monkeypatch.setattr(self_update_mod, "apply_update", fail)
+
+    update_state = new_update_state()
+    reset_for_update(update_state, version="0.1.3", notes_url="x", installer_path="x", apply_at=time.time() - 1)
+    update_state["cancelled"] = True
+
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["applying"] is False
+
+
+def test_update_apply_tick_skips_in_a_source_checkout():
+    """is_packaged_build() is genuinely False for the test process itself
+    -- confirms the real function, not just a mocked stand-in, correctly
+    refuses to apply outside a packaged build."""
+    assert self_update_mod.is_packaged_build() is False
+
+
+def test_update_apply_tick_applies_when_due_idle_and_not_cancelled(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(self_update_mod, "is_packaged_build", lambda: True)
+    applied = []
+    monkeypatch.setattr(self_update_mod, "apply_update", lambda path: applied.append(path))
+
+    update_state = new_update_state()
+    reset_for_update(
+        update_state, version="0.1.3", notes_url="x",
+        installer_path="/tmp/Hanarr-Setup-0.1.3.exe", apply_at=time.time() - 1,
+    )
+
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert applied == ["/tmp/Hanarr-Setup-0.1.3.exe"]
+    assert update_state["applying"] is True
+
+
+def test_update_apply_tick_records_an_error_if_apply_fails(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(self_update_mod, "is_packaged_build", lambda: True)
+
+    def fail(path):
+        raise self_update_mod.SelfUpdateError("installer not found")
+
+    monkeypatch.setattr(self_update_mod, "apply_update", fail)
+
+    update_state = new_update_state()
+    reset_for_update(update_state, version="0.1.3", notes_url="x", installer_path="x", apply_at=time.time() - 1)
+
+    scheduler = scheduler_mod.start_scheduler(settings, update_state=update_state)
+    try:
+        scheduler.get_job("update_apply_tick").func()  # must not raise
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert update_state["applying"] is False
+    assert "installer not found" in update_state["error"]
