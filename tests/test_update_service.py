@@ -2,6 +2,7 @@ import httpx
 import pytest
 import respx
 
+from hanarr import __version__
 from hanarr.config import Settings
 from hanarr.update_service import UpdateCheckError, check_for_update, parse_release_metadata
 
@@ -73,7 +74,7 @@ def test_offline_update_check_fails_clearly(tmp_path):
 def test_update_checks_are_opt_in(tmp_path):
     settings = _settings(tmp_path)
     settings.updates.enabled = False
-    assert check_for_update(settings) == {"status": "disabled", "current_version": "0.1.0"}
+    assert check_for_update(settings) == {"status": "disabled", "current_version": __version__}
 
 
 def test_github_release_metadata_is_supported(tmp_path):
