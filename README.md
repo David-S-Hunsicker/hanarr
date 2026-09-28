@@ -43,10 +43,11 @@ repository root so the configured `resumes/` and `data/` paths resolve predictab
 
 ## Status: what's actually verified
 
-The full test suite passes (235 tests), `src/` byte-compiles cleanly, and `git diff --check` is
-clean. Beyond the automated suite, the following have been verified live against real
-infrastructure (a running Ollama instance with a real model loaded onto GPU, a real Windows
-build/install/uninstall cycle, real connector APIs) rather than only mocked in tests:
+The full test suite passes (319 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+clean. Two tagged, signed-off releases (`v0.1.0`, `v0.1.1`) have shipped through the real GitHub
+Actions release pipeline. Beyond the automated suite, the following have been verified live
+against real infrastructure (a running Ollama instance with a real model loaded onto GPU, a real
+Windows build/install/uninstall cycle, real connector APIs) rather than only mocked in tests:
 
 - `hanarr serve` runs the dashboard with a real Ollama model doing fit-scoring — confirmed the
   model is genuinely loaded into GPU VRAM during scoring, not silently falling back.
@@ -62,6 +63,13 @@ build/install/uninstall cycle, real connector APIs) rather than only mocked in t
 - Local model management (dropdown, live download progress, search gated on the model being
   downloaded) was verified against a real Ollama pull, watching the reported percentage
   advance in real time and confirming the model was actually installed afterward.
+- Profile-based company-board filtering (see **Job sources** below) was verified against the
+  real shipped default list: a payroll/accounting profile drops from 101 to 28 queried
+  companies, concentrated on genuinely finance-heavy employers, while a software-engineer
+  profile still sees all 101.
+- Saving an Anthropic API key or SMTP password through Settings was confirmed to land only in
+  the OS's own credential store (Windows Credential Manager), never in `config.yaml`, with the
+  page never re-displaying the saved value.
 
 Not yet performed: desktop notifications via `plyer` on a real OS notification center, and
 RemoteOK/Arbeitnow against live APIs (Greenhouse/Lever have been; RemoteOK/Arbeitnow are only
@@ -88,9 +96,13 @@ ollama pull qwen2.5:14b   # good balance of quality/speed; a 7B model works too,
 ```
 
 No API key, no cost, nothing leaves your machine. If you'd rather use a hosted Claude model
-instead, set `llm.provider: anthropic` in `config.yaml` and put `ANTHROPIC_API_KEY` in `.env` —
-note this incurs API usage costs. Setting `llm.provider: none` skips the LLM entirely and falls
-back to keyword-overlap scoring only.
+instead, set `llm.provider: anthropic` and enter your API key on the Settings → App config page —
+it's handed off to your OS's own credential store (Windows Credential Manager, macOS Keychain,
+Linux Secret Service) as soon as you save, never written to `config.yaml` or any file Hanarr
+writes, and the field never re-displays the saved value. A plain `ANTHROPIC_API_KEY` in `.env`
+still works too, as a fallback for anyone who set one up that way before the Settings field
+existed. Using Anthropic incurs API usage costs. Setting `llm.provider: none` skips the LLM
+entirely and falls back to keyword-overlap scoring only.
 
 The Settings → App config page reports whether the Ollama executable, local service, and
 configured model are detected, and shows a conservative hardware-based starting model
@@ -99,13 +111,20 @@ already installed plus that recommendation, with a "Custom model name…" option
 else. Picking a model that isn't downloaded shows a "Download this model" button with a live
 progress bar — still one explicit click, Hanarr never downloads anything on its own, but you see
 real progress instead of a frozen page. "Run search now" on the Jobs page is disabled with a
-clear explanation whenever the configured Ollama model isn't downloaded yet, so a broken setup
-is obvious before you click rather than after a search silently degrades to keyword matching.
+specific explanation whenever the configured Ollama model isn't ready — distinguishing "Ollama
+isn't installed at all" (with a direct link to install it) from "installed but not running" from
+"running but this model isn't pulled yet" — so a broken setup is obvious before you click rather
+than after a search silently degrades to keyword matching. The same "Ollama isn't installed"
+nudge appears next to the resume upload control in Settings, since uploading before Ollama is
+set up otherwise silently skips structured extraction (titles/skills/seniority) with no obvious
+way to redo it afterward — the Resume page also has a "Retry extraction" button for exactly that
+case, re-running extraction on the already-stored resume text without needing to re-upload.
 The "Check for Ollama / stage installer" action detects first and shows source, license, size,
 and destination before asking for confirmation, and only downloads a bounded installer into
-`data/setup/` — Hanarr never executes it or starts a service. Declining, cancelling, or failing
-leaves the provider configuration and local data unchanged. If Ollama is unavailable, choose
-`anthropic` explicitly or use `none` for deterministic keyword-overlap scoring.
+`data/setup/` (with a visible progress spinner while checking/downloading) — Hanarr never
+executes it or starts a service. Declining, cancelling, or failing leaves the provider
+configuration and local data unchanged. If Ollama is unavailable, choose `anthropic` explicitly
+or use `none` for deterministic keyword-overlap scoring.
 
 ### 2. Configure
 
@@ -174,12 +193,14 @@ of optional provider actions.
 The **CI — Test and Build Windows Installer** workflow runs the test suite and packaging preflight
 on a Windows runner, then builds and uploads the unsigned installer only after a real
 PyInstaller/Inno Setup build produces a non-empty executable. Successful builds also include a
-SHA-256 sidecar and release metadata. To publish an unsigned release, manually run
-**Release — Publish Windows Installer** in GitHub Actions with an existing `vX.Y.Z` tag that
-matches both version fields. It tests and builds from that tag, then publishes a GitHub Release
-with the installer, SHA-256 checksum, metadata, and an unsigned-installer warning. The workflow
-run is the publication approval; no signing secret is required. Windows may warn that the
-installer's publisher is unknown. The installer never installs Ollama, and applying updates from
+SHA-256 sidecar and release metadata. To publish an unsigned release, push a `vX.Y.Z` tag that
+matches both version fields, then manually run **Release — Publish Windows Installer** in GitHub
+Actions with that tag. It tests and builds from that tag, then publishes a GitHub Release with
+the installer, SHA-256 checksum, metadata, and an unsigned-installer warning. The workflow run is
+the publication approval; no signing secret is required. Windows may warn that the installer's
+publisher is unknown. `v0.1.0` and `v0.1.1` have shipped through this pipeline — see the
+[Releases page](https://github.com/David-S-Hunsicker/hanarr/releases). The installer never
+installs Ollama, and applying updates from
 within Hanarr is not implemented.
 
 Update checks are available in Settings → Updates but are disabled by default. When enabled,
@@ -210,6 +231,14 @@ account and isn't something to build around.
 | RemoteOK | `sources.remoteok.tags` — optional tag filter | Free public API |
 | Arbeitnow | none | Free public API, mostly EU-heavy listings |
 
+The shipped default company boards above skew heavily toward VC-funded tech/startup companies —
+fine for a software engineer, but an accounting/payroll/HR/etc. search against all of them gets
+buried in postings from companies that genuinely hire almost entirely engineers. `sources.filter_boards_by_profile`
+(on by default; a checkbox on Settings → Preferences) filters which *default* companies get
+queried based on categories inferred from your resume and target titles — a company you add
+yourself is never affected by this, only the shipped defaults are, and an unclear/empty profile
+disables filtering entirely rather than matching nothing. See `src/hanarr/company_categories.py`.
+
 Adding a new source is one file: implement `Connector.fetch()` in `src/hanarr/connectors/`
 returning a list of `RawJobPosting`, then register it in `connectors/registry.py`. See
 `greenhouse.py` for a minimal example.
@@ -219,16 +248,26 @@ returning a list of `RawJobPosting`, then register it in `connectors/registry.py
 See `config.example.yaml` — every field is commented there. Highlights:
 
 - `preferences.*` — target titles, keyword boosts/excludes, seniority, locations, remote/onsite,
-  salary floor, industries to include/exclude, dealbreakers (the LLM scorer weighs these).
+  salary floor, industries to include/exclude, dealbreakers (the LLM scorer weighs these — common
+  ones like on-call, travel, or undisclosed pay are checkboxes on Settings → Preferences, plus a
+  free-text field for anything else).
 - `matching.min_fit_score` — postings scoring below this are filtered out before they're even
   stored.
 - `llm.provider` — `ollama` (default, local, free), `anthropic` (hosted, needs API key, has
   usage costs), or `none` (rule-based keyword scoring only, no LLM calls at all).
 - `agents.*` — specialized roles (`profiler`, `market_analysis`, `curriculum`, `evaluator`,
   and `resume_writer`) inherit the local-first `llm` settings. Override a role or a named
-  `agents.tasks.*` workflow independently; Anthropic keys still come from `.env`.
-- `schedule.*` — how often `hanarr serve` runs searches and checks reminders.
-- `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP.
+  `agents.tasks.*` workflow independently; Anthropic keys are set once on Settings → App config
+  (stored via the OS credential store) and reused across every role.
+- `schedule.*` — how often `hanarr serve` runs searches and checks reminders: either a repeating
+  interval (hours/days) or a fixed time once a day, both configurable on Settings →
+  Scheduling & reminders. A daily time is interpreted in your machine's own local timezone
+  (shown next to the field), not UTC. A minimum-interval floor and a shared "search running"
+  state (visible everywhere via a site-wide activity badge, and distinguishing an automatic run
+  from one you clicked) prevent two searches from overlapping.
+- `sources.filter_boards_by_profile` — see **Job sources** above.
+- `reminders.*` — follow-up delay, desktop notifications on/off, optional email digest via SMTP
+  (the SMTP password is also stored via the OS credential store, same as the Anthropic key).
 
 ## Data & privacy
 
@@ -275,7 +314,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (235 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (319 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -298,10 +337,19 @@ cover the prefilter and the rule-based fallback scorer.
 
 - Fuzzy/synonym skill matching (e.g. "JS" ↔ "JavaScript") — under discussion, not yet designed.
 - Manual job entry (add a posting Hanarr didn't find on its own) — deferred by request.
-- An in-dashboard activity log of background job runs — lower priority.
-- Ashby connector (same pattern as Greenhouse/Lever)
+- Persisted, cross-run activity history — the Jobs page already shows a live scrolling log while
+  a search runs, but it's ephemeral (only the most recent run on this server process); a real
+  history across restarts and past runs is still open.
+- A Workday connector (or similar) — Greenhouse/Lever/Ashby all skew toward VC-funded tech/
+  startup companies; Workday's public job-board API is where most traditional enterprises,
+  healthcare systems, and large non-tech employers actually post, which would meaningfully
+  widen coverage beyond what profile-based filtering alone can fix (see **Job sources** above).
+  Paused in favor of the filtering work; not yet built.
+- In-app auto-update — notify when a newer release is found, auto-apply after a visible delay
+  (cancellable), never interrupt an in-progress search, and always leave a manual fallback path.
+  Design agreed, not yet implemented; today, Settings → Updates only checks and links to release
+  notes (see above).
 - Cover-letter drafting from the LLM client already in place
-- A "why was this filtered out" debug view in the dashboard
 - Optional calendar-file (.ics) export for interview reminders
 - Per-profile search preferences (currently shared across all local profiles on an instance;
   see "Running your own instance" above) — would need preferences to move from `config.yaml`
