@@ -97,7 +97,9 @@ def run_search_cycle(
     check_llm_available(llm, settings.data_dir)
     resume_summary = json.loads(profile.resume_summary_json or "{}")
     resume_text = profile.resume_text or ""
-    connectors = build_enabled_connectors(settings.sources)
+    connectors = build_enabled_connectors(
+        settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+    )
     new_count = 0
     stopped = False
 

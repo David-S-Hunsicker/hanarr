@@ -133,3 +133,29 @@ def test_custom_dealbreakers_excludes_common_labels():
     stored = [common_label, "Must allow pets in the office"]
 
     assert custom_dealbreakers(stored) == ["Must allow pets in the office"]
+
+
+def test_apply_preferences_form_reads_filter_boards_by_profile_checkbox():
+    settings = Settings()
+    settings.sources.filter_boards_by_profile = False
+    current = settings_to_dict(settings)
+
+    form = {"remote_ok": "on", "min_fit_score": "60", "filter_boards_by_profile": "on"}
+    updated = apply_preferences_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.sources.filter_boards_by_profile is True
+
+
+def test_apply_preferences_form_unchecking_filter_boards_by_profile_turns_it_off():
+    settings = Settings()
+    settings.sources.filter_boards_by_profile = True
+    current = settings_to_dict(settings)
+
+    form = {"remote_ok": "on", "min_fit_score": "60"}  # box left unchecked
+    updated = apply_preferences_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.sources.filter_boards_by_profile is False

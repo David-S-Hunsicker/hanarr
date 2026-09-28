@@ -406,6 +406,17 @@
 
       <fieldset>
         <legend>Job sources</legend>
+        <div class="checkbox-row">
+          <input type="checkbox" id="filter_boards_by_profile" name="filter_boards_by_profile" {% if settings.sources.filter_boards_by_profile %}checked{% endif %}>
+          <label for="filter_boards_by_profile">Only query default companies that match your resume</label>
+        </div>
+        <div class="hint" style="margin-bottom:1rem;">
+          The default company lists below skew toward tech/startup companies. When on, a search skips
+          default-list companies known to hire almost entirely for roles unrelated to your resume (e.g.
+          an accounting search skips companies that mostly hire engineers) -- so real matches aren't
+          buried under postings that were never going to fit. Companies you add yourself are never
+          affected by this; only the shipped defaults are.
+        </div>
         <div class="source-block">
           <div class="checkbox-row">
             <input type="checkbox" id="greenhouse_enabled" name="greenhouse_enabled" {% if settings.sources.greenhouse.enabled %}checked{% endif %}>

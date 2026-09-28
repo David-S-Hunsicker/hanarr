@@ -13,15 +13,15 @@ from sqlalchemy.orm import Session
 from .config import Preferences, Settings
 from .db import get_active_profile
 from .llm.base import LLMClient
+from .matching import EXAMPLE_TARGET_TITLES as _EXAMPLE_TARGET_TITLES
 from .models import Profile, ResumeVersion, utc_now
 
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".txt", ".md"}
 
-# The example template's shipped values (config.example.yaml). A config.yaml
-# that still has exactly these means the user never edited them — treated
-# the same as "blank" for auto-populating from the resume, since a config
-# that still says "Software Engineer" / "python" wasn't a deliberate choice.
-_EXAMPLE_TARGET_TITLES = ["Software Engineer", "Backend Engineer"]
+# The example template's shipped keywords_boost (config.example.yaml). A
+# config.yaml that still has exactly this means the user never edited it --
+# treated the same as "blank" for auto-populating from the resume, since a
+# config that still says "python" wasn't a deliberate choice.
 _EXAMPLE_KEYWORDS_BOOST = ["python", "distributed systems"]
 
 MAX_AUTO_BOOST_KEYWORDS = 10

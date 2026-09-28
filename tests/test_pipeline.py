@@ -66,7 +66,7 @@ def test_rejected_posting_is_not_rescored_on_a_later_search(monkeypatch):
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job()])
-    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources, **kwargs: [connector])
 
     llm = _CountingLLM(score=30)  # below threshold, gets rejected
 
@@ -91,7 +91,7 @@ def test_matched_posting_is_not_readded_or_rescored_on_a_later_search(monkeypatc
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job()])
-    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources, **kwargs: [connector])
 
     llm = _CountingLLM(score=85)  # above threshold, gets matched
 
@@ -119,7 +119,7 @@ def test_different_postings_are_scored_independently(monkeypatch):
     settings.matching.min_fit_score = 60
 
     connector = _FakeConnector("arbeitnow", [_make_job("1"), _make_job("2")])
-    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources, **kwargs: [connector])
 
     llm = _CountingLLM(score=85)
 
@@ -156,7 +156,7 @@ def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeyp
     connector = _FakeConnector(
         "arbeitnow", [prefiltered_job, already_seen_job, rejected_job, matched_job]
     )
-    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources: [connector])
+    monkeypatch.setattr("hanarr.pipeline.build_enabled_connectors", lambda sources, **kwargs: [connector])
 
     scores = {"rejected": 30, "matched": 85}
 
@@ -296,7 +296,7 @@ def test_run_search_cycle_raises_before_touching_connectors_when_llm_unavailable
             fetch_called.append(True)
             return []
 
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [_TattlingConnector()])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [_TattlingConnector()])
     monkeypatch.setattr(
         pipeline_mod, "check_llm_available",
         lambda llm, data_dir: (_ for _ in ()).throw(LLMUnavailableError("Ollama isn't reachable")),

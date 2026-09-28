@@ -3,6 +3,7 @@ reminder checks on the intervals set in config.yaml.
 """
 from __future__ import annotations
 
+import json
 import logging
 
 import tzlocal
@@ -56,15 +57,21 @@ def start_scheduler(settings: Settings, search_state: dict | None = None) -> Bac
 
         from .connectors import build_enabled_connectors
 
-        sources_total = len(build_enabled_connectors(settings.sources))
         try:
             for profile_id in profile_ids:
                 reset_for_run(search_state, search_state["run_id"] + 1, "scheduled")
-                search_state["sources_total"] = sources_total
                 with session_factory() as session:
                     profile = session.get(Profile, profile_id)
                     if profile is None:
                         continue
+                    # Profile-based board filtering (see company_categories.py)
+                    # can make different profiles query a different number of
+                    # sources, so this has to be computed per-profile rather
+                    # than once for the whole run.
+                    resume_summary = json.loads(profile.resume_summary_json or "{}")
+                    search_state["sources_total"] = len(build_enabled_connectors(
+                        settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+                    ))
                     try:
                         n = run_search_cycle(
                             session, settings, profile, llm,

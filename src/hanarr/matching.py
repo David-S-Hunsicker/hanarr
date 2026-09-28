@@ -13,6 +13,14 @@ import re
 
 from .config import Preferences
 from .connectors.base import RawJobPosting
+
+# The example template's shipped placeholder (config.example.yaml). A
+# config.yaml that still has exactly this means the user never edited it --
+# treated the same as "blank"/no-signal by both resume-autopopulation
+# (resume.py) and profile-based company filtering (company_categories.py),
+# since a config that still says "Software Engineer" wasn't a deliberate
+# choice and shouldn't be read as one.
+EXAMPLE_TARGET_TITLES = ["Software Engineer", "Backend Engineer"]
 from .llm.base import LLMClient
 
 logger = logging.getLogger(__name__)

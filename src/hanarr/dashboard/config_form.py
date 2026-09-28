@@ -63,7 +63,7 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     data = dict(current)
     prefs = dict(data["preferences"])
     matching = dict(data["matching"])
-    sources = {k: dict(v) for k, v in data["sources"].items()}
+    sources = {k: (dict(v) if isinstance(v, dict) else v) for k, v in data["sources"].items()}
 
     prefs["target_titles"] = _list_from_form(form.get("target_titles", ""))
     prefs["keywords_boost"] = _list_from_form(form.get("keywords_boost", ""))
@@ -94,6 +94,7 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     sources["remoteok"]["enabled"] = "remoteok_enabled" in form
     sources["remoteok"]["tags"] = _list_from_form(form.get("remoteok_tags", ""))
     sources["arbeitnow"]["enabled"] = "arbeitnow_enabled" in form
+    sources["filter_boards_by_profile"] = "filter_boards_by_profile" in form
 
     data["preferences"] = prefs
     data["matching"] = matching

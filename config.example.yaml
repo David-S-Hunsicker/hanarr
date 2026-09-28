@@ -192,6 +192,16 @@ sources:
     tags: ["python", "backend", "ai", "cloud"]
   arbeitnow:
     enabled: true
+  # The default company_boards/companies lists above skew heavily toward
+  # tech/startup companies. When true, a search only queries default-list
+  # companies whose known hiring mix overlaps the candidate's own resume
+  # (extracted titles/skills/industries) or target_titles preference --
+  # e.g. an accounting/payroll search skips companies known to hire almost
+  # entirely engineers, so real matches aren't buried under hundreds of
+  # engineering postings. Companies you add yourself are never filtered by
+  # this, only the shipped defaults are. Set to false to always query every
+  # configured board regardless of profile.
+  filter_boards_by_profile: true
 
 llm:
   provider: "ollama"          # ollama | anthropic (bring your own key) | none (rule-based only)

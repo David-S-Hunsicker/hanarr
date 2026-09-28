@@ -95,6 +95,15 @@ class SourcesConfig(BaseModel):
     ashby: AshbySource = Field(default_factory=AshbySource)
     remoteok: RemoteOKSource = Field(default_factory=RemoteOKSource)
     arbeitnow: ArbeitnowSource = Field(default_factory=ArbeitnowSource)
+    # The shipped default company boards skew heavily toward tech/startup
+    # companies -- when on, a search only queries default-list companies
+    # whose known hiring categories overlap the candidate's own resume, so a
+    # non-technical profile isn't drowned in hundreds of engineering
+    # postings from companies with very few openings in their actual field.
+    # Companies the user adds themselves are never filtered by this, only
+    # the shipped defaults are. Off disables filtering entirely (query every
+    # configured board, the original behavior).
+    filter_boards_by_profile: bool = True
 
 
 class LLMConfig(BaseModel):

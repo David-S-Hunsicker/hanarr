@@ -447,3 +447,80 @@ def test_build_enabled_connectors_skips_ashby_without_company_boards():
     connectors = build_enabled_connectors(settings.sources)
 
     assert not any(isinstance(c, AshbyConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_without_a_profile_queries_every_configured_board():
+    """Callers that don't pass resume_summary/preferences (e.g. a plain
+    source count before a specific profile is loaded) must see the
+    original, unfiltered behavior."""
+    settings = Settings()
+    settings.sources.greenhouse.enabled = True
+    settings.sources.greenhouse.company_boards = ["vercel", "stripe"]
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    greenhouse = next(c for c in connectors if isinstance(c, GreenhouseConnector))
+    assert greenhouse.company_boards == ["vercel", "stripe"]
+
+
+def test_build_enabled_connectors_filters_boards_by_profile_when_enabled():
+    settings = Settings()
+    settings.sources.greenhouse.enabled = True
+    settings.sources.greenhouse.company_boards = ["vercel", "stripe"]  # software-only, finance+software
+    settings.sources.filter_boards_by_profile = True
+
+    connectors = build_enabled_connectors(
+        settings.sources,
+        resume_summary={"titles": ["Payroll Specialist"], "industries": [], "skills": []},
+        preferences=settings.preferences,
+    )
+
+    greenhouse = next(c for c in connectors if isinstance(c, GreenhouseConnector))
+    assert greenhouse.company_boards == ["stripe"]
+
+
+def test_build_enabled_connectors_skips_a_connector_entirely_if_every_board_is_filtered_out():
+    settings = Settings()
+    settings.sources.greenhouse.enabled = True
+    settings.sources.greenhouse.company_boards = ["vercel"]  # software-only
+    settings.sources.filter_boards_by_profile = True
+
+    connectors = build_enabled_connectors(
+        settings.sources,
+        resume_summary={"titles": ["Payroll Specialist"], "industries": [], "skills": []},
+        preferences=settings.preferences,
+    )
+
+    assert not any(isinstance(c, GreenhouseConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_never_filters_when_toggle_is_off():
+    settings = Settings()
+    settings.sources.greenhouse.enabled = True
+    settings.sources.greenhouse.company_boards = ["vercel", "stripe"]
+    settings.sources.filter_boards_by_profile = False
+
+    connectors = build_enabled_connectors(
+        settings.sources,
+        resume_summary={"titles": ["Payroll Specialist"], "industries": [], "skills": []},
+        preferences=settings.preferences,
+    )
+
+    greenhouse = next(c for c in connectors if isinstance(c, GreenhouseConnector))
+    assert greenhouse.company_boards == ["vercel", "stripe"]
+
+
+def test_build_enabled_connectors_never_filters_boards_the_user_added_themselves():
+    settings = Settings()
+    settings.sources.greenhouse.enabled = True
+    settings.sources.greenhouse.company_boards = ["vercel", "my-local-employer"]
+    settings.sources.filter_boards_by_profile = True
+
+    connectors = build_enabled_connectors(
+        settings.sources,
+        resume_summary={"titles": ["Payroll Specialist"], "industries": [], "skills": []},
+        preferences=settings.preferences,
+    )
+
+    greenhouse = next(c for c in connectors if isinstance(c, GreenhouseConnector))
+    assert greenhouse.company_boards == ["my-local-employer"]

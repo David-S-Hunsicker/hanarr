@@ -935,7 +935,7 @@ def test_clear_jobs_refused_while_search_is_running(tmp_path, monkeypatch):
             hang.wait(timeout=10)
             return '{"score": 80, "dealbreaker_hit": false, "fails_minimum_requirements": false, "rationale": "ok"}'
 
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [SlowConnector()])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [SlowConnector()])
     monkeypatch.setattr(app_mod, "build_llm_client", lambda cfg: SlowLLM())
 
     app = create_app(settings)
@@ -1156,7 +1156,7 @@ def test_search_status_tracks_considered_progress_across_sources(monkeypatch, tm
         def fetch(self):
             return make_jobs("sourceB", 2)
 
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [SourceA(), SourceB()])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [SourceA(), SourceB()])
 
     class FastLLM(LLMClient):
         def complete_json(self, system: str, user: str) -> str:
@@ -1324,7 +1324,7 @@ def test_manual_search_persists_last_search_to_the_profile(tmp_path, monkeypatch
     just the in-memory state -- otherwise this info only ever reflects
     scheduled runs, not the button the user actually clicked."""
     settings = _make_isolated_settings(tmp_path)
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [])
 
     app = create_app(settings)
     client = TestClient(app)
@@ -1469,7 +1469,7 @@ def test_debug_filtered_page_shows_rejected_postings_after_a_search(tmp_path, mo
                 )
             ]
 
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [_FakeConnector()])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [_FakeConnector()])
 
     client = TestClient(create_app(settings))
     client.post("/search", follow_redirects=False)
@@ -1513,7 +1513,7 @@ def test_search_status_reports_already_seen_count_for_resumed_postings(tmp_path,
                 ),
             ]
 
-    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources: [_FakeConnector()])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [_FakeConnector()])
 
     client = TestClient(create_app(settings))
     client.post("/search", follow_redirects=False)

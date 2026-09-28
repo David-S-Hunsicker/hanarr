@@ -7,6 +7,7 @@ self-host with nothing but `hanarr serve`.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
 import subprocess
@@ -222,9 +223,12 @@ def create_app(settings: Settings, scheduler: Any = None, search_state: dict | N
         try:
             from ..connectors import build_enabled_connectors
 
-            state["sources_total"] = len(build_enabled_connectors(settings.sources))
             with session_factory() as session:
                 profile = get_active_profile(session, settings, profile_id)
+                resume_summary = json.loads(profile.resume_summary_json or "{}")
+                state["sources_total"] = len(build_enabled_connectors(
+                    settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+                ))
                 n = run_search_cycle(
                     session, settings, profile, market_analysis_llm,
                     on_progress=_on_progress,
