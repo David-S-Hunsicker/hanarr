@@ -4,7 +4,7 @@ version = "0.1.7"
 description = "A configurable, self-hosted job-search agent: parses your resume, searches ToS-friendly job sources, scores fit against your preferences, tracks applications, and generates reminders."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "PolyForm-Strict-1.0.0" }
+license = { text = "LicenseRef-Hanarr-Personal-Use" }
 authors = [{ name = "Your Name" }]
 dependencies = [
     "sqlalchemy>=2.0",

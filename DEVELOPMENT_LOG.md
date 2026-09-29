@@ -114,6 +114,21 @@ carry forward into a skimmable list.
 Shipped: the license change, SQLite WAL mode + checkpoint-before-backup, and file-backed logging
 with a catch-all exception handler, all described below.
 
+### 2026-09-29 — License narrowed to personal job-search use only
+
+Follow-up to the license change below: "any noncommercial purpose" was still broader than
+intended — it would have covered unrelated hobby projects, research, or general tinkering, not
+just the thing Hanarr is actually for. Replaced PolyForm Strict's "Noncommercial Purposes"/
+"Personal Uses" sections with a custom "Permitted Purpose" section: the *only* permitted use is
+running Hanarr, unmodified, for your own personal job search (searching postings, tracking your
+own applications, preparing your own materials). Everything else — any organizational or
+commercial use, or any use unrelated to your own job search — needs the copyright holder's
+express permission, no exceptions. This is now enough of a departure from the original license
+text that it's named/framed in `LICENSE` as a custom license based on PolyForm Strict, rather than
+"PolyForm Strict, modified" — the underlying mechanics (no modification, no redistribution,
+patent/liability terms) are still borrowed from it, but what counts as permitted use is entirely
+custom now.
+
 ### 2026-09-29 — License changed from MIT to a modified PolyForm Strict 1.0.0
 
 Repo stays public/source-available, but the license itself now restricts what people can do with
@@ -127,6 +142,7 @@ an individual, a business, or a nonprofit alike. See `LICENSE` (full text, with 
 section and the reasoning called out at the top, plus a plain-English summary at the bottom) and
 the polyformproject.org
 source this was pulled from verbatim, rather than drafting custom legal text from scratch.
+(Narrowed further the same day — see the entry above.)
 
 ### 2026-09-29 — SQLite WAL mode, for the same bug report
 

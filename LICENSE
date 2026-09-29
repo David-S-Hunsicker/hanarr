@@ -1,16 +1,19 @@
 Copyright (c) 2026 David Hunsicker
 
-Licensed under a modified version of the PolyForm Strict License 1.0.0 --
-identical to the original except that the "Noncommercial Organizations"
-section has been removed, so no organization (charity, school, government,
-etc.) gets a blanket exemption; the "Any noncommercial purpose is a
-permitted purpose" line is the only test. The unmodified original is at
+Licensed under a modified version of the PolyForm Strict License 1.0.0.
+This keeps the PolyForm Strict License's overall structure (no
+modification, no redistribution, standard patent/liability terms) but
+replaces its definition of what use is actually permitted: instead of
+"any noncommercial purpose" (which would cover unrelated hobby projects,
+research, general tinkering, etc.), the only permitted purpose here is
+using Hanarr, unmodified, for your own personal job search. Anything else
+-- including any organizational, commercial, or non-job-search use --
+requires the copyright holder's express prior permission. The unmodified
+original PolyForm Strict License 1.0.0 is at
 <https://polyformproject.org/licenses/strict/1.0.0>; this file's actual
 terms are below.
 
-# PolyForm Strict License 1.0.0 (modified)
-
-<https://polyformproject.org/licenses/strict/1.0.0>
+# Hanarr Personal-Use License (based on PolyForm Strict License 1.0.0)
 
 ## Acceptance
 
@@ -24,13 +27,9 @@ The licensor grants you a copyright license for the software to do everything yo
 
 The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
 
-## Noncommercial Purposes
+## Permitted Purpose
 
-Any noncommercial purpose is a permitted purpose.
-
-## Personal Uses
-
-Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
+The only permitted purpose is using the software, without modification, for your own personal job search -- for example, searching for job postings, tracking your own applications, and preparing your own application materials. No other use is permitted, including but not limited to: use by or on behalf of a business, nonprofit, school, or government entity; use for any purpose other than your own personal job search; and use as part of, or in support of, any product or service offered to others. Any use beyond this permitted purpose requires the licensor's express prior written permission.
 
 ## Fair Use
 
@@ -68,16 +67,15 @@ The **licensor** is the individual or entity offering these terms, and the **sof
 
 ## What this means in practice for Hanarr
 
-- You can download, install, and run Hanarr for your own personal or noncommercial use.
+- You can download, install, and run Hanarr for your own personal job search -- searching for
+  postings, tracking your own applications, and preparing your own application materials.
+- Any other use -- for a business, nonprofit, school, government agency, someone else's job
+  search, or anything unrelated to your own personal job search -- is **not permitted** without
+  the copyright holder's express prior permission.
 - You **cannot** modify Hanarr, create derivative works from it, or distribute copies of it
-  (modified or not) to anyone else.
-- Commercial use (using it for or within a business, or any revenue-generating purpose) is
-  **not** a permitted purpose under this license and requires a separate agreement with the
-  copyright holder -- this applies equally to a for-profit business, a nonprofit, a school, a
-  government agency, or any other organization. There is no blanket exemption for any category
-  of organization; the only test is whether the specific use is itself noncommercial.
+  (modified or not) to anyone else, regardless of purpose.
 - Only the copyright holder (David Hunsicker) may modify, redistribute, or sell this software,
-  or grant commercial licenses to others.
+  or grant broader licenses to others.
 
-This summary is provided for convenience only and is not part of the license; the modified
-PolyForm Strict License 1.0.0 text above is what actually governs.
+This summary is provided for convenience only and is not part of the license; the license text
+above is what actually governs.

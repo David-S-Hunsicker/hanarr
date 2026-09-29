@@ -346,8 +346,9 @@ and reminders export to a real calendar app as .ics files.
 
 ## License
 
-A modified version of the [PolyForm Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0)
-— see `LICENSE`. In short: you're welcome to download and run Hanarr for personal or noncommercial
-use, but modifying it, distributing it (modified or not), or using it commercially — including as
-a business, nonprofit, school, or government agency — requires a separate agreement with the
-copyright holder. There's no blanket exemption for any category of organization.
+A custom license based on the [PolyForm Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0)
+— see `LICENSE`. In short: you're welcome to download and run Hanarr for your own personal job
+search — searching for postings, tracking your own applications, preparing your own materials —
+and nothing else. Modifying it, distributing it (modified or not), or using it for any other
+purpose (a business, nonprofit, school, government agency, or anything unrelated to your own job
+search) requires the copyright holder's express prior permission.
