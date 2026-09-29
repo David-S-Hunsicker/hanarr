@@ -9,8 +9,8 @@ live only in a chat transcript.
 
 ## Planned
 
-Two features are scoped below, not yet implemented. Each still needs a design decision flagged
-inline before work starts. (The third planned feature, the "How to use Hanarr" guide page, shipped
+Three features are scoped below, not yet implemented. Each still needs a design decision flagged
+inline before work starts. (A fourth planned feature, the "How to use Hanarr" guide page, shipped
 — see the Log below.)
 
 ## Backlog
@@ -42,6 +42,43 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 - **Persisted, cross-run activity history** — the Jobs page already shows a live scrolling log
   during an active search; this would only add value across restarts/past runs (an audit
   nice-to-have), not something blocking real use today.
+
+### Coaching project loop closure
+
+**Problem.** Traced the full coaching/project flow end to end (`coaching_projects.py`,
+`submissions.py`, `evaluator.py`, `coaching.html`) and found the loop never actually closes. A
+project is created from an analyzed skill gap, the user works through tasks and submits evidence
+(written response, local files, or a fetched GitHub diff), and gets a real LLM evaluation —- but a
+`passed` outcome updates *nothing* else. `ProfileSkill.confidence` and the job's
+`JobSkill.gap_status` are untouched, so Skills/Jobs still show the same gap after a demonstrably
+proven skill as before. `Project.status` has four states (planned/active/completed/cancelled) but
+only planned→active is ever reachable in code -- there's no "mark complete" or "abandon this"
+action anywhere in the UI. And nothing bridges a proven skill back to the resume, even though the
+resume-proposal approve/reject flow already exists for other flows.
+
+**Flow.**
+1. **Close the loop on a passed evaluation.** When `evaluate_submission` returns `outcome ==
+   "passed"`, update the project's linked skills: bump `ProfileSkill.confidence` (new
+   `source="project"` evidence, same non-clobbering pattern used elsewhere -- update an
+   already-project-sourced row, never silently overwrite a higher-trust "resume"/"manual" source
+   without saying so) and mark the corresponding `JobSkill.gap_status` as `SATISFIED` for the
+   project's affected jobs, so "Why this score"/gap cards on Jobs actually reflect it.
+2. **Reachable project completion/cancellation.** A "Mark complete" action (suggested once all
+   tasks are done and/or a submission has passed, not auto-forced) and a "Cancel project" action
+   for abandoning one honestly instead of leaving it stuck "active" forever. Completed/cancelled
+   projects stay visible but should stop cluttering the primary in-progress list.
+3. **Bridge proven skills to the resume.** After a passed evaluation, offer to fold the new
+   evidence into a resume proposal via the existing propose/approve/reject flow (reusing
+   `resume_writer_llm`, not a second resume-editing path) -- the proof currently only ever lives on
+   the Coaching page.
+4. **Stale/abandoned project nudges.** Surface a project that's been `active` a long time with no
+   task-status change or submission -- the same spirit as the existing "stale analysis" flag on a
+   job after the active resume changes.
+
+**Open question.** What counts as "stale" for #4 (a fixed day threshold vs. relative to the
+project's own task cadence), and exactly how much to bump `ProfileSkill.confidence` on a pass (a
+fixed floor like 0.8, or scaled by the evaluation score) -- both need a real answer, not a guess,
+before implementing.
 
 ### Mini-interview skill assessment
 
