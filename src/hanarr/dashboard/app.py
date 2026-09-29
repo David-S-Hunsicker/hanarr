@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 
-from ..config import DEFAULT_CONFIG_PATH, Settings, effective_preferences
+from ..config import DEFAULT_CONFIG_PATH, Preferences, Settings, effective_preferences
 from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import RawJobPosting, to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
@@ -508,7 +508,13 @@ def create_app(
         if not name:
             return RedirectResponse("/profiles", status_code=303)
         with session_factory() as session:
-            profile = Profile(name=name)
+            # A new profile is likely a different person entirely, not a
+            # continuation of whoever set up this instance -- it starts
+            # from bare preferences defaults (blank target titles/
+            # locations, generic seniority/employment-type defaults), not
+            # a copy of the existing shared config.yaml values, which
+            # could be highly specific to someone else's job search.
+            profile = Profile(name=name, preferences_json=Preferences().model_dump_json())
             session.add(profile)
             session.commit()
             session.refresh(profile)
@@ -1525,12 +1531,15 @@ def create_app(
     @app.get("/config")
     def config_page(request: Request, tab: str = "preferences", saved: str | None = None):
         provider_diagnostics = _provider_diagnostics()
+        preferences = _active_effective_preferences(request)
+        resolved_tab = tab if tab in {"preferences", "app", "schedule", "updates"} else "preferences"
         return templates.TemplateResponse(
             request=request,
             name="config.html",
             context={
                 "settings": settings,
-                "active_tab": tab if tab in {"preferences", "app", "schedule", "updates"} else "preferences",
+                "preferences": preferences,
+                "active_tab": resolved_tab,
                 "saved": saved == "1",
                 "errors": [],
                 "provider_diagnostics": provider_diagnostics,
@@ -1539,8 +1548,8 @@ def create_app(
                 "onboarding": _onboarding_status_for_request(request),
                 "local_timezone": str(tzlocal.get_localzone()),
                 "common_dealbreakers": COMMON_DEALBREAKERS,
-                "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
-                "config_version": config_version["value"],
+                "dealbreakers_custom": custom_dealbreakers(preferences.dealbreakers),
+                "config_version": _config_version_for_tab(resolved_tab, request),
             },
         )
 
@@ -1556,6 +1565,28 @@ def create_app(
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
             return _onboarding_status(profile, settings)
+
+    def _config_version_for_tab(tab: str, request: Request) -> int:
+        """The Preferences tab's stale-save check must compare against the
+        active profile's own preferences_version, not the shared
+        config.yaml config_version -- otherwise one profile saving would
+        spuriously block every other profile's unrelated save. The other
+        three tabs (app/schedule/updates) still edit shared config.yaml,
+        so they keep using the global counter."""
+        if tab == "preferences":
+            with session_factory() as session:
+                profile = get_active_profile(session, settings, _active_profile_id(request))
+                return profile.preferences_version
+        return config_version["value"]
+
+    def _active_effective_preferences(request: Request):
+        """The active profile's own saved match criteria, or the shared
+        config.yaml value as a live fallback -- see config.effective_preferences.
+        Used to render the Preferences tab's form fields, which show a
+        specific profile's values now rather than always the shared ones."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            return effective_preferences(profile, settings)
 
     def _resume_upload_status(profile_id: int | None = None) -> dict:
         """For server-rendered template context; parsed_at is a raw datetime
@@ -1750,18 +1781,21 @@ def create_app(
         # out whatever changed in the meantime. Refuse instead, rather than
         # trusting a snapshot that's provably out of date.
         submitted_version = form_dict.get("config_version")
-        if submitted_version is not None and submitted_version != str(config_version["value"]):
+        current_version = _config_version_for_tab(tab, request)
+        if submitted_version is not None and submitted_version != str(current_version):
             conflict_message = (
                 "Settings changed elsewhere since this page loaded (another tab, a resume "
                 "upload, etc.) — reload the page to see the latest before saving again."
             )
             if is_autosave:
                 return JSONResponse({"saved": False, "conflict": True, "errors": [conflict_message]}, status_code=409)
+            conflict_preferences = _active_effective_preferences(request)
             return templates.TemplateResponse(
                 request=request,
                 name="config.html",
                 context={
                     "settings": settings,
+                    "preferences": conflict_preferences,
                     "active_tab": tab,
                     "saved": False,
                     "errors": [conflict_message],
@@ -1771,8 +1805,8 @@ def create_app(
                     "onboarding": _onboarding_status_for_request(request),
                     "local_timezone": str(tzlocal.get_localzone()),
                     "common_dealbreakers": COMMON_DEALBREAKERS,
-                    "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
-                    "config_version": config_version["value"],
+                    "dealbreakers_custom": custom_dealbreakers(conflict_preferences.dealbreakers),
+                    "config_version": current_version,
                 },
                 status_code=409,
             )
@@ -1784,11 +1818,13 @@ def create_app(
         if errors:
             if is_autosave:
                 return JSONResponse({"saved": False, "errors": errors}, status_code=400)
+            error_preferences = _active_effective_preferences(request)
             return templates.TemplateResponse(
                 request=request,
                 name="config.html",
                 context={
                     "settings": settings,
+                    "preferences": error_preferences,
                     "active_tab": tab,
                     "saved": False,
                     "errors": errors,
@@ -1798,28 +1834,50 @@ def create_app(
                     "onboarding": _onboarding_status_for_request(request),
                     "local_timezone": str(tzlocal.get_localzone()),
                     "common_dealbreakers": COMMON_DEALBREAKERS,
-                    "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
-                    "config_version": config_version["value"],
+                    "dealbreakers_custom": custom_dealbreakers(error_preferences.dealbreakers),
+                    "config_version": current_version,
                 },
             )
 
+        # Match criteria (preferences.*) are per-profile, not shared -- see
+        # config.effective_preferences. Persisted onto the active profile
+        # instead of copied onto the live settings/config.yaml, which is
+        # what "forks" a profile away from the shared default the first
+        # time its Preferences tab is ever saved. Everything else on this
+        # same form (sources.*, matching.min_fit_score) stays shared, same
+        # as before.
+        new_preferences_version: int | None = None
+        if tab == "preferences":
+            with session_factory() as session:
+                profile = get_active_profile(session, settings, _active_profile_id(request))
+                profile.preferences_json = new_settings.preferences.model_dump_json()
+                profile.preferences_version += 1
+                session.commit()
+                new_preferences_version = profile.preferences_version
+
         # Mutate the live settings object in place — the scheduler, pipeline,
         # and this app all hold a reference to the same instance, so
-        # preference/matching/source changes apply on the next search
-        # without a restart. LLM/schedule/dashboard changes are saved but
-        # only take effect after `hanarr serve` is restarted, since the
-        # LLM client and scheduler intervals are already built from the old
-        # values — the config page says so next to those fields.
+        # matching/source changes apply on the next search without a
+        # restart. LLM/schedule/dashboard changes are saved but only take
+        # effect after `hanarr serve` is restarted, since the LLM client
+        # and scheduler intervals are already built from the old values —
+        # the config page says so next to those fields.
         for field in Settings.model_fields:
-            if field == "data_dir":
+            if field == "data_dir" or (field == "preferences" and tab == "preferences"):
                 continue
             setattr(settings, field, getattr(new_settings, field))
 
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
         persist_secrets_from_form(form_dict)
+        # The global counter still advances even on a preferences-tab save
+        # -- sources.*/matching.* on that same form are shared config.yaml
+        # fields other tabs' stale-save checks must still see as changed.
+        # The version handed back to THIS form, though, is whichever one
+        # its own next save will actually be checked against.
         config_version["value"] += 1
+        response_version = new_preferences_version if new_preferences_version is not None else config_version["value"]
         if is_autosave:
-            return JSONResponse({"saved": True, "config_version": config_version["value"]})
+            return JSONResponse({"saved": True, "config_version": response_version})
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
 
     @app.post("/config/suggest-keywords")

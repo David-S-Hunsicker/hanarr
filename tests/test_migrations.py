@@ -119,8 +119,9 @@ def test_migration_0007_adds_resume_metadata_columns_without_duplicate_error(tmp
         connection.execute(text("ALTER TABLE profiles DROP COLUMN resume_original_filename"))
         connection.execute(text("ALTER TABLE profiles DROP COLUMN resume_parsed_at"))
         connection.execute(text(
-            "INSERT INTO profiles (id, name, resume_text, resume_summary_json, preferences_json, created_at, updated_at) "
-            "VALUES (1, 'Existing user', 'resume text', '{}', '', '2025-01-01', '2025-01-01')"
+            "INSERT INTO profiles "
+            "(id, name, resume_text, resume_summary_json, preferences_json, preferences_version, created_at, updated_at) "
+            "VALUES (1, 'Existing user', 'resume text', '{}', '', 0, '2025-01-01', '2025-01-01')"
         ))
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0006')"))

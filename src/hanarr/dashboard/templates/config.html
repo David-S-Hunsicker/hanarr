@@ -288,7 +288,7 @@
         <legend>What you're looking for</legend>
         <div class="field">
           <label for="target_titles">Target titles</label>
-          <textarea id="target_titles" name="target_titles">{{ "\n".join(settings.preferences.target_titles) }}</textarea>
+          <textarea id="target_titles" name="target_titles">{{ "\n".join(preferences.target_titles) }}</textarea>
           <div class="hint">One title per line, e.g. "Software Engineer"</div>
         </div>
         <div class="row">
@@ -297,12 +297,12 @@
               <label for="keywords_boost">Keywords to boost</label>
               <button type="button" class="suggest-btn" id="suggest-keywords-btn">Suggest from resume</button>
             </div>
-            <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(settings.preferences.keywords_boost) }}</textarea>
+            <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(preferences.keywords_boost) }}</textarea>
             <div class="suggest-status" id="suggest-keywords-status" hidden></div>
           </div>
           <div class="field">
             <label for="keywords_exclude">Keywords to exclude</label>
-            <textarea id="keywords_exclude" name="keywords_exclude">{{ "\n".join(settings.preferences.keywords_exclude) }}</textarea>
+            <textarea id="keywords_exclude" name="keywords_exclude">{{ "\n".join(preferences.keywords_exclude) }}</textarea>
           </div>
         </div>
         <div class="row">
@@ -311,7 +311,7 @@
             <div class="checkbox-group">
               {% for level in ["intern", "junior", "mid", "senior", "staff", "principal", "exec"] %}
               <label class="checkbox-chip">
-                <input type="checkbox" name="seniority_{{ level }}" {% if level in settings.preferences.seniority %}checked{% endif %}>
+                <input type="checkbox" name="seniority_{{ level }}" {% if level in preferences.seniority %}checked{% endif %}>
                 {{ level }}
               </label>
               {% endfor %}
@@ -323,7 +323,7 @@
             <div class="checkbox-group">
               {% for etype in ["full_time", "part_time", "contract", "internship"] %}
               <label class="checkbox-chip">
-                <input type="checkbox" name="employment_type_{{ etype }}" {% if etype in settings.preferences.employment_types %}checked{% endif %}>
+                <input type="checkbox" name="employment_type_{{ etype }}" {% if etype in preferences.employment_types %}checked{% endif %}>
                 {{ etype }}
               </label>
               {% endfor %}
@@ -337,29 +337,29 @@
         <legend>Location &amp; salary</legend>
         <div class="field">
           <label for="locations">Locations</label>
-          <textarea id="locations" name="locations">{{ "\n".join(settings.preferences.locations) }}</textarea>
+          <textarea id="locations" name="locations">{{ "\n".join(preferences.locations) }}</textarea>
         </div>
         <div class="checkbox-row">
-          <input type="checkbox" id="remote_ok" name="remote_ok" {% if settings.preferences.remote_ok %}checked{% endif %}>
+          <input type="checkbox" id="remote_ok" name="remote_ok" {% if preferences.remote_ok %}checked{% endif %}>
           <label for="remote_ok">Open to remote roles</label>
         </div>
         <div class="checkbox-row">
-          <input type="checkbox" id="onsite_ok" name="onsite_ok" {% if settings.preferences.onsite_ok %}checked{% endif %}>
+          <input type="checkbox" id="onsite_ok" name="onsite_ok" {% if preferences.onsite_ok %}checked{% endif %}>
           <label for="onsite_ok">Open to onsite roles</label>
         </div>
         <div class="checkbox-row">
-          <input type="checkbox" id="willing_to_relocate" name="willing_to_relocate" {% if settings.preferences.willing_to_relocate %}checked{% endif %}>
+          <input type="checkbox" id="willing_to_relocate" name="willing_to_relocate" {% if preferences.willing_to_relocate %}checked{% endif %}>
           <label for="willing_to_relocate">Willing to relocate</label>
         </div>
         <div class="field">
           <label for="work_country">Work country</label>
-          <input type="text" id="work_country" name="work_country" value="{{ settings.preferences.work_country }}">
+          <input type="text" id="work_country" name="work_country" value="{{ preferences.work_country }}">
           <div class="hint">Postings that clearly restrict remote work to another country (e.g. "Remote - Canada") are filtered out. Leave blank to disable this check.</div>
         </div>
         <div class="row">
           <div class="field">
             <label for="salary_floor_usd">Salary floor (USD)</label>
-            <input type="number" id="salary_floor_usd" name="salary_floor_usd" value="{{ settings.preferences.salary_floor_usd if settings.preferences.salary_floor_usd is not none else '' }}">
+            <input type="number" id="salary_floor_usd" name="salary_floor_usd" value="{{ preferences.salary_floor_usd if preferences.salary_floor_usd is not none else '' }}">
           </div>
           <div class="field">
             <label for="min_fit_score">Minimum fit score (0-100)</label>
@@ -369,11 +369,11 @@
         <div class="row">
           <div class="field">
             <label for="company_size_min">Company size — min</label>
-            <input type="number" id="company_size_min" name="company_size_min" value="{{ settings.preferences.company_size_min if settings.preferences.company_size_min is not none else '' }}">
+            <input type="number" id="company_size_min" name="company_size_min" value="{{ preferences.company_size_min if preferences.company_size_min is not none else '' }}">
           </div>
           <div class="field">
             <label for="company_size_max">Company size — max</label>
-            <input type="number" id="company_size_max" name="company_size_max" value="{{ settings.preferences.company_size_max if settings.preferences.company_size_max is not none else '' }}">
+            <input type="number" id="company_size_max" name="company_size_max" value="{{ preferences.company_size_max if preferences.company_size_max is not none else '' }}">
           </div>
         </div>
       </fieldset>
@@ -383,12 +383,12 @@
         <div class="row">
           <div class="field">
             <label for="industries_include">Industries to include</label>
-            <textarea id="industries_include" name="industries_include">{{ "\n".join(settings.preferences.industries_include) }}</textarea>
+            <textarea id="industries_include" name="industries_include">{{ "\n".join(preferences.industries_include) }}</textarea>
             <div class="hint">Leave blank for no restriction</div>
           </div>
           <div class="field">
             <label for="industries_exclude">Industries to exclude</label>
-            <textarea id="industries_exclude" name="industries_exclude">{{ "\n".join(settings.preferences.industries_exclude) }}</textarea>
+            <textarea id="industries_exclude" name="industries_exclude">{{ "\n".join(preferences.industries_exclude) }}</textarea>
           </div>
         </div>
         <div class="field">
@@ -396,7 +396,7 @@
           <div class="checkbox-group">
             {% for key, label in common_dealbreakers %}
             <label class="checkbox-chip">
-              <input type="checkbox" name="dealbreaker_{{ key }}" {% if label in settings.preferences.dealbreakers %}checked{% endif %}>
+              <input type="checkbox" name="dealbreaker_{{ key }}" {% if label in preferences.dealbreakers %}checked{% endif %}>
               {{ label }}
             </label>
             {% endfor %}

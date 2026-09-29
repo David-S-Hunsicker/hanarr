@@ -12,7 +12,7 @@ import pytest
 
 import hanarr.dashboard.app as app_mod
 import hanarr.pipeline as pipeline_mod
-from hanarr.config import Settings
+from hanarr.config import Preferences, Settings
 from hanarr.connectors.base import RawJobPosting
 from hanarr.dashboard.app import create_app, format_posting_age, is_recent_posting, task_is_stuck
 from hanarr.db import get_or_create_profile, make_session_factory
@@ -538,6 +538,16 @@ def _make_isolated_settings(tmp_path):
     return settings
 
 
+def _default_profile_preferences(settings) -> Preferences:
+    """Match criteria now live on the profile, not settings.preferences --
+    see config.effective_preferences(). This reads the default profile's
+    own saved copy, the way the app itself does after a Preferences tab
+    save has forked it."""
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        return Preferences.model_validate_json(profile.preferences_json)
+
+
 def test_manual_search_surfaces_a_clean_error_when_llm_is_unavailable(tmp_path, monkeypatch):
     """A configured-but-unreachable LLM must show a clear, specific error
     on the dashboard -- not a generic "check server logs" guess, and not
@@ -643,6 +653,142 @@ def test_profile_rename_404s_for_a_missing_profile(tmp_path):
 
     response = client.post("/profiles/999999/rename", data={"name": "Anyone"})
     assert response.status_code == 404
+
+
+def test_new_profile_starts_from_bare_preferences_defaults_not_the_shared_config(tmp_path):
+    """A new profile is likely a different person, not a continuation of
+    whoever set up this instance -- it must not inherit the existing
+    (possibly highly specific) shared config.yaml preferences."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.target_titles = ["Existing Person's Very Specific Title"]
+    settings.preferences.locations = ["Existing Person's City"]
+    client = TestClient(create_app(settings))
+
+    created = client.post("/profiles", data={"name": "A different person"}, follow_redirects=False)
+    new_id = int(created.cookies["hanarr_profile_id"])
+
+    with make_session_factory(settings)() as session:
+        new_profile = session.get(Profile, new_id)
+        prefs = Preferences.model_validate_json(new_profile.preferences_json)
+        assert prefs == Preferences()  # bare defaults, not a copy of the existing config
+        assert prefs.target_titles == []
+        assert prefs.locations == []
+
+
+def test_two_profiles_preferences_tab_saves_are_fully_isolated(tmp_path, monkeypatch):
+    """The core per-profile-preferences promise: saving Preferences while
+    acting as profile A must never affect what profile B sees as its own
+    values, and switching the active-profile cookie must render each
+    profile's own saved values back correctly."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    client.get("/")  # creates the default profile (profile A)
+    with make_session_factory(settings)() as session:
+        profile_a_id = get_or_create_profile(session, settings).id
+
+    created = client.post("/profiles", data={"name": "Profile B"}, follow_redirects=False)
+    profile_b_id = int(created.cookies["hanarr_profile_id"])
+
+    # Save distinct preferences as profile A.
+    client.cookies.set("hanarr_profile_id", str(profile_a_id))
+    a_save = client.post(
+        "/config/preferences",
+        data={"target_titles": "Backend Engineer", "locations": "Austin, TX", "config_version": "0"},
+        headers={"X-Autosave": "1"},
+    )
+    assert a_save.status_code == 200
+
+    # Save different preferences as profile B.
+    client.cookies.set("hanarr_profile_id", str(profile_b_id))
+    b_save = client.post(
+        "/config/preferences",
+        data={"target_titles": "Data Scientist", "locations": "Remote", "config_version": "0"},
+        headers={"X-Autosave": "1"},
+    )
+    assert b_save.status_code == 200
+
+    with make_session_factory(settings)() as session:
+        prefs_a = Preferences.model_validate_json(session.get(Profile, profile_a_id).preferences_json)
+        prefs_b = Preferences.model_validate_json(session.get(Profile, profile_b_id).preferences_json)
+    assert prefs_a.target_titles == ["Backend Engineer"]
+    assert prefs_a.locations == ["Austin, TX"]
+    assert prefs_b.target_titles == ["Data Scientist"]
+    assert prefs_b.locations == ["Remote"]
+
+    # The Preferences tab renders each profile's own saved values back,
+    # not the other profile's or the shared config.yaml default.
+    client.cookies.set("hanarr_profile_id", str(profile_a_id))
+    page_a = client.get("/config?tab=preferences").text
+    assert "Backend Engineer" in page_a
+    assert "Data Scientist" not in page_a
+
+    client.cookies.set("hanarr_profile_id", str(profile_b_id))
+    page_b = client.get("/config?tab=preferences").text
+    assert "Data Scientist" in page_b
+    assert "Backend Engineer" not in page_b
+
+
+def test_one_profiles_preferences_save_does_not_block_a_different_profiles_save(tmp_path, monkeypatch):
+    """Regression test: the Preferences tab's stale-save protection
+    originally compared against the single global config_version, shared
+    by every tab and every profile. Two people using two profiles would
+    then spuriously block each other -- profile A saving would bump the
+    global counter, and profile B's already-open page (still holding the
+    old counter value, since its own data was never touched) would get
+    rejected as "changed elsewhere" even though nothing about B actually
+    conflicted. Preferences now checks a per-profile counter instead."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    client.get("/")
+    with make_session_factory(settings)() as session:
+        profile_a_id = get_or_create_profile(session, settings).id
+    created = client.post("/profiles", data={"name": "Profile B"}, follow_redirects=False)
+    profile_b_id = int(created.cookies["hanarr_profile_id"])
+
+    # Both profiles "load" the Preferences tab at version 0.
+    client.cookies.set("hanarr_profile_id", str(profile_a_id))
+    assert client.get("/config?tab=preferences").text.count('name="config_version" value="0"') >= 1
+    client.cookies.set("hanarr_profile_id", str(profile_b_id))
+    assert client.get("/config?tab=preferences").text.count('name="config_version" value="0"') >= 1
+
+    # Profile A saves -- advances the global config_version, but not B's
+    # own preferences_version (B's data hasn't changed).
+    client.cookies.set("hanarr_profile_id", str(profile_a_id))
+    a_save = client.post(
+        "/config/preferences",
+        data={"target_titles": "Backend Engineer", "config_version": "0"},
+        headers={"X-Autosave": "1"},
+    )
+    assert a_save.status_code == 200
+
+    # Profile B's still-open tab, unaware of A's unrelated save, submits
+    # its own save still claiming version 0 -- must succeed, since B's own
+    # preferences genuinely haven't changed since B's page loaded.
+    client.cookies.set("hanarr_profile_id", str(profile_b_id))
+    b_save = client.post(
+        "/config/preferences",
+        data={"target_titles": "Data Scientist", "config_version": "0"},
+        headers={"X-Autosave": "1"},
+    )
+    assert b_save.status_code == 200
+
+
+def test_config_get_shows_the_shared_default_for_an_unforked_profile(tmp_path):
+    """A profile that has never saved its own Preferences tab must keep
+    transparently showing the shared config.yaml value -- the live
+    fallback that makes this change a no-op for an existing single-profile
+    install until a second profile actually diverges."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.target_titles = ["Shared Config Title"]
+    client = TestClient(create_app(settings))
+
+    page = client.get("/config?tab=preferences").text
+
+    assert "Shared Config Title" in page
 
 
 def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
@@ -2007,7 +2153,7 @@ def test_preferences_autosave_saves_and_returns_json_without_redirecting(tmp_pat
 
     assert response.status_code == 200
     assert response.json() == {"saved": True, "config_version": 1}
-    assert settings.preferences.target_titles == ["Staff Engineer"]
+    assert _default_profile_preferences(settings).target_titles == ["Staff Engineer"]
     assert settings.matching.min_fit_score == 70
 
 
@@ -2054,7 +2200,7 @@ def test_config_post_rejects_a_stale_config_version(tmp_path, monkeypatch):
     assert response.status_code == 409
     assert response.json()["saved"] is False
     # The critical assertion: the stale write must never have been applied.
-    assert settings.preferences.locations == ["Austin, TX"]
+    assert _default_profile_preferences(settings).locations == ["Austin, TX"]
     assert settings.sources.greenhouse.company_boards == ["stripe", "airbnb"]
 
 
@@ -2078,7 +2224,7 @@ def test_config_post_accepts_a_matching_config_version_and_advances_it(tmp_path,
     )
     assert second.status_code == 200
     assert second.json()["config_version"] == 2
-    assert settings.preferences.locations == ["Denver, CO"]
+    assert _default_profile_preferences(settings).locations == ["Denver, CO"]
 
 
 def test_config_post_without_a_version_field_is_not_blocked(tmp_path, monkeypatch):

@@ -67,6 +67,13 @@ class Profile(Base):
     # match criteria (target titles, locations, salary floor, etc.) are
     # per-profile.
     preferences_json: Mapped[str] = mapped_column(Text, default="")
+    # A per-profile counter, separate from config.yaml's own optimistic-
+    # concurrency version -- the Preferences tab's stale-save protection
+    # (see dashboard/app.py's _handle_config_post) must only reject a save
+    # when THIS profile's own preferences changed elsewhere, never because
+    # a *different* profile happened to save something unrelated in the
+    # meantime.
+    preferences_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now
