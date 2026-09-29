@@ -333,8 +333,8 @@ Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the ru
 shipped and why. Current ideas: fuzzy/synonym skill matching, manual job entry, persisted
 cross-run activity history, a Workday connector for non-startup employers, cover-letter drafting,
 calendar-file (.ics) export for interview reminders, per-profile search preferences, a mini-
-interview skill assessment mechanic, a STAR behavioral-story builder, and an in-app "how to use
-Hanarr" guide page.
+interview skill assessment mechanic, and a STAR behavioral-story builder. An in-app **Guide** tab
+(`/guide` in the dashboard) already covers how to use Hanarr, page by page.
 
 ## License
 

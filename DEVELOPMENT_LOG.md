@@ -9,8 +9,9 @@ live only in a chat transcript.
 
 ## Planned
 
-Three features are scoped below, not yet implemented. Each still needs a design decision flagged
-inline before work starts.
+Two features are scoped below, not yet implemented. Each still needs a design decision flagged
+inline before work starts. (The third planned feature, the "How to use Hanarr" guide page, shipped
+— see the Log below.)
 
 ### Mini-interview skill assessment
 
@@ -88,32 +89,26 @@ thing onto an existing page. Proposal: hold off on adding a new top-level nav ta
 this and the mini-interview feature are at least partially built, then decide once there's real
 content to place, rather than guessing the right shape upfront.
 
-### "How to use Hanarr" guide page
-
-**Problem.** The "Get set up" checklist (Jobs/Settings) gets a new user through initial
-configuration, but there's no in-app explanation of the overall workflow or how to get the most
-out of the app once it's set up — that context currently only lives in README.md, which a
-packaged-app user (no terminal, no GitHub) never sees.
-
-**Scope.** A new top-level nav tab (`/guide` or similar, alongside Jobs/Coaching/Resume/Skills/
-Applications/Settings in `index.html`'s `.tabs` nav) with static, hand-written content — not
-LLM-generated, since this is explaining Hanarr's own real behavior and should be accurate and
-stable, not a model's guess. Content mirrors and trims README's "How it works" section for an
-in-app audience: what each tab is for, the recommended order of operations (set up Settings →
-review Jobs → work gaps in Coaching/Skills → track in Applications), what "Improve my fit" and
-skill-gap indicators actually mean, and a short explanation of local-first/LLM-provider choices
-so a non-technical user understands why Ollama setup matters before scoring works well. Once the
-mini-interview and STAR features above exist, this page is also the natural place to point a new
-user at them.
-
-**No schema/API changes** — this is a template-only addition (a new Jinja page + one route +
-one nav link), the lowest-risk of the three to build first.
-
 ## Log
 
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — Guide page (unreleased)
+
+Shipped the first of the three planned features: an in-app `/guide` page explaining Hanarr's
+workflow, what each page is for, what fit scores/skill-gap statuses mean, and the local-Ollama-
+vs-hosted-Anthropic-vs-none trade-off. Hand-written content, not LLM-generated, since it explains
+Hanarr's own real behavior rather than something a model should guess at.
+
+### 2026-09-29 — v0.1.4
+
+Shipped the `DEVELOPMENT_LOG.md`/`TRANSITION_PLAN.md` restructure described above, plus two Jobs-
+page UX fixes reported directly: a duplicate header link ("Preferences & config") pointed at the
+exact same route as the Settings tab immediately below it, and job posting title links had no
+underline and the same color as body text, so they didn't read as clickable until hovered — both
+fixed, plus an explicit "Apply" link and a "Company:" label on the company line.
 
 ### 2026-09-29 — v0.1.3
 
