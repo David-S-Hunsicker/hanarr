@@ -109,6 +109,11 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — v0.1.8
+
+Shipped: the license narrowed to personal job-search use only, and the org-exemption removal
+before it (both described below).
+
 ### 2026-09-29 — v0.1.7
 
 Shipped: the license change, SQLite WAL mode + checkpoint-before-backup, and file-backed logging
