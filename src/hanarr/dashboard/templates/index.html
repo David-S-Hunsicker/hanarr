@@ -269,10 +269,22 @@
     .job-title {
       font-size: 1rem;
       font-weight: 650;
-      color: var(--text-primary);
-      text-decoration: none;
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: var(--border);
     }
-    .job-title:hover { color: var(--accent); text-decoration: underline; }
+    .job-title:hover { text-decoration-color: var(--accent); }
+    .apply-link {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      padding: 0.05rem 0.55rem;
+      white-space: nowrap;
+    }
+    .apply-link:hover { background: var(--accent); color: var(--surface-1); }
     .job-company { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.15rem; }
     .job-meta {
       display: flex;
@@ -394,7 +406,6 @@
     <h1>Hanarr</h1>
     <span>
       {% if active_profile %}<a class="nav-link" href="/profiles">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
-      <a class="nav-link" href="/config">Preferences &amp; config</a>
     </span>
   </div>
   <nav class="tabs" aria-label="Main navigation">
