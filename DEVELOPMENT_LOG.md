@@ -109,6 +109,22 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — LICENSE audit: attribution, trademark, and distribution-scope gaps
+
+Full adversarial re-read of `LICENSE`, prompted by a direct worry about someone taking the code,
+reselling it, or claiming it as their own. Found and closed four real gaps: (1) "distributing the
+software" didn't explicitly say "in whole or in part," leaving an excerpt arguably ambiguous; (2)
+"making changes or new works based on the software" didn't explicitly cover a rewrite/reimplementation
+based on having studied the code, only literal edits; (3) nothing barred removing the copyright
+notice or claiming authorship of the software or a derivative of it -- added an explicit
+Attribution and No False Claims section; (4) nothing addressed trademark/branding at all -- added a
+No Trademark License section so "Hanarr" can't be used on a fork, rebrand, or competing product
+even if someone otherwise had permission to use the code (which they don't, but this closes the gap
+regardless). Also added an explicit "what a license can and can't do" note: license text is a legal
+remedy (infringement claim, DMCA, cease-and-desist), not a technical lock -- it can't stop someone
+with source access from copying files in the first place. The only real control over that is repo
+access (public vs. private), which is a separate, still-open decision.
+
 ### 2026-09-29 — Fix: Patent License clause wasn't scoped to the permitted purpose
 
 Real gap caught by a direct question about the patent clause: `LICENSE`'s Copyright License grant

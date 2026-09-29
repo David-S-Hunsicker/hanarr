@@ -21,7 +21,7 @@ In order to get any license under these terms, you must agree to them as both st
 
 ## Copyright License
 
-The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose, other than distributing the software or making changes or new works based on the software.
+The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose, other than distributing the software (in whole or in part, modified or not) or making changes or new works based on the software (whether by editing it directly or by studying it and independently reproducing or substantially reimplementing its design, structure, or functionality).
 
 ## Patent License
 
@@ -30,6 +30,14 @@ The licensor grants you a patent license for the software that covers patent cla
 ## Permitted Purpose
 
 The only permitted purpose is using the software, without modification, for your own personal job search -- for example, searching for job postings, tracking your own applications, and preparing your own application materials. No other use is permitted, including but not limited to: use by or on behalf of a business, nonprofit, school, or government entity; use for any purpose other than your own personal job search; and use as part of, or in support of, any product or service offered to others. Any use beyond this permitted purpose requires the licensor's express prior written permission.
+
+## No Trademark License
+
+This license does not grant any right to use the licensor's names, trademarks, service marks, or logos, including "Hanarr" and any associated branding. You may not use them (or anything confusingly similar) to name, market, or describe any other software, fork, service, or product, or in any way that suggests it is made by, endorsed by, affiliated with, or officially connected to the licensor.
+
+## Attribution and No False Claims
+
+You must not remove, obscure, or alter any copyright, license, or attribution notice included with the software. You must not represent yourself, or allow anyone else to believe, that you are the author or copyright holder of the software or of any part of it, or that any copy or derivative of it -- modified or not -- is your own original work.
 
 ## Fair Use
 
@@ -73,9 +81,25 @@ The **licensor** is the individual or entity offering these terms, and the **sof
   search, or anything unrelated to your own personal job search -- is **not permitted** without
   the copyright holder's express prior permission.
 - You **cannot** modify Hanarr, create derivative works from it, or distribute copies of it
-  (modified or not) to anyone else, regardless of purpose.
+  (modified or not, in whole or in part) to anyone else, regardless of purpose -- this includes
+  rewriting or reimplementing it based on having studied the code, not just copy-pasting it.
+- You **cannot** remove or alter the copyright/attribution notice, claim authorship of it or any
+  part of it, or use the "Hanarr" name or branding on anything else, including a fork, rebrand,
+  or competing product.
 - Only the copyright holder (David Hunsicker) may modify, redistribute, or sell this software,
   or grant broader licenses to others.
 
 This summary is provided for convenience only and is not part of the license; the license text
 above is what actually governs.
+
+---
+
+## A note on what a license can and can't do
+
+This license gives the copyright holder legal grounds -- a copyright infringement claim, a DMCA
+takedown request, a cease-and-desist -- against anyone who violates it. It cannot technically
+prevent someone with access to the source from copying it in the first place; no license text
+can. If the GitHub repository stays public, anyone can view and clone the code regardless of what
+this file says -- the license only controls what they're legally permitted to *do* with it
+afterward, and gives grounds to act once they don't. The only way to reduce that exposure directly
+is to restrict who can see the source at all (e.g. a private repository).
