@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 from fastapi.testclient import TestClient
@@ -16,10 +17,11 @@ from hanarr.models import (
     ProjectMode,
     ProjectSkill,
     ProvenSkill,
+    ResumeVersion,
     Skill,
     SkillGapStatus,
 )
-from hanarr.skill_analysis import analyze_job
+from hanarr.skill_analysis import analyze_job, saved_job_gaps
 from hanarr.skill_analysis import market_demand_summary
 
 
@@ -129,6 +131,124 @@ def test_job_gap_detail_api_distinguishes_unanalyzed_and_analyzed_jobs(tmp_path)
     after = client.get(f"/api/jobs/{job_id}/skill-gaps")
     assert after.json()["analyzed"] is True
     assert after.json()["gaps"][0]["skill"]["name"] == "python"
+
+
+def test_saved_job_gaps_flags_stale_when_active_resume_is_newer_than_the_analysis(tmp_path):
+    """If a coaching project gets completed and its resume proposal
+    approved, the active resume version changes -- any skill-gap analysis
+    run before that point no longer reflects the candidate. The dashboard
+    uses this "stale" flag to bring back "Improve my fit" instead of only
+    showing the (now possibly outdated) existing analysis."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        skill = Skill(name="python", slug="python")
+        session.add(skill)
+        session.commit()
+
+        analyzed_at = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None)
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id, requirement=JobSkillRequirement.REQUIRED,
+            gap_status=SkillGapStatus.SATISFIED, analyzed_at=analyzed_at,
+        ))
+        # The active resume version was created AFTER the analysis ran --
+        # e.g. a project's resume proposal was approved afterward.
+        session.add(ResumeVersion(
+            profile_id=profile.id, content="updated resume", is_active=True,
+            created_at=dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None),
+        ))
+        session.commit()
+
+        gaps = saved_job_gaps(session, profile)
+        assert len(gaps) == 1
+        assert gaps[0]["stale"] is True
+
+
+def test_saved_job_gaps_not_stale_when_analysis_is_newer_than_the_active_resume(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        skill = Skill(name="python", slug="python")
+        session.add(skill)
+        session.commit()
+
+        session.add(ResumeVersion(
+            profile_id=profile.id, content="resume", is_active=True,
+            created_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None),
+        ))
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id, requirement=JobSkillRequirement.REQUIRED,
+            gap_status=SkillGapStatus.SATISFIED,
+            analyzed_at=dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None),
+        ))
+        session.commit()
+
+        gaps = saved_job_gaps(session, profile)
+        assert gaps[0]["stale"] is False
+
+
+def test_saved_job_gaps_not_stale_when_there_is_no_active_resume_version(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        skill = Skill(name="python", slug="python")
+        session.add(skill)
+        session.commit()
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id, requirement=JobSkillRequirement.REQUIRED,
+            gap_status=SkillGapStatus.SATISFIED, analyzed_at=dt.datetime(2026, 1, 1),
+        ))
+        session.commit()
+
+        gaps = saved_job_gaps(session, profile)
+        assert gaps[0]["stale"] is False
+
+
+def test_index_shows_improve_my_fit_again_when_the_analysis_is_stale(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1", fit_score=80.0,
+        )
+        session.add(job)
+        skill = Skill(name="python", slug="python")
+        session.add(skill)
+        session.commit()
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id, requirement=JobSkillRequirement.REQUIRED,
+            gap_status=SkillGapStatus.SATISFIED,
+            analyzed_at=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None),
+        ))
+        session.add(ResumeVersion(
+            profile_id=profile.id, content="updated resume", is_active=True,
+            created_at=dt.datetime(2026, 2, 1, tzinfo=dt.timezone.utc).replace(tzinfo=None),
+        ))
+        session.commit()
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert "Improve my fit" in html
+    assert "Your resume has changed since this was run" in html
 
 
 def test_index_shows_gap_indicator_and_preserves_status_action(tmp_path):

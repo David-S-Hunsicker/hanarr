@@ -79,6 +79,9 @@
       {% if gap %}
       <details class="job-gaps">
         <summary>View fit analysis</summary>
+        {% if gap.stale %}
+        <p class="stale-notice">Your resume has changed since this was run — the results below may be outdated.</p>
+        {% endif %}
         <ul>
           {% for item in gap.gaps %}
           <li class="{{ item.status }}"><strong>{{ item.skill.name }}</strong> — {{ item.status }}{% if item.evidence %}; {{ item.evidence }}{% endif %}</li>
@@ -92,7 +95,7 @@
     </div>
 
     <div class="job-actions">
-      {% if not gap %}
+      {% if not gap or gap.stale %}
       <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
       {% endif %}
       <form method="post" action="/jobs/{{ job.id }}/status">

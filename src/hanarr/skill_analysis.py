@@ -22,6 +22,7 @@ from .models import (
     ProvenSkill,
     Project,
     ProjectSkill,
+    ResumeVersion,
     Skill,
     SkillGapStatus,
     utc_now,
@@ -213,7 +214,21 @@ def _job_skill_dict(record: JobSkill) -> dict:
 
 
 def saved_job_gaps(session: Session, profile: Profile) -> list[dict]:
-    """Return analyzed gaps grouped by saved job for dashboard cards."""
+    """Return analyzed gaps grouped by saved job for dashboard cards.
+
+    Each result's "stale" flag is true when the active resume version was
+    created after this job was last analyzed -- e.g. a coaching project
+    was completed and its resume proposal approved, so the analysis was
+    run against a resume that no longer reflects the candidate. The
+    dashboard uses this to bring back "Improve my fit" (re-run the
+    analysis) instead of just "View fit analysis" (show the existing,
+    now possibly-outdated one)."""
+    active_resume_created_at = session.execute(
+        select(ResumeVersion.created_at).where(
+            ResumeVersion.profile_id == profile.id, ResumeVersion.is_active.is_(True)
+        )
+    ).scalar_one_or_none()
+
     jobs = session.execute(
         select(JobPosting).where(JobPosting.profile_id == profile.id).order_by(JobPosting.id)
     ).scalars()
@@ -224,6 +239,14 @@ def saved_job_gaps(session: Session, profile: Profile) -> list[dict]:
         ).scalars().all()
         if not records:
             continue
+        last_analyzed_at = max(
+            (record.analyzed_at for record in records if record.analyzed_at is not None), default=None,
+        )
+        stale = (
+            active_resume_created_at is not None
+            and last_analyzed_at is not None
+            and active_resume_created_at > last_analyzed_at
+        )
         output.append(
             {
                 "job": {
@@ -235,6 +258,7 @@ def saved_job_gaps(session: Session, profile: Profile) -> list[dict]:
                 },
                 "gaps": [_job_skill_dict(record) for record in records],
                 "gap_counts": dict(Counter(record.gap_status.value for record in records)),
+                "stale": stale,
             }
         )
     return output
