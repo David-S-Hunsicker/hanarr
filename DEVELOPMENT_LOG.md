@@ -95,7 +95,21 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
-### 2026-09-29 — Guide page (unreleased)
+### 2026-09-29 — Cover-letter drafting
+
+Shipped the first of the smaller backlog items: cover-letter drafting for a saved job, reusing
+the existing `resume_writer` agent role with a deterministic mail-merge fallback. Simpler than
+the resume-proposal loop by design — a draft never needs approval to "activate" anything, so it's
+just stored text the user edits and copies themselves. See `cover_letter.py`.
+
+### 2026-09-29 — v0.1.5
+
+Shipped: profile renaming (a profile named for a one-off purpose, e.g. "UI Check" from a QA
+pass, was stuck that way with no fix short of editing the database directly), and a company-name
+styling fix — dropped an unwanted "Company:" prefix in favor of a dedicated `--company-accent`
+color so the company name stands out without a label.
+
+### 2026-09-29 — Guide page
 
 Shipped the first of the three planned features: an in-app `/guide` page explaining Hanarr's
 workflow, what each page is for, what fit scores/skill-gap statuses mean, and the local-Ollama-

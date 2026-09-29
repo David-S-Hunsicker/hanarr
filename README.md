@@ -331,10 +331,11 @@ cover the prefilter and the rule-based fallback scorer.
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
 shipped and why. Current ideas: fuzzy/synonym skill matching, manual job entry, persisted
-cross-run activity history, a Workday connector for non-startup employers, cover-letter drafting,
-calendar-file (.ics) export for interview reminders, per-profile search preferences, a mini-
-interview skill assessment mechanic, and a STAR behavioral-story builder. An in-app **Guide** tab
-(`/guide` in the dashboard) already covers how to use Hanarr, page by page.
+cross-run activity history, a Workday connector for non-startup employers, calendar-file (.ics)
+export for interview reminders, per-profile search preferences, a mini-interview skill assessment
+mechanic, and a STAR behavioral-story builder. An in-app **Guide** tab (`/guide` in the dashboard)
+already covers how to use Hanarr, page by page, and job cards can now draft a cover letter
+directly from the stored resume.
 
 ## License
 
