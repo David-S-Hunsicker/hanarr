@@ -330,12 +330,15 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. Current ideas: fuzzy/synonym skill matching, persisted cross-run activity
-history, a Workday connector for non-startup employers, per-profile search preferences, a
-mini-interview skill assessment mechanic, and a STAR behavioral-story builder. An in-app **Guide**
-tab (`/guide` in the dashboard) already covers how to use Hanarr page by page, job cards can draft
-a cover letter directly from the stored resume, a "+ Add a job manually" form on Jobs tracks a
-posting the connectors didn't find, and reminders export to a real calendar app as .ics files.
+shipped and why. In progress or next up: per-profile search preferences (needed to make
+multi-profile support meaningfully multi-user, since preferences are currently shared across every
+profile on an instance) and a Workday connector for non-startup employers. A mini-interview skill
+assessment mechanic and a STAR behavioral-story builder are scoped but not started. Fuzzy/synonym
+skill matching and persisted cross-run activity history are deliberately shelved — real ideas, but
+nothing's actually blocked by either right now. An in-app **Guide** tab (`/guide` in the dashboard)
+already covers how to use Hanarr page by page, job cards can draft a cover letter directly from the
+stored resume, a "+ Add a job manually" form on Jobs tracks a posting the connectors didn't find,
+and reminders export to a real calendar app as .ics files.
 
 ## License
 

@@ -13,6 +13,26 @@ Two features are scoped below, not yet implemented. Each still needs a design de
 inline before work starts. (The third planned feature, the "How to use Hanarr" guide page, shipped
 — see the Log below.)
 
+## Backlog
+
+- **Per-profile search preferences** — see below; in progress.
+- **A Workday connector** — Greenhouse/Lever/Ashby all skew toward VC-funded tech/startup
+  companies; Workday's public job-board API is where most traditional enterprises, healthcare
+  systems, and large non-tech employers actually post. Needs the real API contract researched
+  before writing anything — not something to guess at the way Greenhouse's was reused.
+
+## Deferred / low priority
+
+Real ideas, but nobody's actually blocked by either — no need pulling on them right now, so they
+sit here instead of Planned. Revisit if a concrete case for one comes up.
+
+- **Fuzzy/synonym skill matching** (e.g. "JS" ↔ "JavaScript") — would reduce occasional false
+  "missing" flags, but a wrong synonym mapping risks the opposite failure (a false *positive* —
+  claiming a skill that isn't really there), which is worse than what it fixes.
+- **Persisted, cross-run activity history** — the Jobs page already shows a live scrolling log
+  during an active search; this would only add value across restarts/past runs (an audit
+  nice-to-have), not something blocking real use today.
+
 ### Mini-interview skill assessment
 
 **Problem.** The Skills page's confidence is either resume-extracted (a guess from wording) or
