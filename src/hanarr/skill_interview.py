@@ -18,18 +18,38 @@ Ask about real usage, tradeoffs, and troubleshooting -- avoid generic trivia a s
 could answer."""
 
 SYSTEM_PROMPT_EVALUATE = """Evaluate free-text answers to skill-verification questions.
-Return ONLY JSON: {"verdict":"solid|remediate|rebuild","feedback":"...","resources":["..."]}
+Return ONLY JSON:
+{"verdict":"solid|remediate|rebuild","feedback":"...",
+"resources":[{"title":"...","why":"..."}]}
 solid: the claimed confidence is corroborated by the answers.
 remediate: real experience is evident but the answers show memory decay/rust, not absent
-skill -- resources should name 1 or 2 information sources (docs page, canonical article or
-book, course) as a light refresher.
+skill -- resources should name 1 or 2 specific information sources (a named docs page,
+canonical article or book, or course) as a light refresher, each with a short "why" saying
+what it addresses.
 rebuild: either a greenfield skill with no real depth yet, or experience degraded badly
 enough that a refresher would not be enough -- resources should usually be empty here.
-Resources are plain-text suggestions only; never claim they were fetched or verified."""
+Resources are plain-text suggestions only; never claim they were fetched, verified, or that
+a link is guaranteed to work."""
 
 # A fixed floor, not scaled by a score -- unlike the coaching-project evaluator, the LLM
 # here returns a category (solid/remediate/rebuild), not a comparable 0-100 number.
 SOLID_CONFIDENCE = 0.75
+
+# Deterministic, not LLM-generated -- a person shouldn't have to invent their own next
+# steps after a skill check. Ordered so the UI can render it as a checklist.
+IMPROVEMENT_PLANS: dict[str, list[str]] = {
+    "solid": ["No action needed -- this skill check corroborated the claimed confidence."],
+    "remediate": [
+        "Review the suggested refresher resources below.",
+        "Retake this quick skill check once you've reviewed them.",
+    ],
+    "rebuild": [
+        "Start a coaching project for this skill.",
+        "Complete the project's tasks and submit evidence for review.",
+        "Retake this quick skill check once the project passes evaluation.",
+    ],
+    "could_not_assess": ["Try submitting the skill check again once a model is available."],
+}
 
 
 def _fallback_questions(skill_name: str) -> list[str]:
@@ -103,7 +123,15 @@ def submit_interview(
         resources_raw = data.get("resources", [])
         if not isinstance(resources_raw, list):
             raise ValueError("resources must be a list")
-        resources = [str(item).strip() for item in resources_raw if str(item).strip()]
+        resources = []
+        for item in resources_raw:
+            if isinstance(item, dict):
+                title = str(item.get("title", "")).strip()
+                why = str(item.get("why", "")).strip()
+            else:
+                title, why = str(item).strip(), ""
+            if title:
+                resources.append({"title": title, "why": why})
         evaluator = "llm"
     except Exception:
         verdict = "could_not_assess"
@@ -116,6 +144,7 @@ def submit_interview(
     interview.verdict = verdict
     interview.feedback = feedback
     interview.resources_json = json.dumps(resources)
+    interview.plan_json = json.dumps(IMPROVEMENT_PLANS.get(verdict, []))
     interview.evaluator = evaluator
 
     if verdict == "solid":
@@ -150,6 +179,7 @@ def interview_status(interview: SkillInterview) -> dict[str, Any]:
         "verdict": interview.verdict,
         "feedback": interview.feedback,
         "resources": json.loads(interview.resources_json or "[]"),
+        "plan": json.loads(interview.plan_json or "[]"),
         "evaluator": interview.evaluator,
         "created_at": interview.created_at.isoformat() if interview.created_at else None,
         "answered_at": interview.answered_at.isoformat() if interview.answered_at else None,

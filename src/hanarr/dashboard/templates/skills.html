@@ -44,6 +44,8 @@
     .interview-result { margin-top:.6rem; padding:.6rem .8rem; border:1px solid var(--border); border-radius:8px; background:var(--page); }
     .verdict-solid { color:var(--good); } .verdict-remediate { color:var(--warn); } .verdict-rebuild { color:var(--bad); } .verdict-could_not_assess { color:var(--muted); }
     .interview-history { margin-top:.6rem; font-size:.85rem; } .interview-history li { margin:.3rem 0; }
+    .start-project-standalone { margin-left:.5rem; }
+    .interview-plan { margin:.3rem 0; padding-left:1.1rem; }
   </style>
 </head>
 <body>
@@ -89,6 +91,7 @@
               <div class="label">Quick skill check</div>
               <p class="muted">Answer a short, targeted Q&amp;A to test this skill instead of just claiming it.</p>
               <button type="button" class="start-interview" data-skill-id="{{ skill.id }}">Start a quick skill check</button>
+              <button type="button" class="start-project-standalone" data-skill-id="{{ skill.id }}">Start a coaching project for this skill</button>
               <div class="interview-questions" data-questions hidden></div>
               <div class="interview-result" data-result hidden></div>
               {% if skill.interviews %}
@@ -99,6 +102,8 @@
                     {% if interview.verdict %}<span class="verdict-{{ interview.verdict }}">{{ interview.verdict|replace("_", " ") }}</span>{% else %}<span class="muted">pending</span>{% endif %}
                     {% if interview.created_at %} · {{ interview.created_at[:10] }}{% endif %}
                     {% if interview.feedback %}<br><span class="muted">{{ interview.feedback }}</span>{% endif %}
+                    {% if interview.plan %}<ol class="interview-plan">{% for step in interview.plan %}<li>{{ step }}</li>{% endfor %}</ol>{% endif %}
+                    {% if interview.resources %}<ul class="list">{% for resource in interview.resources %}<li><strong>{{ resource.title }}</strong>{% if resource.why %} — {{ resource.why }}{% endif %}</li>{% endfor %}</ul>{% endif %}
                   </li>
                 {% endfor %}
                 </ul>
@@ -153,11 +158,33 @@
       }
     }));
 
+    async function startCoachingProjectForSkill(skillId, triggerBtn) {
+      triggerBtn.disabled = true;
+      const response = await fetch("/api/coaching-projects", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({mode: "reusable_skill", skill_id: Number(skillId)}),
+      });
+      if (!response.ok) {
+        triggerBtn.disabled = false;
+        window.alert((await response.json()).error || "Could not start a project.");
+        return;
+      }
+      const project = await response.json();
+      window.location.href = "/coaching#project-" + project.id;
+    }
+
+    document.querySelectorAll(".start-project-standalone").forEach((button) => {
+      button.addEventListener("click", () => startCoachingProjectForSkill(button.dataset.skillId, button));
+    });
+
     document.querySelectorAll(".start-interview").forEach((button) => {
       button.addEventListener("click", async () => {
         button.disabled = true;
         const block = button.closest(".interview-block");
         const questionsEl = block.querySelector("[data-questions]");
+        const resultEl = block.querySelector("[data-result]");
+        resultEl.hidden = true;
+        resultEl.innerHTML = "";
         const response = await fetch(`/api/skills/${button.dataset.skillId}/interview/start`, {method: "POST"});
         const data = await response.json();
         if (!response.ok) {
@@ -190,7 +217,6 @@
             window.alert(result.error || "Could not submit answers.");
             return;
           }
-          const resultEl = block.querySelector("[data-result]");
           resultEl.innerHTML = "";
           resultEl.hidden = false;
           const verdictEl = document.createElement("strong");
@@ -200,11 +226,24 @@
           const feedbackEl = document.createElement("p");
           feedbackEl.textContent = result.feedback;
           resultEl.appendChild(feedbackEl);
+          if (result.plan && result.plan.length) {
+            const ol = document.createElement("ol");
+            ol.className = "interview-plan";
+            result.plan.forEach((step) => {
+              const li = document.createElement("li");
+              li.textContent = step;
+              ol.appendChild(li);
+            });
+            resultEl.appendChild(ol);
+          }
           if (result.resources && result.resources.length) {
             const ul = document.createElement("ul");
             result.resources.forEach((item) => {
               const li = document.createElement("li");
-              li.textContent = item;
+              const strong = document.createElement("strong");
+              strong.textContent = item.title || item;
+              li.appendChild(strong);
+              if (item.why) li.append(" — " + item.why);
               ul.appendChild(li);
             });
             resultEl.appendChild(ul);
@@ -213,25 +252,15 @@
             const startProjectBtn = document.createElement("button");
             startProjectBtn.type = "button";
             startProjectBtn.textContent = "Start a coaching project";
-            startProjectBtn.addEventListener("click", async () => {
-              startProjectBtn.disabled = true;
-              const projResponse = await fetch("/api/coaching-projects", {
-                method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({mode: "reusable_skill", skill_id: Number(button.dataset.skillId)}),
-              });
-              if (!projResponse.ok) {
-                startProjectBtn.disabled = false;
-                window.alert((await projResponse.json()).error || "Could not start a project.");
-                return;
-              }
-              const project = await projResponse.json();
-              window.location.href = "/coaching#project-" + project.id;
-            });
+            startProjectBtn.addEventListener(
+              "click", () => startCoachingProjectForSkill(button.dataset.skillId, startProjectBtn)
+            );
             resultEl.appendChild(startProjectBtn);
           }
           questionsEl.hidden = true;
           questionsEl.innerHTML = "";
-          button.hidden = true;
+          button.disabled = false;
+          button.textContent = "Retake this quick skill check";
         });
         questionsEl.appendChild(submitBtn);
         questionsEl.hidden = false;

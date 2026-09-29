@@ -100,6 +100,10 @@ def create_coaching_project(
             rows = [row for row in rows if row.skill_id == skill_id]
         if not rows:
             raise ValueError("job has no selected analyzed skill gap")
+        skills = []
+        for row in rows:
+            if row.skill not in skills:
+                skills.append(row.skill)
     else:
         skill = session.get(Skill, skill_id)
         if skill is None:
@@ -111,11 +115,12 @@ def create_coaching_project(
         ).all()
         rows = [row[0] for row in rows if row[0].gap_status in (SkillGapStatus.MISSING, SkillGapStatus.PARTIAL)]
         jobs = [session.get(JobPosting, row.job_id) for row in rows]
-
-    skills = []
-    for row in rows:
-        if row.skill not in skills:
-            skills.append(row.skill)
+        # A reusable-skill project doesn't require an existing analyzed job gap
+        # -- a mini-interview remediate/rebuild verdict can trigger one for a
+        # skill with no saved-job context at all. Previously this silently
+        # built a project with zero linked skills (and a blank title) when
+        # `rows` was empty, since `skills` only ever came from `rows`.
+        skills = [skill]
     job_title = jobs[0].title if len(jobs) == 1 else None
     brief, source = _brief(
         f"{' and '.join(skill.name for skill in skills)} coaching project",

@@ -83,6 +83,38 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — v0.1.12
+
+Shipped: an explicit improvement plan and structured resources on a mini-interview verdict, a
+standalone "start a coaching project" action on the Skills page, and a real bug fix in reusable-
+skill project creation (see below).
+
+### 2026-09-29 — Mini-interview follow-through: explicit plan, structured resources, direct project start
+
+Direct feedback: a person shouldn't be left to invent their own improvement plan after a skill
+check. Three changes to `skill_interview.py`/`coaching_projects.py`/`skills.html`:
+
+1. **Deterministic improvement plan.** `submit_interview()` now writes a fixed, ordered
+   `plan_json` (new column, migration `0015`) keyed off the verdict — not LLM-generated, so it's
+   reliable and free: `remediate` → review resources, then retake; `rebuild` → start a project,
+   submit evidence, then retake; `solid`/`could_not_assess` get their own one-line plans. Rendered
+   as an ordered checklist in both the live result panel and the history list.
+2. **Structured resources.** `resources` changed from bare strings to `{"title", "why"}` objects
+   so a remediation suggestion says what it addresses, not just a name — still explicitly
+   plain-text/unverified LLM output, not fetched or checked. (Considered giving Hanarr a real
+   web-search capability to fetch verifiable links instead — deliberately not doing that; it's a
+   real architecture change against the "no scraping, legitimate APIs only" principle the rest of
+   the app follows, and wasn't asked for.)
+3. **Direct project start.** A "Start a coaching project for this skill" button on every skill row
+   (not gated behind running an interview first) reuses the same reusable-skill
+   `POST /api/coaching-projects` flow. Doing this surfaced a real bug: `create_coaching_project`'s
+   reusable-skill branch built its `skills` list only from existing analyzed `JobSkill` gap rows —
+   for a skill with zero of those (exactly the case a mini-interview verdict hits, since it never
+   required a job analysis), the project silently ended up linked to *no* skill at all, with a
+   blank title. Fixed: the branch now always includes the directly-looked-up skill.
+
+Three new regression tests across `test_skill_interview.py` and `test_coaching_projects.py`.
+
 ### 2026-09-29 — v0.1.11
 
 Shipped: mini-interview skill assessment (see below).

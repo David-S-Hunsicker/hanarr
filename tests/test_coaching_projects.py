@@ -134,6 +134,32 @@ def test_reusable_skill_project_covers_all_affected_jobs_and_status_api(tmp_path
     body = response.json()
     assert set(body["affected_job_ids"]) == {job_one_id, job_two_id}
     assert client.get("/api/coaching-projects").json()["projects"][0]["id"] == body["id"]
+
+
+def test_reusable_skill_project_works_with_no_existing_analyzed_job_gap(tmp_path):
+    """Regression test: a reusable-skill project for a skill with zero
+    MISSING/PARTIAL JobSkill rows anywhere (e.g. one started from a
+    mini-interview remediate/rebuild verdict, never from an analyzed job)
+    used to silently build a project linked to no skill at all -- `skills`
+    was only ever populated from `rows`, which was empty here."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="Rust", slug="rust")
+        session.add(skill)
+        session.commit()
+        skill_id = skill.id
+
+    client = TestClient(create_app(settings))
+    response = client.post("/api/coaching-projects", json={
+        "mode": "reusable_skill", "skill_id": skill_id,
+    })
+    assert response.status_code == 201
+    body = response.json()
+    assert [item["id"] for item in body["skills"]] == [skill_id]
+    assert body["affected_job_ids"] == []
+    assert body["title"]
     assert client.get(f"/api/coaching-projects/{body['id']}").json()["status"] == "planned"
 
 

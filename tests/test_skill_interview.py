@@ -88,6 +88,53 @@ def test_submit_interview_solid_verdict_creates_interview_sourced_profile_skill(
         assert profile_skill.confidence == 0.75
 
 
+def test_submit_interview_parses_structured_resources_and_sets_a_deterministic_plan(tmp_path):
+    """Regression test: the remediate/rebuild verdict used to leave the person to invent
+    their own next steps -- IMPROVEMENT_PLANS now gives an explicit, deterministic ordered
+    checklist, and resources are structured {title, why} objects, not bare strings."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = _skill(session)
+        interview = start_interview(session, profile.id, skill.id, FakeLLM("not json"))
+        session.commit()
+
+        eval_llm = FakeLLM(json.dumps({
+            "verdict": "remediate", "feedback": "Some rust, real depth is there.",
+            "resources": [{"title": "Kubernetes docs: Pod lifecycle", "why": "Covers restart/backoff behavior."}],
+        }))
+        result = submit_interview(session, profile.id, interview.id, ["a", "b"], eval_llm)
+        session.commit()
+
+        assert result.verdict == "remediate"
+        resources = json.loads(result.resources_json)
+        assert resources == [{"title": "Kubernetes docs: Pod lifecycle", "why": "Covers restart/backoff behavior."}]
+        plan = json.loads(result.plan_json)
+        assert plan == [
+            "Review the suggested refresher resources below.",
+            "Retake this quick skill check once you've reviewed them.",
+        ]
+
+
+def test_submit_interview_rebuild_plan_points_at_starting_a_project(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = _skill(session)
+        interview = start_interview(session, profile.id, skill.id, FakeLLM("not json"))
+        session.commit()
+
+        eval_llm = FakeLLM(json.dumps({"verdict": "rebuild", "feedback": "No real depth yet.", "resources": []}))
+        result = submit_interview(session, profile.id, interview.id, ["a", "b"], eval_llm)
+        session.commit()
+
+        plan = json.loads(result.plan_json)
+        assert plan[0] == "Start a coaching project for this skill."
+        assert any("Retake" in step for step in plan)
+
+
 def test_submit_interview_never_lowers_a_higher_trust_confidence(tmp_path):
     settings = _settings(tmp_path)
     factory = make_session_factory(settings)

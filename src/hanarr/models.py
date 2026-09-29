@@ -443,6 +443,7 @@ class SkillInterview(Base):
     verdict: Mapped[str | None] = mapped_column(String, nullable=True)
     feedback: Mapped[str] = mapped_column(Text, default="")
     resources_json: Mapped[str] = mapped_column(Text, default="[]")
+    plan_json: Mapped[str] = mapped_column(Text, default="[]")
     evaluator: Mapped[str] = mapped_column(String, default="pending")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     answered_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
