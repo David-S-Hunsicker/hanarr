@@ -603,21 +603,54 @@
 
       let audioCtx = null;
       function playMatchDing() {
-        // A short synthesized tone -- no audio file to ship or host, and
-        // nothing plays unless a real match just landed and the toggle is on.
+        // A synthesized blacksmith-hammer-on-steel strike -- no audio file
+        // to ship or host. A single clean sine reads as a plain "ding"; a
+        // metallic strike needs a sharp noise transient (the impact) plus a
+        // handful of inharmonically-related decaying tones (the ring) --
+        // real bells/metal don't ring at neat integer-multiple overtones.
         if (!soundEnabled()) return;
         try {
           audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = "sine";
-          osc.frequency.value = 880;
-          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + 0.18);
+          const now = audioCtx.currentTime;
+
+          const noiseDuration = 0.05;
+          const bufferSize = Math.floor(audioCtx.sampleRate * noiseDuration);
+          const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+          const data = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+          }
+          const noise = audioCtx.createBufferSource();
+          noise.buffer = noiseBuffer;
+          const noiseFilter = audioCtx.createBiquadFilter();
+          noiseFilter.type = "highpass";
+          noiseFilter.frequency.value = 1800;
+          const noiseGain = audioCtx.createGain();
+          noiseGain.gain.setValueAtTime(0.35, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.001, now + noiseDuration);
+          noise.connect(noiseFilter);
+          noiseFilter.connect(noiseGain);
+          noiseGain.connect(audioCtx.destination);
+          noise.start(now);
+
+          const partials = [
+            { freq: 420, gain: 0.22, decay: 0.32 },
+            { freq: 980, gain: 0.16, decay: 0.26 },
+            { freq: 1550, gain: 0.10, decay: 0.17 },
+            { freq: 2350, gain: 0.06, decay: 0.11 },
+          ];
+          partials.forEach(function (p) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.value = p.freq;
+            gain.gain.setValueAtTime(p.gain, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + p.decay);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + p.decay);
+          });
         } catch (e) { /* autoplay blocked or Web Audio unavailable -- silently skip */ }
       }
 
