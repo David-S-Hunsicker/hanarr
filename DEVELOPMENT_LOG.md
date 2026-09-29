@@ -9,9 +9,10 @@ live only in a chat transcript.
 
 ## Planned
 
-One feature is scoped below, not yet implemented. (Mini-interview skill assessment and coaching
-project loop closure both shipped — see the Log below. The "How to use Hanarr" guide page shipped
-earlier too.)
+Nothing is currently scoped and unstarted here. (STAR story builder, mini-interview skill
+assessment, and coaching project loop closure all shipped — see the Log below. The "How to use
+Hanarr" guide page shipped earlier too. Per-task model sizing remains scoped in the Backlog below
+it — research-first, not build-ready yet.)
 
 ## Backlog
 
@@ -43,45 +44,43 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
   during an active search; this would only add value across restarts/past runs (an audit
   nice-to-have), not something blocking real use today.
 
-### STAR story builder
-
-**Problem.** Behavioral ("tell me about a time you...") questions reward a well-rehearsed,
-specific story more than raw ability — most candidates have the underlying experience but never
-turn it into a structured, memorable answer ahead of time.
-
-**Flow.**
-1. Generate candidate behavioral questions from the resume's actual work history (titles,
-   seniority, industries) — optionally weighted toward a specific saved job's stated
-   requirements/culture signals when launched from a job rather than generically. Group by common
-   competency buckets (leadership, conflict, failure/mistake, ambiguity, technical trade-off,
-   cross-team collaboration, etc.) so the user can see coverage gaps, not just a flat list.
-2. For a question the user picks, an interactive builder walks the four STAR components
-   (Situation, Task, Action, Result) one at a time: the user writes in their own words, the LLM
-   asks a clarifying follow-up if a component is vague or the Result has no concrete/measurable
-   outcome, and tightens wording — it never invents an achievement the user didn't state. This is
-   the same "capability vs. evidence vs. wording" boundary the Resume/Skills pages already
-   enforce, applied to interview stories instead of resume bullets.
-3. Finished (and in-progress) stories persist in a per-profile story bank: revisit, edit, mark
-   complete, and re-practice, instead of rebuilding a story from scratch every job search cycle.
-
-**Data model.** New `StarQuestion` (profile_id, question text, competency tag, source: generic vs.
-job-specific with an optional `job_id`) and `StarStory` (question_id, situation/task/action/result
-text fields, status: draft/complete, timestamps) tables — additive migration, same pattern as
-every prior schema addition (`0001`–`0009` in `alembic/versions/`).
-
-**Open question — nav placement.** This doesn't fit cleanly into Skills (not skill-specific),
-Resume (not resume content), or Coaching (not a project). Combined with the mini-interview
-feature above, there may be a case for a new top-level **Interview Prep** tab covering both —
-but that's a nav-structure decision worth deciding deliberately rather than bolting one more
-thing onto an existing page. Proposal: hold off on adding a new top-level nav tab until both
-this and the mini-interview feature are at least partially built, then decide once there's real
-content to place, rather than guessing the right shape upfront.
-
 ## Log
 
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — v0.1.13
+
+Shipped: STAR behavioral-story builder, and a new top-level **Prep** nav tab (see below).
+
+### 2026-09-29 — STAR behavioral-story builder
+
+Built the feature scoped in the removed Planned section above, resolving its own open nav
+question: a new top-level **Prep** tab, added to all nine page templates (no shared nav partial
+exists, so each got the same one-line insertion) since mini-interview shipped first and now
+there's a real second interview-prep feature to justify a dedicated tab rather than guessing the
+shape upfront.
+
+New `StarQuestion`/`StarStory` tables (migration `0016`) and `star_stories.py`:
+`generate_star_questions()` asks the LLM for up to 6 questions tagged by competency (leadership,
+conflict, failure, ambiguity, technical tradeoff, cross-team collaboration), based on the resume's
+titles/seniority/industries and, optionally, a specific saved job's title/description — falling
+back to a fixed set of 6 competency-tagged questions (never job-weighted) on bad LLM output.
+`review_story()` reviews a draft's four STAR fields in one pass and returns per-field "tightened"
+wording suggestions the person can accept or ignore, plus feedback flagging vague components or a
+Result with no measurable outcome — never invents a fact, and the deterministic fallback echoes
+the original text back unchanged rather than guessing at a rewrite.
+
+One deliberate scope cut from the original scoping: a single review pass over the whole draft
+instead of a multi-turn "one component at a time with a clarifying follow-up" conversation — the
+core value (catching vagueness, tightening wording, flagging an unmeasured Result) doesn't need a
+stateful multi-turn conversation machine to deliver, and this is far simpler to build and reason
+about. A story is upserted per question (edit and re-practice in place) rather than versioned.
+
+New routes: `POST /api/star/questions/generate`, `POST /api/star/questions/{id}/story`,
+`PATCH /api/star/stories/{id}`, `POST /api/star/stories/{id}/review`,
+`POST /api/star/stories/{id}/status`. Seven new regression tests in `test_star_stories.py`.
 
 ### 2026-09-29 — v0.1.12
 

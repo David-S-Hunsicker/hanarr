@@ -451,6 +451,47 @@ class SkillInterview(Base):
     skill: Mapped["Skill"] = relationship()
 
 
+class StarQuestion(Base):
+    """A candidate behavioral ("tell me about a time you...") question, generic or weighted
+    toward a specific saved job -- see star_stories.py."""
+
+    __tablename__ = "star_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    question: Mapped[str] = mapped_column(Text)
+    competency: Mapped[str] = mapped_column(String, default="")
+    source: Mapped[str] = mapped_column(String, default="generic")
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("job_postings.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
+
+    job: Mapped["JobPosting | None"] = relationship()
+    stories: Mapped[list["StarStory"]] = relationship(back_populates="question")
+
+
+class StarStory(Base):
+    """One STAR story in progress or finished for a StarQuestion -- at most one per
+    question, editable and re-practiceable instead of rebuilt from scratch each time."""
+
+    __tablename__ = "star_stories"
+    __table_args__ = (UniqueConstraint("question_id", name="uq_star_story_question"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("star_questions.id"))
+    situation: Mapped[str] = mapped_column(Text, default="")
+    task: Mapped[str] = mapped_column(Text, default="")
+    action: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[str] = mapped_column(Text, default="")
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    tightened_json: Mapped[str] = mapped_column(Text, default="{}")
+    evaluator: Mapped[str] = mapped_column(String, default="pending")
+    status: Mapped[str] = mapped_column(String, default="draft")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    question: Mapped["StarQuestion"] = relationship(back_populates="stories")
+
+
 class ResumeProposalStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"

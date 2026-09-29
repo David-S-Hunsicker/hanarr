@@ -1,0 +1,214 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prep · Hanarr</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --muted: #5d5b56; --border: rgba(11,11,11,.12); --accent: #2a78d6; --accent-ink: #fff;
+      --good: #1f8a4c; --good-bg: rgba(31,138,76,.12); --warn: #9a6a1f;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #0d0d0d; --surface: #1a1a19; --text: #fff; --muted: #c3c2b7; --border: rgba(255,255,255,.13); --accent: #3987e5; --accent-ink: #fff;
+        --good: #45c17a; --good-bg: rgba(69,193,122,.14); --warn: #d7a54a;
+      }
+    }
+    * { box-sizing: border-box; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
+    body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem 4rem; background: var(--page); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .page-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+    h1, h2, h3 { margin: 0; } h1 { font-size: 1.35rem; font-weight: 650; } h2 { font-size: 1.12rem; font-weight: 700; margin: 1.4rem 0 .7rem; letter-spacing: -.01em; }
+    .nav { display: flex; gap: .4rem; flex-wrap: wrap; margin: 1rem 0 1.5rem; }
+    .nav a { color: var(--muted); padding: .45rem .9rem; text-decoration: none; font-size: .85rem; font-weight: 600; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); transition: background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color: var(--accent); color: var(--accent); }
+    .nav a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .intro { color: var(--muted); margin: 0 0 1.4rem; max-width: 680px; }
+    .meta, .description { color: var(--muted); font-size: .9rem; }
+    .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1rem; }
+    .btn { font: inherit; font-weight: 600; font-size: .85rem; border-radius: 6px; padding: .42rem .75rem; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+    .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .5rem; font-size: .76rem; color: var(--muted); }
+    .pill-complete { border-color: var(--good); color: var(--good); }
+    .pill-job-specific { border-color: var(--accent); color: var(--accent); }
+    .question-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1rem; margin: .6rem 0; }
+    .question-card summary { cursor: pointer; list-style: none; display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+    .question-card summary::-webkit-details-marker { display: none; }
+    .question-text { font-weight: 600; margin-right: auto; }
+    .story-form { display: grid; gap: .6rem; margin-top: .8rem; }
+    .story-field label { display: block; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: .25rem; }
+    .story-field textarea { width: 100%; min-height: 4.5rem; font: inherit; padding: .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--text); }
+    .tightened-hint { font-size: .82rem; color: var(--muted); margin: .2rem 0 0; }
+    .tightened-hint button { font-size: .78rem; margin-left: .4rem; }
+    .story-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .3rem; }
+    .review-feedback { border-top: 1px solid var(--border); margin-top: .7rem; padding-top: .6rem; font-size: .88rem; }
+  </style>
+</head>
+<body>
+  <div class="page-header"><h1>Prep</h1><span class="meta">Practice behavioral questions and build STAR stories ahead of time.</span>{% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}</div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a class="active" href="/prep">Prep</a><a href="/config">Settings</a><a href="/guide">Guide</a>
+  </nav>
+  {% include "_search_activity_badge.html" %}
+  {% include "_update_available_banner.html" %}
+  <p class="intro">Questions are generated from your resume's actual work history -- competency, seniority, and industries -- never invented achievements. Write a STAR story in your own words; review only tightens wording and flags a vague or unmeasured Result.</p>
+
+  <div class="toolbar">
+    <button type="button" class="btn btn-primary" id="generate-questions">Generate practice questions</button>
+    <span class="meta" id="generate-status"></span>
+  </div>
+
+  {% if competencies %}
+    {% for group in competencies %}
+    <h2>{{ group.name|capitalize }} <span class="meta">({{ group.questions|length }})</span></h2>
+    {% for question in group.questions %}
+    <details class="question-card" id="question-{{ question.id }}" data-question-id="{{ question.id }}">
+      <summary>
+        <span class="question-text">{{ question.question }}</span>
+        {% if question.source == "job_specific" %}<span class="pill pill-job-specific">job-specific</span>{% endif %}
+        {% if question.story and question.story.status == "complete" %}<span class="pill pill-complete">complete</span>{% elif question.story %}<span class="pill">draft</span>{% endif %}
+      </summary>
+      <div class="story-form" data-story-container data-question-id="{{ question.id }}" data-story-id="{{ question.story.id if question.story else '' }}">
+        {% for field in ["situation", "task", "action", "result"] %}
+        <div class="story-field">
+          <label>{{ field|capitalize }}</label>
+          <textarea data-field="{{ field }}" placeholder="Write in your own words...">{{ question.story[field] if question.story else "" }}</textarea>
+          {% if question.story and question.story.tightened and question.story.tightened[field] and question.story.tightened[field] != question.story[field] %}
+          <p class="tightened-hint">Suggested: “{{ question.story.tightened[field] }}”<button type="button" class="btn btn-secondary use-tightened" data-field="{{ field }}" data-suggested="{{ question.story.tightened[field] }}">Use this wording</button></p>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <div class="story-actions">
+          <button type="button" class="btn btn-secondary save-story">Save draft</button>
+          <button type="button" class="btn btn-secondary review-story">Review wording</button>
+          {% if question.story and question.story.status != "complete" %}
+          <button type="button" class="btn btn-primary mark-complete">Mark complete</button>
+          {% elif question.story %}
+          <button type="button" class="btn btn-secondary mark-draft">Mark as draft (re-practice)</button>
+          {% endif %}
+          <span class="meta" data-story-message></span>
+        </div>
+        {% if question.story and question.story.feedback %}
+        <div class="review-feedback" data-review-feedback>{{ question.story.feedback }}</div>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+    {% endfor %}
+  {% else %}
+    <div class="empty">No practice questions yet. Click "Generate practice questions" to build a set from your resume.</div>
+  {% endif %}
+
+  <script>
+    document.getElementById("generate-questions").addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const status = document.getElementById("generate-status");
+      button.disabled = true;
+      status.textContent = "Generating...";
+      const response = await fetch("/api/star/questions/generate", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        button.disabled = false;
+        status.textContent = (await response.json()).error || "Could not generate questions.";
+        return;
+      }
+      window.location.reload();
+    });
+
+    async function ensureStory(container) {
+      let storyId = container.dataset.storyId;
+      if (storyId) return storyId;
+      const response = await fetch(`/api/star/questions/${container.dataset.questionId}/story`, {method: "POST"});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not start this story.");
+      storyId = data.story.id;
+      container.dataset.storyId = storyId;
+      return storyId;
+    }
+
+    function fieldValues(container) {
+      const values = {};
+      container.querySelectorAll("textarea[data-field]").forEach((el) => { values[el.dataset.field] = el.value; });
+      return values;
+    }
+
+    document.querySelectorAll("[data-story-container]").forEach((container) => {
+      const message = container.querySelector("[data-story-message]");
+
+      container.querySelector(".save-story").addEventListener("click", async () => {
+        try {
+          const storyId = await ensureStory(container);
+          const response = await fetch(`/api/star/stories/${storyId}`, {
+            method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(fieldValues(container)),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Could not save this story.");
+          message.textContent = "Saved.";
+        } catch (err) {
+          message.textContent = err.message;
+        }
+      });
+
+      container.querySelector(".review-story").addEventListener("click", async () => {
+        try {
+          const storyId = await ensureStory(container);
+          await fetch(`/api/star/stories/${storyId}`, {
+            method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(fieldValues(container)),
+          });
+          const response = await fetch(`/api/star/stories/${storyId}/review`, {method: "POST"});
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Could not review this story.");
+          window.location.reload();
+        } catch (err) {
+          message.textContent = err.message;
+        }
+      });
+
+      const completeBtn = container.querySelector(".mark-complete");
+      if (completeBtn) {
+        completeBtn.addEventListener("click", async () => {
+          try {
+            const storyId = await ensureStory(container);
+            const response = await fetch(`/api/star/stories/${storyId}/status`, {
+              method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "complete"}),
+            });
+            if (!response.ok) throw new Error((await response.json()).error || "Could not mark complete.");
+            window.location.reload();
+          } catch (err) {
+            message.textContent = err.message;
+          }
+        });
+      }
+
+      const draftBtn = container.querySelector(".mark-draft");
+      if (draftBtn) {
+        draftBtn.addEventListener("click", async () => {
+          try {
+            const storyId = await ensureStory(container);
+            const response = await fetch(`/api/star/stories/${storyId}/status`, {
+              method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "draft"}),
+            });
+            if (!response.ok) throw new Error((await response.json()).error || "Could not update status.");
+            window.location.reload();
+          } catch (err) {
+            message.textContent = err.message;
+          }
+        });
+      }
+
+      container.querySelectorAll(".use-tightened").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const textarea = container.querySelector(`textarea[data-field="${btn.dataset.field}"]`);
+          textarea.value = btn.dataset.suggested;
+        });
+      });
+    });
+  </script>
+</body>
+</html>

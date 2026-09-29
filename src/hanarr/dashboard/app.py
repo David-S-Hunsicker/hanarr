@@ -93,6 +93,15 @@ from ..skill_analysis import (
     saved_job_gaps,
 )
 from ..skill_interview import interview_status, interviews_for_skill, start_interview, submit_interview
+from ..star_stories import (
+    generate_star_questions,
+    get_or_create_story,
+    prep_page_status,
+    question_dict,
+    review_story,
+    save_story_draft,
+    set_story_status,
+)
 from ..submissions import (
     create_github_submission,
     create_local_submission,
@@ -1000,6 +1009,93 @@ def create_app(
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
             return JSONResponse(interview_status(interview))
+
+    @app.post("/api/star/questions/generate")
+    async def generate_star_questions_route(request: Request):
+        payload = {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        job_id = payload.get("job_id") if isinstance(payload, dict) else None
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                questions = generate_star_questions(
+                    session, profile, curriculum_llm, job_id=int(job_id) if job_id else None
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(
+                {"questions": [question_dict(q, None) for q in questions]}, status_code=201
+            )
+
+    @app.post("/api/star/questions/{question_id}/story")
+    def start_star_story(request: Request, question_id: int):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                story = get_or_create_story(session, profile.id, question_id)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=404)
+            return JSONResponse(question_dict(story.question, story))
+
+    @app.patch("/api/star/stories/{story_id}")
+    async def save_star_story(request: Request, story_id: int):
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "story update must be an object."}, status_code=400)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                story = save_story_draft(
+                    session, profile.id, story_id,
+                    str(payload.get("situation", "")), str(payload.get("task", "")),
+                    str(payload.get("action", "")), str(payload.get("result", "")),
+                )
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(question_dict(story.question, story))
+
+    @app.post("/api/star/stories/{story_id}/review")
+    def review_star_story(request: Request, story_id: int):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                story = review_story(session, profile.id, story_id, evaluator_llm)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(question_dict(story.question, story))
+
+    @app.post("/api/star/stories/{story_id}/status")
+    async def set_star_story_status(request: Request, story_id: int):
+        payload = await request.json()
+        status = str(payload.get("status", "")) if isinstance(payload, dict) else ""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                story = set_story_status(session, profile.id, story_id, status)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(question_dict(story.question, story))
+
+    @app.get("/prep")
+    def prep_page(request: Request):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            return templates.TemplateResponse(
+                request=request,
+                name="prep.html",
+                context={
+                    **prep_page_status(session, profile),
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                },
+            )
 
     @app.post("/api/coaching-projects")
     async def create_project(request: Request):

@@ -10,10 +10,11 @@ Hanarr runs entirely on your own machine. Your resume, preferences, and match da
 SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
 LLM provider you configure.
 
-The dashboard has six pages: **Jobs** (discovery and status), **Coaching** (skill-gap projects
+The dashboard has seven pages: **Jobs** (discovery and status), **Coaching** (skill-gap projects
 with review-first evaluation), **Resume** (source content, sectioned display, proposals, version
 history, and a plain-text export), **Skills** (capability evidence, separate from resume claims),
-**Applications** (your pipeline by status), and **Settings**. Local, unauthenticated profile
+**Applications** (your pipeline by status), **Prep** (behavioral-question practice and a STAR
+story bank), and **Settings**. Local, unauthenticated profile
 switching lets more than one person use the same instance — each profile gets its own resume,
 jobs, applications, and skills, while search preferences stay shared. Hanarr does not add hosted
 accounts/tenancy, scraping, automatic project creation, automatic resume activation, or
@@ -48,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (463 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (470 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -315,7 +316,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (463 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (470 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -337,18 +338,20 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. A STAR behavioral-story builder is scoped but not started; per-task LLM model
-sizing (lighter models for simple calls, heavier ones for complex judgment) is scoped in the
-backlog. Fuzzy/synonym skill matching and persisted cross-run activity history are deliberately
-shelved — real ideas, but nothing's actually blocked by either right now. A Workday connector
-reaches enterprise/healthcare employers the startup-focused boards miss, a passed coaching-project
-evaluation now closes the loop (bumps proven-skill confidence, satisfies the job's skill gap, and
-offers a resume proposal) instead of updating nothing, a "Quick skill check" on the Skills page
-tests a claimed skill with a short bounded Q&A instead of trusting resume wording or a
-self-reported number, an in-app **Guide** tab (`/guide` in the dashboard) covers how to use Hanarr
-page by page, job cards can draft a cover letter directly from the stored resume, a "+ Add a job
-manually" form on Jobs tracks a posting the connectors didn't find, and reminders export to a real
-calendar app as .ics files.
+shipped and why. Nothing is currently scoped and unstarted in Planned; per-task LLM model sizing
+(lighter models for simple calls, heavier ones for complex judgment) remains scoped in the
+backlog — research-first, not build-ready yet. Fuzzy/synonym skill matching and persisted
+cross-run activity history are deliberately shelved — real ideas, but nothing's actually blocked
+by either right now. A Workday connector reaches enterprise/healthcare employers the
+startup-focused boards miss, a passed coaching-project evaluation now closes the loop (bumps
+proven-skill confidence, satisfies the job's skill gap, and offers a resume proposal) instead of
+updating nothing, a "Quick skill check" on the Skills page tests a claimed skill with a short
+bounded Q&A instead of trusting resume wording or a self-reported number, the **Prep** page
+generates behavioral-interview questions from the resume's actual work history and helps build
+STAR stories for them, an in-app **Guide** tab (`/guide` in the dashboard) covers how to use
+Hanarr page by page, job cards can draft a cover letter directly from the stored resume, a "+ Add
+a job manually" form on Jobs tracks a posting the connectors didn't find, and reminders export to
+a real calendar app as .ics files.
 
 ## License
 
