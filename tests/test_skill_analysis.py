@@ -166,6 +166,43 @@ def test_analyze_route_returns_the_real_error_instead_of_a_bare_500(tmp_path, mo
     assert "database is locked" in response.json()["error"]
 
 
+def test_draft_cover_letter_route_generates_persists_and_renders_it(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    response = client.post(f"/api/jobs/{job_id}/cover-letter")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source"] == "deterministic"  # settings.llm.provider == "none" in _settings
+    assert "Acme" in data["cover_letter"]
+    assert data["generated_at"] is not None
+
+    html = client.get("/").text
+    assert "Cover letter draft" in html
+    assert "Redraft cover letter" in html
+    assert "Backend Engineer position" in html  # a snippet from the stored draft, HTML-escaping-safe
+
+
+def test_draft_cover_letter_route_404s_for_a_missing_job(tmp_path):
+    settings = _settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/api/jobs/999999/cover-letter")
+
+    assert response.status_code == 404
+
+
 def test_saved_job_gaps_flags_stale_when_active_resume_is_newer_than_the_analysis(tmp_path):
     """If a coaching project gets completed and its resume proposal
     approved, the active resume version changes -- any skill-gap analysis

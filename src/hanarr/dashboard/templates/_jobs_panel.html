@@ -96,6 +96,12 @@
         </ul>
       </details>
       {% endif %}
+      {% if job.cover_letter %}
+      <details class="cover-letter-box" open>
+        <summary>Cover letter draft{% if job.cover_letter_source == "deterministic" %} — template, no AI configured{% endif %}</summary>
+        <textarea class="cover-letter-text" readonly rows="8">{{ job.cover_letter }}</textarea>
+      </details>
+      {% endif %}
     </div>
 
     <div class="job-actions">
@@ -103,6 +109,8 @@
       <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
       <span class="fit-action-status"></span>
       {% endif %}
+      <button type="button" class="cover-letter-action" data-job-id="{{ job.id }}">{{ "Redraft cover letter" if job.cover_letter else "Draft cover letter" }}</button>
+      <span class="cover-letter-status"></span>
       <form method="post" action="/jobs/{{ job.id }}/status">
         <select class="status-select" name="new_status" onchange="this.form.submit()">
           {% for s in statuses %}

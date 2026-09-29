@@ -39,6 +39,7 @@ from ..ollama_setup import (
     stage_ollama_installer,
 )
 from ..coaching_projects import create_coaching_project, project_status
+from ..cover_letter import generate_and_store_cover_letter
 from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
@@ -752,6 +753,25 @@ def create_app(
                 message = f"Analysis failed — {exc}"
                 return JSONResponse({"error": message[:300]}, status_code=500)
             return JSONResponse(result)
+
+    @app.post("/api/jobs/{job_id}/cover-letter")
+    def draft_job_cover_letter(request: Request, job_id: int):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            job = session.get(JobPosting, job_id)
+            if job is None or job.profile_id != profile.id:
+                return JSONResponse({"error": "Saved job not found."}, status_code=404)
+            try:
+                generate_and_store_cover_letter(profile, job, resume_writer_llm)
+                session.commit()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Cover letter drafting failed for job %d", job_id)
+                return JSONResponse({"error": f"Drafting failed — {exc}"[:300]}, status_code=500)
+            return JSONResponse({
+                "cover_letter": job.cover_letter,
+                "source": job.cover_letter_source,
+                "generated_at": job.cover_letter_generated_at.isoformat() if job.cover_letter_generated_at else None,
+            })
 
     @app.get("/api/jobs/{job_id}/skill-gaps")
     def get_job_skill_gaps(request: Request, job_id: int):

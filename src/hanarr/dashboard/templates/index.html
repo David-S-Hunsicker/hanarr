@@ -369,6 +369,33 @@
     .fit-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
     .fit-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
     .fit-action-status { margin-left: 0.5rem; font-size: 0.78rem; color: var(--status-serious); }
+    .cover-letter-action {
+      font: inherit;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .cover-letter-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .cover-letter-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .cover-letter-status { margin-left: 0.5rem; font-size: 0.78rem; color: var(--status-serious); }
+    .cover-letter-box { margin-top: 0.5rem; }
+    .cover-letter-box summary { cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); }
+    .cover-letter-text {
+      width: 100%;
+      margin-top: 0.4rem;
+      font: inherit;
+      font-size: 0.85rem;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface-1);
+      color: var(--text-primary);
+      resize: vertical;
+    }
     .score-impact { margin-top: .45rem; font-size: .8rem; color: var(--text-secondary); }
     .score-impact strong { color: var(--status-good); }
 
@@ -533,6 +560,31 @@
                 button.disabled = false;
                 button.textContent = "Try fit analysis again";
                 if (statusEl) statusEl.textContent = "Lost connection during analysis.";
+              });
+          });
+        });
+        document.querySelectorAll(".cover-letter-action").forEach((button) => {
+          const statusEl = button.parentElement.querySelector(".cover-letter-status");
+          button.addEventListener("click", function () {
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = "Drafting…";
+            if (statusEl) statusEl.textContent = "";
+            fetch("/api/jobs/" + button.dataset.jobId + "/cover-letter", { method: "POST" })
+              .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+              .then(({ ok, data }) => {
+                if (!ok) {
+                  button.disabled = false;
+                  button.textContent = original;
+                  if (statusEl) statusEl.textContent = data.error || "Drafting failed.";
+                  return;
+                }
+                window.location.reload();
+              })
+              .catch(() => {
+                button.disabled = false;
+                button.textContent = original;
+                if (statusEl) statusEl.textContent = "Lost connection while drafting.";
               });
           });
         });

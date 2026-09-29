@@ -111,6 +111,14 @@ class JobPosting(Base):
         DateTime, default=utc_now
     )
 
+    # A drafted cover letter is a starting point for the user to edit, not
+    # a submission artifact -- unlike resume proposals, it never requires
+    # approval to "activate" anything, so it's just stored directly on the
+    # posting rather than going through a review workflow.
+    cover_letter: Mapped[str] = mapped_column(Text, default="")
+    cover_letter_source: Mapped[str] = mapped_column(String, default="")
+    cover_letter_generated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     profile: Mapped["Profile"] = relationship(back_populates="jobs")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="job")
     job_skills: Mapped[list["JobSkill"]] = relationship(back_populates="job")
