@@ -95,6 +95,19 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — Manual job entry
+
+Third smaller backlog item: a "+ Add a job manually" form on the Jobs page for a posting
+Hanarr's own connectors didn't find. Scored through the exact same `matching.score_fit` path a
+real search cycle uses, so it gets a real fit score/rationale, not a placeholder. No hard-delete
+exists yet for a stray manual entry (only status changes) — worth adding if this gets used a lot.
+
+### 2026-09-29 — .ics calendar export
+
+Second smaller backlog item: `GET /reminders/{id}.ics` and `GET /reminders.ics` export
+follow-up/interview-prep reminders as real calendar events. Hand-wrote minimal RFC 5545 rather
+than adding a dependency. See `calendar_export.py`.
+
 ### 2026-09-29 — Cover-letter drafting
 
 Shipped the first of the smaller backlog items: cover-letter drafting for a saved job, reusing
