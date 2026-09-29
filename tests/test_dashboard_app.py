@@ -821,6 +821,68 @@ def test_resume_download_404s_with_no_resume_on_file(tmp_path):
     assert response.status_code == 404
 
 
+def test_add_manual_job_creates_and_scores_a_posting(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        profile.resume_text = "Experienced Python backend engineer."
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/jobs/manual",
+        data={
+            "company": "Acme", "title": "Backend Engineer",
+            "url": "https://example.test/job/1", "location": "Remote",
+            "remote": "on", "salary_min": "120000", "salary_max": "150000",
+            "description": "Python and FastAPI experience required.",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+
+    with session_factory() as session:
+        job = session.query(JobPosting).filter_by(source="manual").one()
+        assert job.company == "Acme"
+        assert job.title == "Backend Engineer"
+        assert job.remote is True
+        assert job.salary_min == 120000
+        assert job.salary_max == 150000
+        assert job.fit_score is not None  # scored via the same keyword fallback a real search uses
+
+    html = client.get("/").text
+    assert "Acme" in html
+
+
+def test_add_manual_job_rejects_missing_required_fields(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/jobs/manual", data={"company": "   ", "title": "Engineer", "url": "https://x.test"})
+
+    assert response.status_code == 400
+    with make_session_factory(settings)() as session:
+        assert session.query(JobPosting).count() == 0
+
+
+def test_add_manual_job_ignores_an_invalid_salary_instead_of_erroring(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/jobs/manual",
+        data={"company": "Acme", "title": "Engineer", "url": "https://x.test", "salary_min": "not a number"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    with make_session_factory(settings)() as session:
+        job = session.query(JobPosting).filter_by(source="manual").one()
+        assert job.salary_min is None
+
+
 def test_reminder_ics_export_downloads_a_calendar_file(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     session_factory = make_session_factory(settings)

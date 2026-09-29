@@ -172,6 +172,42 @@
     .toolbar .stop-btn:hover:not(:disabled) { background: var(--status-critical); color: #fff; }
     .toolbar .stop-btn:disabled { border-color: var(--border); color: var(--text-muted); }
 
+    .manual-job-add { margin-bottom: 1.25rem; }
+    .manual-job-add summary { cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); }
+    .manual-job-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+      max-width: 40rem;
+    }
+    .manual-job-form input[type=text], .manual-job-form input[type=url], .manual-job-form input[type=number] {
+      flex: 1 1 12rem;
+    }
+    .manual-job-form input, .manual-job-form textarea {
+      font: inherit;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface-1);
+      color: var(--text-primary);
+    }
+    .manual-job-form textarea { width: 100%; resize: vertical; }
+    .manual-job-remote { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; flex: 0 0 auto; }
+    .manual-job-form button {
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 550;
+      padding: 0.5rem 0.9rem;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .manual-job-form button:hover { background: var(--accent); color: #fff; }
+
     .progress-panel {
       background: var(--surface-1);
       border: 1px solid var(--border);
@@ -481,6 +517,21 @@
     <a class="nav-link" href="/debug/filtered">Why were jobs filtered out?</a>
     <span class="note" id="search-note">{% if last_search_result %}{{ last_search_result }}{% endif %}</span>
   </div>
+
+  <details class="manual-job-add">
+    <summary>+ Add a job manually</summary>
+    <form method="post" action="/jobs/manual" class="manual-job-form">
+      <input type="text" name="company" placeholder="Company" required maxlength="200">
+      <input type="text" name="title" placeholder="Job title" required maxlength="300">
+      <input type="url" name="url" placeholder="Posting URL" required maxlength="2000">
+      <input type="text" name="location" placeholder="Location (optional)" maxlength="200">
+      <label class="manual-job-remote"><input type="checkbox" name="remote"> Remote</label>
+      <input type="number" name="salary_min" placeholder="Salary min (optional)" min="0" step="1000">
+      <input type="number" name="salary_max" placeholder="Salary max (optional)" min="0" step="1000">
+      <textarea name="description" placeholder="Job description (optional — improves fit scoring)" rows="3"></textarea>
+      <button type="submit">Add and score</button>
+    </form>
+  </details>
 
   {% if not model_ready %}
   <div class="note" id="model-not-ready-note">

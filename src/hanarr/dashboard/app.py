@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -26,10 +27,10 @@ from sqlalchemy import func
 
 from ..config import DEFAULT_CONFIG_PATH, Settings
 from ..agent_orchestration import AgentOrchestrator
-from ..connectors.base import to_naive_utc
+from ..connectors.base import RawJobPosting, to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
 from ..llm import build_llm_client
-from ..matching import COMMON_DEALBREAKERS
+from ..matching import COMMON_DEALBREAKERS, score_fit
 from ..ollama_setup import (
     SetupCancelled,
     SetupError,
@@ -731,6 +732,75 @@ def create_app(
                 except ValueError:
                     return JSONResponse({"error": "Invalid application status."}, status_code=400)
                 session.commit()
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/manual")
+    def add_manual_job(
+        request: Request,
+        company: str = Form(...),
+        title: str = Form(...),
+        url: str = Form(...),
+        location: str = Form(""),
+        remote: str = Form(""),
+        salary_min: str = Form(""),
+        salary_max: str = Form(""),
+        description: str = Form(""),
+    ):
+        """A posting Hanarr's own connectors didn't find (e.g. a referral,
+        a source not yet supported) can still be tracked and scored here --
+        same fit-scoring path a real search cycle uses (market_analysis_llm,
+        with matching.py's own keyword fallback when no LLM is configured),
+        just for one job entered by hand instead of fetched."""
+        company = company.strip()
+        title = title.strip()
+        url = url.strip()
+        if not company or not title or not url:
+            return JSONResponse({"error": "Company, title, and URL are required."}, status_code=400)
+
+        def _parse_salary(raw: str) -> float | None:
+            raw = raw.strip()
+            if not raw:
+                return None
+            try:
+                return float(raw)
+            except ValueError:
+                return None
+
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            resume_summary = json.loads(profile.resume_summary_json or "{}")
+            raw_job = RawJobPosting(
+                source="manual",
+                external_id=f"manual-{uuid.uuid4().hex}",
+                company=company,
+                title=title,
+                location=location.strip(),
+                remote=remote == "on",
+                url=url,
+                description=description.strip(),
+                salary_min=_parse_salary(salary_min),
+                salary_max=_parse_salary(salary_max),
+            )
+            score, rationale = score_fit(
+                raw_job, resume_summary, profile.resume_text or "", settings.preferences, market_analysis_llm
+            )
+            job = JobPosting(
+                profile_id=profile.id,
+                source=raw_job.source,
+                external_id=raw_job.external_id,
+                company=raw_job.company,
+                title=raw_job.title,
+                location=raw_job.location,
+                remote=raw_job.remote,
+                url=raw_job.url,
+                description=raw_job.description,
+                salary_min=raw_job.salary_min,
+                salary_max=raw_job.salary_max,
+                fit_score=score,
+                fit_rationale=rationale,
+            )
+            session.add(job)
+            session.commit()
         return RedirectResponse("/", status_code=303)
 
     @app.post("/api/jobs/{job_id}/skill-gaps/analyze")
