@@ -580,6 +580,56 @@ def test_profiles_page_lists_and_creates_and_switches(tmp_path):
     assert switched.cookies.get("hanarr_profile_id") == str(default_id)
 
 
+def test_profile_rename_updates_the_name_and_is_reflected_everywhere(tmp_path):
+    """A profile created for a one-off purpose (e.g. a QA/screenshot pass)
+    can end up with a name like "UI Check" that then shows up in every
+    page's header forever, with no way to fix it short of editing the
+    database directly. Rename must be a real, reachable action."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    client.get("/")
+    with make_session_factory(settings)() as session:
+        profile_id = get_or_create_profile(session, settings).id
+
+    renamed = client.post(
+        f"/profiles/{profile_id}/rename", data={"name": "UI Check"}, follow_redirects=False
+    )
+    assert renamed.status_code == 303
+
+    with make_session_factory(settings)() as session:
+        assert session.get(Profile, profile_id).name == "UI Check"
+
+    page = client.get("/").text
+    assert "UI Check" in page
+
+    client.post(f"/profiles/{profile_id}/rename", data={"name": "David"})
+    with make_session_factory(settings)() as session:
+        assert session.get(Profile, profile_id).name == "David"
+    assert "UI Check" not in client.get("/").text
+
+
+def test_profile_rename_ignores_a_blank_name(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    client.get("/")
+    with make_session_factory(settings)() as session:
+        profile_id = get_or_create_profile(session, settings).id
+        original_name = session.get(Profile, profile_id).name
+
+    client.post(f"/profiles/{profile_id}/rename", data={"name": "   "})
+
+    with make_session_factory(settings)() as session:
+        assert session.get(Profile, profile_id).name == original_name
+
+
+def test_profile_rename_404s_for_a_missing_profile(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/profiles/999999/rename", data={"name": "Anyone"})
+    assert response.status_code == 404
+
+
 def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
     """Regression test for the core multi-profile promise: switching the
     active-profile cookie must isolate jobs (and everything else keyed by

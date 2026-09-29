@@ -44,9 +44,15 @@
   {% for profile in profiles %}
   <div class="card">
     <span>{{ profile.name }} {% if profile.id == active_profile_id %}<span class="pill">active</span>{% endif %}</span>
-    {% if profile.id != active_profile_id %}
-    <form method="post" action="/profiles/{{ profile.id }}/activate"><button type="submit">Switch to this profile</button></form>
-    {% endif %}
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="/profiles/{{ profile.id }}/rename" style="display:flex; gap:.4rem;">
+        <input type="text" name="name" value="{{ profile.name }}" maxlength="100" required style="width:10rem;">
+        <button type="submit">Rename</button>
+      </form>
+      {% if profile.id != active_profile_id %}
+      <form method="post" action="/profiles/{{ profile.id }}/activate"><button type="submit">Switch to this profile</button></form>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 

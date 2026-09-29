@@ -522,6 +522,19 @@ def create_app(
         response.set_cookie(PROFILE_COOKIE, str(profile_id), max_age=60 * 60 * 24 * 365, samesite="lax")
         return response
 
+    @app.post("/profiles/{profile_id}/rename")
+    def rename_profile(profile_id: int, name: str = Form(...)):
+        name = name.strip()
+        if not name:
+            return RedirectResponse("/profiles", status_code=303)
+        with session_factory() as session:
+            profile = session.get(Profile, profile_id)
+            if profile is None:
+                return JSONResponse({"error": "Profile not found."}, status_code=404)
+            profile.name = name
+            session.commit()
+        return RedirectResponse("/profiles", status_code=303)
+
     def _onboarding_status(profile, settings: Settings) -> dict:
         """Whether the active profile has what it needs for a search to be
         useful. Computed fresh from existing data on every render -- no
