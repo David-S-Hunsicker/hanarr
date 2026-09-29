@@ -192,6 +192,20 @@ sources:
     tags: ["python", "backend", "ai", "cloud"]
   arbeitnow:
     enabled: true
+  workday:
+    enabled: false
+    # No shipped defaults here (unlike the sources above) -- Workday has no
+    # public directory of tenants, so there's nothing to sample live the
+    # way the other lists were. Add a company's own public Workday careers
+    # URL, e.g.:
+    #   career_site_urls:
+    #     - "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"
+    # This hits Workday's public but undocumented job feed (see
+    # connectors/workday.py) -- slower per company than the sources above
+    # since a second request per job is needed just to get a description,
+    # and less durable since Workday hasn't committed to keeping this
+    # endpoint's shape stable the way Greenhouse/Lever/Ashby have.
+    career_site_urls: []
   # The default company_boards/companies lists above skew heavily toward
   # tech/startup companies. When true, a search only queries default-list
   # companies whose known hiring mix overlaps the candidate's own resume

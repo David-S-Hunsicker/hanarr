@@ -108,10 +108,22 @@ class ArbeitnowSource(BaseModel):
     enabled: bool = False
 
 
+class WorkdaySource(BaseModel):
+    enabled: bool = False
+    # A company's own public Workday careers URL (e.g.
+    # https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite) --
+    # tenant/shard/site/locale are parsed out of it by the connector, since
+    # there's no directory mapping a company name to these values. See
+    # connectors/workday.py's module docstring for why this source needs a
+    # full URL rather than a plain slug like the others.
+    career_site_urls: list[str] = Field(default_factory=list)
+
+
 class SourcesConfig(BaseModel):
     greenhouse: GreenhouseSource = Field(default_factory=GreenhouseSource)
     lever: LeverSource = Field(default_factory=LeverSource)
     ashby: AshbySource = Field(default_factory=AshbySource)
+    workday: WorkdaySource = Field(default_factory=WorkdaySource)
     remoteok: RemoteOKSource = Field(default_factory=RemoteOKSource)
     arbeitnow: ArbeitnowSource = Field(default_factory=ArbeitnowSource)
     # The shipped default company boards skew heavily toward tech/startup

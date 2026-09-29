@@ -226,6 +226,7 @@ account and isn't something to build around.
 | Ashby | Company slugs from `jobs.ashbyhq.com/<slug>` | Free public API, popular with AI-native and recent-generation startups. Ships with 21 verified boards. |
 | RemoteOK | An optional tag filter | Free public API |
 | Arbeitnow | Nothing — just enable it | Free public API, mostly EU-heavy listings |
+| Workday | A company's own public Workday careers URL, one per line | Public but *undocumented* — the same JSON endpoint the careers page's own JavaScript calls, not a contract Workday publishes or supports. Reaches traditional-enterprise/healthcare/large-non-tech employers the sources above mostly miss. Slower per company (a second request per job is needed just to get a description) and no shipped defaults, since there's no directory of tenants to sample from. |
 
 The default company boards above skew heavily toward VC-funded tech/startup companies — fine
 for a software engineer, but an accounting/payroll/HR/etc. search against all of them gets

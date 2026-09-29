@@ -32,6 +32,7 @@ PREFERENCES_LIST_FIELDS = [
     "sources.lever.companies",
     "sources.ashby.company_boards",
     "sources.remoteok.tags",
+    "sources.workday.career_site_urls",
 ]
 
 
@@ -94,6 +95,8 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     sources["remoteok"]["enabled"] = "remoteok_enabled" in form
     sources["remoteok"]["tags"] = _list_from_form(form.get("remoteok_tags", ""))
     sources["arbeitnow"]["enabled"] = "arbeitnow_enabled" in form
+    sources["workday"]["enabled"] = "workday_enabled" in form
+    sources["workday"]["career_site_urls"] = _list_from_form(form.get("workday_career_site_urls", ""))
     sources["filter_boards_by_profile"] = "filter_boards_by_profile" in form
 
     data["preferences"] = prefs

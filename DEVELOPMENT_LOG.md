@@ -15,11 +15,6 @@ inline before work starts. (The third planned feature, the "How to use Hanarr" g
 
 ## Backlog
 
-- **A Workday connector** — Greenhouse/Lever/Ashby all skew toward VC-funded tech/startup
-  companies; Workday's public job-board API is where most traditional enterprises, healthcare
-  systems, and large non-tech employers actually post. Needs the real API contract researched
-  before writing anything — not something to guess at the way Greenhouse's was reused.
-
 ## Deferred / low priority
 
 Real ideas, but nobody's actually blocked by either — no need pulling on them right now, so they
@@ -113,6 +108,24 @@ content to place, rather than guessing the right shape upfront.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — Workday connector
+
+Greenhouse/Lever/Ashby all skew toward VC-funded tech/startup companies; this reaches the
+traditional-enterprise/healthcare/large-non-tech employers that mostly post through Workday
+instead. Unlike the others, this is an *undocumented* endpoint (the same JSON API a Workday
+careers page's own JS calls, not something Workday publishes or supports) — researched against
+several independent real-world write-ups before writing anything, then live-verified against
+NVIDIA's actual public Workday careers site.
+
+Two things that make it a genuinely different shape from the other connectors: (1) the list
+endpoint doesn't include a job description at all, only a second per-job request does, so this
+is real N+1 request cost bounded by a `MAX_POSTINGS_PER_SITE` cap (200) rather than the single
+request per company the others need; (2) configuring a company means pasting its full public
+careers URL (tenant/shard/site aren't discoverable any other way — there's no directory), parsed
+server-side rather than asking for three separate fields. `postedOn`/`startDate` in Workday's
+response are either a localized relative string or ambiguous in meaning, so `posted_at` is left
+unset rather than guessed.
 
 ### 2026-09-29 — v0.1.6
 

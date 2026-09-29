@@ -167,6 +167,44 @@ def test_apply_preferences_form_unchecking_filter_boards_by_profile_turns_it_off
     assert new_settings.sources.filter_boards_by_profile is False
 
 
+def test_apply_preferences_form_reads_workday_career_site_urls():
+    settings = Settings()
+    current = settings_to_dict(settings)
+
+    form = {
+        "remote_ok": "on",
+        "min_fit_score": "60",
+        "workday_enabled": "on",
+        "workday_career_site_urls": (
+            "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite\n"
+            "https://acme.wd1.myworkdayjobs.com/AcmeCareers"
+        ),
+    }
+    updated = apply_preferences_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.sources.workday.enabled is True
+    assert new_settings.sources.workday.career_site_urls == [
+        "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite",
+        "https://acme.wd1.myworkdayjobs.com/AcmeCareers",
+    ]
+
+
+def test_apply_preferences_form_unchecking_workday_turns_it_off():
+    settings = Settings()
+    settings.sources.workday.enabled = True
+    settings.sources.workday.career_site_urls = ["https://acme.wd1.myworkdayjobs.com/AcmeCareers"]
+    current = settings_to_dict(settings)
+
+    form = {"remote_ok": "on", "min_fit_score": "60"}  # box left unchecked
+    updated = apply_preferences_form(current, form)
+    new_settings, errors = validate_and_build(updated)
+
+    assert not errors
+    assert new_settings.sources.workday.enabled is False
+
+
 def test_apply_updates_form_reads_auto_update_and_intervals():
     settings = Settings()
     current = settings_to_dict(settings)

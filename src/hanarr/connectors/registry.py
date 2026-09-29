@@ -8,6 +8,7 @@ from .base import Connector
 from .greenhouse import GreenhouseConnector
 from .lever import LeverConnector
 from .remoteok import RemoteOKConnector
+from .workday import WorkdayConnector
 
 
 def build_enabled_connectors(
@@ -52,4 +53,9 @@ def build_enabled_connectors(
         connectors.append(RemoteOKConnector(sources.remoteok.tags))
     if sources.arbeitnow.enabled:
         connectors.append(ArbeitnowConnector())
+    if sources.workday.enabled and sources.workday.career_site_urls:
+        # Never run through _boards()/filter_boards -- that registry only
+        # categorizes the shipped default company lists, and Workday ships
+        # with none; every entry here was typed in by the user themselves.
+        connectors.append(WorkdayConnector(sources.workday.career_site_urls))
     return connectors

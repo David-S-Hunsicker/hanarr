@@ -471,6 +471,23 @@
           </div>
           <div class="hint">No configuration needed</div>
         </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="workday_enabled" name="workday_enabled" {% if settings.sources.workday.enabled %}checked{% endif %}>
+            <label for="workday_enabled">Workday</label>
+          </div>
+          <div class="field">
+            <label for="workday_career_site_urls">Career site URLs</label>
+            <textarea id="workday_career_site_urls" name="workday_career_site_urls">{{ "\n".join(settings.sources.workday.career_site_urls) }}</textarea>
+            <div class="hint">
+              The company's own public Workday careers page URL, one per line -- e.g.
+              https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite. This uses
+              Workday's public but undocumented job feed, so it can be slower per company (a
+              second request per job is needed just to get a description) and is less durable
+              than the other sources here.
+            </div>
+          </div>
+        </div>
       </fieldset>
 
       <div class="save-row">

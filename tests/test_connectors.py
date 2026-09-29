@@ -10,6 +10,7 @@ from hanarr.connectors.greenhouse import GreenhouseConnector
 from hanarr.connectors.lever import LeverConnector
 from hanarr.connectors.registry import build_enabled_connectors
 from hanarr.connectors.remoteok import RemoteOKConnector
+from hanarr.connectors.workday import WorkdayConnector, parse_career_site_url
 from hanarr.config import Settings
 
 
@@ -508,6 +509,188 @@ def test_build_enabled_connectors_never_filters_when_toggle_is_off():
 
     greenhouse = next(c for c in connectors if isinstance(c, GreenhouseConnector))
     assert greenhouse.company_boards == ["vercel", "stripe"]
+
+
+def test_parse_career_site_url_extracts_tenant_shard_site_and_locale():
+    site = parse_career_site_url(
+        "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"
+    )
+    assert site is not None
+    assert site.tenant == "nvidia"
+    assert site.shard == "wd5"
+    assert site.site == "NVIDIAExternalCareerSite"
+    assert site.locale == "en-US"
+    assert site.host == "nvidia.wd5.myworkdayjobs.com"
+
+
+def test_parse_career_site_url_defaults_locale_when_absent():
+    site = parse_career_site_url("https://acme.wd1.myworkdayjobs.com/AcmeCareers")
+    assert site is not None
+    assert site.site == "AcmeCareers"
+    assert site.locale == "en-US"
+
+
+def test_parse_career_site_url_returns_none_for_a_non_workday_host():
+    assert parse_career_site_url("https://boards.greenhouse.io/acme") is None
+
+
+def test_parse_career_site_url_returns_none_when_site_segment_is_missing():
+    assert parse_career_site_url("https://nvidia.wd5.myworkdayjobs.com/en-US") is None
+
+
+def test_parse_career_site_url_returns_none_for_garbage_input():
+    assert parse_career_site_url("not a url at all") is None
+
+
+@respx.mock
+def test_workday_connector_parses_a_job_with_its_detail_description(monkeypatch):
+    monkeypatch.setattr("hanarr.connectors.workday.REQUEST_DELAY_SECONDS", 0)
+    respx.post("https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "jobPostings": [
+                    {
+                        "title": "Backend Engineer",
+                        "externalPath": "/job/US-Remote/Backend-Engineer_JR123",
+                        "locationsText": "US, Remote",
+                        "bulletFields": ["JR123"],
+                    }
+                ],
+            },
+        )
+    )
+    respx.get(
+        "https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/job/US-Remote/Backend-Engineer_JR123"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"jobPostingInfo": {"jobDescription": "<p>We build things.</p>"}},
+        )
+    )
+    connector = WorkdayConnector(["https://acme.wd1.myworkdayjobs.com/AcmeCareers"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    posting = postings[0]
+    assert posting.external_id == "JR123"
+    assert posting.company == "acme"
+    assert posting.title == "Backend Engineer"
+    assert posting.remote is True
+    assert posting.description == "We build things."
+    assert posting.url == (
+        "https://acme.wd1.myworkdayjobs.com/en-US/AcmeCareers/job/US-Remote/Backend-Engineer_JR123"
+    )
+    assert posting.posted_at is None
+
+
+@respx.mock
+def test_workday_connector_still_includes_the_job_when_the_detail_request_fails(monkeypatch):
+    monkeypatch.setattr("hanarr.connectors.workday.REQUEST_DELAY_SECONDS", 0)
+    respx.post("https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "jobPostings": [
+                    {
+                        "title": "Backend Engineer",
+                        "externalPath": "/job/US-Remote/Backend-Engineer_JR123",
+                        "locationsText": "US, Remote",
+                        "bulletFields": ["JR123"],
+                    }
+                ],
+            },
+        )
+    )
+    respx.get(
+        "https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/job/US-Remote/Backend-Engineer_JR123"
+    ).mock(return_value=httpx.Response(500))
+
+    connector = WorkdayConnector(["https://acme.wd1.myworkdayjobs.com/AcmeCareers"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    assert postings[0].description == ""
+
+
+@respx.mock
+def test_workday_connector_skips_an_unparsable_career_site_url_without_crashing(monkeypatch):
+    monkeypatch.setattr("hanarr.connectors.workday.REQUEST_DELAY_SECONDS", 0)
+    connector = WorkdayConnector(["https://not-a-workday-url.example.com/careers"])
+    assert connector.fetch() == []
+
+
+@respx.mock
+def test_workday_connector_skips_the_whole_site_without_crashing_on_a_failed_list_request(monkeypatch):
+    monkeypatch.setattr("hanarr.connectors.workday.REQUEST_DELAY_SECONDS", 0)
+    respx.post("https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/jobs").mock(
+        return_value=httpx.Response(500)
+    )
+    connector = WorkdayConnector(["https://acme.wd1.myworkdayjobs.com/AcmeCareers"])
+    assert connector.fetch() == []
+
+
+@respx.mock
+def test_workday_connector_stops_paginating_once_the_cap_is_reached(monkeypatch):
+    """Regression test for the request-volume cap: without it, a company
+    with thousands of open roles would make this connector fetch pages
+    (and a detail request per job) indefinitely."""
+    monkeypatch.setattr("hanarr.connectors.workday.REQUEST_DELAY_SECONDS", 0)
+    monkeypatch.setattr("hanarr.connectors.workday.PAGE_SIZE", 1)
+    monkeypatch.setattr("hanarr.connectors.workday.MAX_POSTINGS_PER_SITE", 2)
+
+    def _list_response(request):
+        import json
+
+        offset = json.loads(request.content).get("offset", 0)
+        return httpx.Response(
+            200,
+            json={
+                "total": 1000,
+                "jobPostings": [
+                    {
+                        "title": f"Role {offset}",
+                        "externalPath": f"/job/Role-{offset}",
+                        "locationsText": "US, Remote",
+                        "bulletFields": [f"JR{offset}"],
+                    }
+                ],
+            },
+        )
+
+    respx.post("https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/AcmeCareers/jobs").mock(
+        side_effect=_list_response
+    )
+    respx.get(url__regex=r"https://acme\.wd1\.myworkdayjobs\.com/wday/cxs/acme/AcmeCareers/job/Role-\d+").mock(
+        return_value=httpx.Response(200, json={"jobPostingInfo": {"jobDescription": "desc"}})
+    )
+
+    connector = WorkdayConnector(["https://acme.wd1.myworkdayjobs.com/AcmeCareers"])
+    postings = connector.fetch()
+
+    assert len(postings) == 2  # MAX_POSTINGS_PER_SITE / PAGE_SIZE pages, one job each
+
+
+def test_build_enabled_connectors_includes_workday_when_configured():
+    settings = Settings()
+    settings.sources.workday.enabled = True
+    settings.sources.workday.career_site_urls = ["https://acme.wd1.myworkdayjobs.com/AcmeCareers"]
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert any(isinstance(c, WorkdayConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_skips_workday_without_career_site_urls():
+    settings = Settings()
+    settings.sources.workday.enabled = True
+    settings.sources.workday.career_site_urls = []
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert not any(isinstance(c, WorkdayConnector) for c in connectors)
 
 
 def test_build_enabled_connectors_never_filters_boards_the_user_added_themselves():
