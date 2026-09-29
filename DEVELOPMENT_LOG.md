@@ -109,6 +109,18 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — License changed from MIT to PolyForm Strict 1.0.0
+
+Repo stays public/source-available, but the license itself now restricts what people can do with
+the code: view and run it for personal/noncommercial use, but not modify it, redistribute it
+(modified or not), or use it commercially without a separate agreement with the copyright holder.
+PolyForm Strict already does exactly this out of the box — its "permitted purposes" are limited to
+noncommercial use, personal use, and specific noncommercial organizations (charities, schools,
+government, public research/safety/health/environmental orgs); ordinary commercial/business use
+isn't a permitted purpose at all, so it requires the copyright holder's separate permission. See
+`LICENSE` (full text plus a plain-English summary at the bottom) and the polyformproject.org
+source this was pulled from verbatim, rather than drafting custom legal text from scratch.
+
 ### 2026-09-29 — SQLite WAL mode, for the same bug report
 
 Follow-up to the logging fix below, same bug report (a 500 after starting a search, on the

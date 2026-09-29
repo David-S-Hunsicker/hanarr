@@ -346,4 +346,7 @@ and reminders export to a real calendar app as .ics files.
 
 ## License
 
-MIT — see `LICENSE`.
+[PolyForm Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0) — see
+`LICENSE`. In short: you're welcome to download and run Hanarr for personal or noncommercial use,
+but modifying it, distributing it (modified or not), or using it commercially requires a separate
+agreement with the copyright holder.
