@@ -109,6 +109,15 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — Fix: Patent License clause wasn't scoped to the permitted purpose
+
+Real gap caught by a direct question about the patent clause: `LICENSE`'s Copyright License grant
+is explicitly scoped to "any permitted purpose," but the Patent License grant right below it just
+said "by using the software" — not tied to the permitted-purpose restriction at all. Since the
+whole point of the narrowing above is "personal job search, nothing else, full stop," an
+inconsistently-scoped patent grant undermined that. Added "for a permitted purpose" to the Patent
+License clause so both grants are scoped identically.
+
 ### 2026-09-29 — v0.1.8
 
 Shipped: the license narrowed to personal job-search use only, and the org-exemption removal
