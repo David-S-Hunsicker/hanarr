@@ -35,6 +35,8 @@
     .meta { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .45rem 0; } .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .5rem; font-size: .76rem; color: var(--muted); }
     .pill-status-submitted { border-color: var(--accent); color: var(--accent); }
     .pill-status-evaluated { border-color: var(--good); color: var(--good); }
+    .pill-stale { border-color: var(--warn); color: var(--warn); }
+    .cancel-project { margin-left: auto; }
     .field-label { display: block; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 1.1rem 0 .4rem; }
     .tasks { margin: .8rem 0 0; padding: 0; list-style: none; } .tasks li { display: flex; gap: .6rem; align-items: center; border-top: 1px solid var(--border); padding: .55rem 0; }
     .tasks form { margin-left: auto; } select { font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .45rem; background: var(--surface); color: var(--text); }
@@ -107,7 +109,7 @@
       {% for project in projects %}
       <div class="card" id="project-{{ project.id }}">
         <h3>{{ project.title }}</h3>
-        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span>{% if project.stale %}<span class="pill" style="border-color:var(--warn);color:var(--warn);">stale — no activity in 14+ days</span>{% endif %}<span>{{ project.target_outcome }}</span>{% if project.status in ("planned", "active") %}<button type="button" class="btn btn-secondary cancel-project" data-project-id="{{ project.id }}" style="margin-left:auto;">Cancel project</button>{% endif %}</div>
+        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span>{% if project.stale %}<span class="pill pill-stale">stale — no activity in 14+ days</span>{% endif %}<span>{{ project.target_outcome }}</span>{% if project.status in ("planned", "active") %}<button type="button" class="btn btn-secondary cancel-project" data-project-id="{{ project.id }}">Cancel project</button>{% endif %}</div>
         <p class="description">{{ project.description }}</p>
         {% if project.affected_jobs %}
         <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.dashboard_url }}">{{ job.title }} · {{ job.company }}</a> <a href="{{ job.url }}" target="_blank" rel="noopener" aria-label="Open {{ job.title }} externally">[open]</a>{% endfor %}</div>

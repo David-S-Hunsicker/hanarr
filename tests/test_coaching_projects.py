@@ -688,7 +688,7 @@ def test_stale_active_project_is_flagged_after_two_weeks_of_no_activity(tmp_path
     }).json()["id"]
 
     fresh_html = client.get("/coaching").text
-    assert "stale" not in fresh_html
+    assert "no activity in 14+ days" not in fresh_html
 
     with factory() as session:
         project = session.get(Project, project_id)
@@ -700,4 +700,4 @@ def test_stale_active_project_is_flagged_after_two_weeks_of_no_activity(tmp_path
         session.commit()
 
     stale_html = client.get("/coaching").text
-    assert "stale" in stale_html
+    assert "no activity in 14+ days" in stale_html
