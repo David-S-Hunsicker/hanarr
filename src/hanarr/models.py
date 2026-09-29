@@ -59,6 +59,14 @@ class Profile(Base):
     last_search_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     last_search_new_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_search_trigger: Mapped[str | None] = mapped_column(String, nullable=True)  # "manual" | "scheduled"
+    # Empty until this profile's Preferences tab is saved for the first
+    # time (or it was seeded at creation, see the /profiles route) -- see
+    # config.py's effective_preferences(), which falls back to the shared
+    # config.yaml preferences until then. Job sources, LLM provider, and
+    # schedule stay instance-wide/shared even after this "forks"; only
+    # match criteria (target titles, locations, salary floor, etc.) are
+    # per-profile.
+    preferences_json: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now

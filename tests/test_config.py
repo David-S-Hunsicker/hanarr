@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from hanarr import secrets_store
-from hanarr.config import ScheduleConfig, Settings, load_settings, save_settings_to_yaml
+from hanarr.config import Preferences, ScheduleConfig, Settings, effective_preferences, load_settings, save_settings_to_yaml
+from hanarr.models import Profile
 
 
 def test_schedule_config_rejects_search_interval_below_one_hour():
@@ -148,3 +149,38 @@ def test_save_settings_to_yaml_prunes_backups_beyond_the_limit(tmp_path):
 
     backups = list((tmp_path / "data" / "backups").glob("config-*.yaml"))
     assert len(backups) <= MAX_CONFIG_BACKUPS
+
+
+def test_effective_preferences_falls_back_to_shared_settings_when_profile_has_none():
+    settings = Settings()
+    settings.preferences.target_titles = ["Backend Engineer"]
+    profile = Profile(name="Someone")  # preferences_json defaults to ""
+
+    prefs = effective_preferences(profile, settings)
+
+    assert prefs.target_titles == ["Backend Engineer"]
+    assert prefs is settings.preferences  # a live fallback, not a copy
+
+
+def test_effective_preferences_uses_the_profiles_own_saved_preferences_once_set():
+    settings = Settings()
+    settings.preferences.target_titles = ["Backend Engineer"]
+    own_prefs = Preferences(target_titles=["Data Scientist"], locations=["Remote"])
+    profile = Profile(name="Someone else", preferences_json=own_prefs.model_dump_json())
+
+    prefs = effective_preferences(profile, settings)
+
+    assert prefs.target_titles == ["Data Scientist"]
+    assert prefs.locations == ["Remote"]
+
+
+def test_effective_preferences_does_not_change_the_shared_settings_object():
+    """Two profiles, one with its own preferences and one without, must
+    never see each other's values through a shared mutable object."""
+    settings = Settings()
+    settings.preferences.target_titles = ["Shared Default Title"]
+    forked = Profile(name="Forked", preferences_json=Preferences(target_titles=["Custom"]).model_dump_json())
+    unforked = Profile(name="Unforked")
+
+    assert effective_preferences(forked, settings).target_titles == ["Custom"]
+    assert effective_preferences(unforked, settings).target_titles == ["Shared Default Title"]

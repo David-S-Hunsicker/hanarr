@@ -10,13 +10,16 @@ import datetime as dt
 import os
 import shutil
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
 from . import secrets_store
+
+if TYPE_CHECKING:
+    from .models import Profile
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 EXAMPLE_CONFIG_PATH = Path("config.example.yaml")
@@ -55,6 +58,21 @@ class Preferences(BaseModel):
         if isinstance(value, str):
             return [value]
         return value
+
+
+def effective_preferences(profile: "Profile", settings: "Settings") -> Preferences:
+    """A profile's own saved preferences (once it has any — see the
+    /profiles and Preferences-tab-save routes, which write
+    `profile.preferences_json`), or the shared config.yaml value as a live
+    fallback until then. This is deliberately live, not cached: a
+    pre-existing single-profile install that has never touched the new
+    per-profile behavior keeps reading config.yaml exactly as before, with
+    zero migration step required. Job sources, LLM provider, and schedule
+    are NOT part of this -- those stay instance-wide/shared even for a
+    profile that has customized its own match criteria."""
+    if profile.preferences_json:
+        return Preferences.model_validate_json(profile.preferences_json)
+    return settings.preferences
 
 
 class ProfileConfig(BaseModel):
