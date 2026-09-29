@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 import httpx
@@ -11,13 +12,16 @@ from hanarr.models import (
     JobPosting,
     JobSkill,
     JobSkillRequirement,
+    ProfileSkill,
     Project,
+    ProjectStatus,
     ProjectSubmission,
     ProjectSubmissionKind,
     ProjectSubmissionStatus,
     ProjectTaskStatus,
     Skill,
     SkillGapStatus,
+    utc_now,
 )
 import hanarr.dashboard.app as app_module
 import hanarr.submissions as submissions_module
@@ -554,3 +558,146 @@ def test_deterministic_fallback_credits_real_diff_content_not_just_filenames(tmp
     assert real["score"] > stub["score"]
     assert any("Diff shows 60 changed line(s)" in s for s in real["strengths"])
     assert not any("Diff shows" in s for s in stub["strengths"])
+
+
+def test_passed_evaluation_bumps_confidence_and_satisfies_job_skill_gap(tmp_path, monkeypatch):
+    """Regression test for the coaching-project loop-closure gap: a passed
+    evaluation used to update nothing but ProvenSkill/ResumeProposal --
+    ProfileSkill.confidence and the affected job's JobSkill.gap_status stayed
+    untouched, so Skills/Jobs kept showing the same gap after a demonstrably
+    proven skill."""
+    settings = _settings(tmp_path)
+
+    class EvaluatingLLM:
+        def complete_json(self, system, user):
+            return json.dumps({
+                "outcome": "passed", "score": 80, "scores": {"Build the first version": 80},
+                "strengths": ["Working artifact is described."], "improvements": [],
+                "actionable_feedback": [], "feedback": "Strong evidence.",
+            })
+
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: EvaluatingLLM())
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+    submission = client.post(
+        f"/api/coaching-projects/{project_id}/submissions",
+        json={"title": "Evidence", "content": "Built and tested the artifact."},
+    ).json()
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/submit")
+    evaluated = client.post(
+        f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/evaluate"
+    )
+    assert evaluated.status_code == 200
+
+    with factory() as session:
+        profile_skill = session.execute(
+            select(ProfileSkill).where(ProfileSkill.skill_id == skill_id)
+        ).scalar_one()
+        assert profile_skill.source == "project"
+        assert profile_skill.confidence == 0.8
+        job_skill = session.execute(
+            select(JobSkill).where(JobSkill.job_id == job_id, JobSkill.skill_id == skill_id)
+        ).scalar_one()
+        assert job_skill.gap_status is SkillGapStatus.SATISFIED
+        assert job_skill.confidence == 0.8
+
+
+def test_passed_evaluation_never_lowers_a_higher_trust_profile_skill_confidence(tmp_path, monkeypatch):
+    """A resume/manual-sourced ProfileSkill row is higher-trust than a project
+    result -- a weak project pass must not silently overwrite it downward."""
+    settings = _settings(tmp_path)
+
+    class EvaluatingLLM:
+        def complete_json(self, system, user):
+            return json.dumps({
+                "outcome": "passed", "score": 50, "scores": {"Build the first version": 50},
+                "strengths": [], "improvements": [], "actionable_feedback": [], "feedback": "Passed, barely.",
+            })
+
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: EvaluatingLLM())
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+        session.add(ProfileSkill(
+            profile_id=profile.id, skill_id=skill_id, source="resume",
+            confidence=0.9, evidence="Extracted from the stored resume profile summary",
+        ))
+        session.commit()
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+    submission = client.post(
+        f"/api/coaching-projects/{project_id}/submissions",
+        json={"title": "Evidence", "content": "Built and tested the artifact."},
+    ).json()
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/submit")
+    client.post(f"/api/coaching-projects/{project_id}/submissions/{submission['id']}/evaluate")
+
+    with factory() as session:
+        profile_skill = session.execute(
+            select(ProfileSkill).where(ProfileSkill.skill_id == skill_id)
+        ).scalar_one()
+        assert profile_skill.source == "resume"
+        assert profile_skill.confidence == 0.9
+
+
+def test_cancel_project_is_reachable_and_blocks_double_cancellation(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    cancelled = client.post(f"/api/coaching-projects/{project_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    again = client.post(f"/api/coaching-projects/{project_id}/cancel")
+    assert again.status_code == 400
+
+    coaching_html = client.get("/coaching").text
+    assert "cancelled" in coaching_html
+    assert "Cancel project" not in coaching_html
+
+
+def test_stale_active_project_is_flagged_after_two_weeks_of_no_activity(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    fresh_html = client.get("/coaching").text
+    assert "stale" not in fresh_html
+
+    with factory() as session:
+        project = session.get(Project, project_id)
+        project.status = ProjectStatus.ACTIVE
+        old = utc_now() - dt.timedelta(days=20)
+        project.opted_in_at = old
+        for task in project.tasks:
+            task.updated_at = old
+        session.commit()
+
+    stale_html = client.get("/coaching").text
+    assert "stale" in stale_html

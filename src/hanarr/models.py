@@ -348,6 +348,9 @@ class ProjectTask(Base):
     status: Mapped[ProjectTaskStatus] = mapped_column(
         Enum(ProjectTaskStatus), default=ProjectTaskStatus.TODO
     )
+    updated_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime, nullable=True, default=utc_now, onupdate=utc_now
+    )
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
 

@@ -48,7 +48,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (319 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (453 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Two tagged, signed-off releases (`v0.1.0`, `v0.1.1`) have shipped through the real GitHub
 Actions release pipeline. Beyond the automated suite, the following have been verified live
 against real infrastructure (a running Ollama instance with a real model loaded onto GPU, a real
@@ -313,7 +313,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (319 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (453 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -335,14 +335,17 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. Next up: a Workday connector for non-startup employers (needs its real public API
-contract researched first). A mini-interview skill assessment mechanic and a STAR behavioral-story
-builder are scoped but not started. Fuzzy/synonym skill matching and persisted cross-run activity
-history are deliberately shelved — real ideas, but
-nothing's actually blocked by either right now. An in-app **Guide** tab (`/guide` in the dashboard)
-already covers how to use Hanarr page by page, job cards can draft a cover letter directly from the
-stored resume, a "+ Add a job manually" form on Jobs tracks a posting the connectors didn't find,
-and reminders export to a real calendar app as .ics files.
+shipped and why. A mini-interview skill assessment mechanic and a STAR behavioral-story builder are
+scoped but not started; per-task LLM model sizing (lighter models for simple calls, heavier ones
+for complex judgment) is scoped in the backlog. Fuzzy/synonym skill matching and persisted
+cross-run activity history are deliberately shelved — real ideas, but nothing's actually blocked by
+either right now. A Workday connector reaches enterprise/healthcare employers the startup-focused
+boards miss, a passed coaching-project evaluation now closes the loop (bumps proven-skill
+confidence, satisfies the job's skill gap, and offers a resume proposal) instead of updating
+nothing, an in-app **Guide** tab (`/guide` in the dashboard) covers how to use Hanarr page by page,
+job cards can draft a cover letter directly from the stored resume, a "+ Add a job manually" form
+on Jobs tracks a posting the connectors didn't find, and reminders export to a real calendar app as
+.ics files.
 
 ## License
 

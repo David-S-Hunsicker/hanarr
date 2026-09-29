@@ -9,9 +9,9 @@ live only in a chat transcript.
 
 ## Planned
 
-Three features are scoped below, not yet implemented. Each still needs a design decision flagged
-inline before work starts. (A fourth planned feature, the "How to use Hanarr" guide page, shipped
-— see the Log below.)
+Two features are scoped below, not yet implemented. Each still needs a design decision flagged
+inline before work starts. (A third planned feature, coaching project loop closure, shipped — see
+the Log below. A fourth, the "How to use Hanarr" guide page, shipped earlier too.)
 
 ## Backlog
 
@@ -42,43 +42,6 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 - **Persisted, cross-run activity history** — the Jobs page already shows a live scrolling log
   during an active search; this would only add value across restarts/past runs (an audit
   nice-to-have), not something blocking real use today.
-
-### Coaching project loop closure
-
-**Problem.** Traced the full coaching/project flow end to end (`coaching_projects.py`,
-`submissions.py`, `evaluator.py`, `coaching.html`) and found the loop never actually closes. A
-project is created from an analyzed skill gap, the user works through tasks and submits evidence
-(written response, local files, or a fetched GitHub diff), and gets a real LLM evaluation —- but a
-`passed` outcome updates *nothing* else. `ProfileSkill.confidence` and the job's
-`JobSkill.gap_status` are untouched, so Skills/Jobs still show the same gap after a demonstrably
-proven skill as before. `Project.status` has four states (planned/active/completed/cancelled) but
-only planned→active is ever reachable in code -- there's no "mark complete" or "abandon this"
-action anywhere in the UI. And nothing bridges a proven skill back to the resume, even though the
-resume-proposal approve/reject flow already exists for other flows.
-
-**Flow.**
-1. **Close the loop on a passed evaluation.** When `evaluate_submission` returns `outcome ==
-   "passed"`, update the project's linked skills: bump `ProfileSkill.confidence` (new
-   `source="project"` evidence, same non-clobbering pattern used elsewhere -- update an
-   already-project-sourced row, never silently overwrite a higher-trust "resume"/"manual" source
-   without saying so) and mark the corresponding `JobSkill.gap_status` as `SATISFIED` for the
-   project's affected jobs, so "Why this score"/gap cards on Jobs actually reflect it.
-2. **Reachable project completion/cancellation.** A "Mark complete" action (suggested once all
-   tasks are done and/or a submission has passed, not auto-forced) and a "Cancel project" action
-   for abandoning one honestly instead of leaving it stuck "active" forever. Completed/cancelled
-   projects stay visible but should stop cluttering the primary in-progress list.
-3. **Bridge proven skills to the resume.** After a passed evaluation, offer to fold the new
-   evidence into a resume proposal via the existing propose/approve/reject flow (reusing
-   `resume_writer_llm`, not a second resume-editing path) -- the proof currently only ever lives on
-   the Coaching page.
-4. **Stale/abandoned project nudges.** Surface a project that's been `active` a long time with no
-   task-status change or submission -- the same spirit as the existing "stale analysis" flag on a
-   job after the active resume changes.
-
-**Open question.** What counts as "stale" for #4 (a fixed day threshold vs. relative to the
-project's own task cadence), and exactly how much to bump `ProfileSkill.confidence` on a pass (a
-fixed floor like 0.8, or scaled by the evaluation score) -- both need a real answer, not a guess,
-before implementing.
 
 ### Mini-interview skill assessment
 
@@ -161,6 +124,37 @@ content to place, rather than guessing the right shape upfront.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — v0.1.10
+
+Shipped: coaching project loop closure (see below), plus a README pass to fix the stale test count
+(319 → 453) and refresh the Roadmap ideas section, which still described the Workday connector as
+"next up" after it had already shipped.
+
+### 2026-09-29 — Coaching project loop closure
+
+Closed the gap traced and scoped in the removed Planned section above: a passed evaluation used
+to update nothing beyond `ProvenSkill` and offering a resume proposal. Now, in
+`evaluate_project_submission` (`dashboard/app.py`):
+1. **Confidence bump, scaled by score.** A passed evaluation writes/updates a `source="project"`
+   `ProfileSkill` row at `evaluation.score / 100`. An existing `source="project"` row is updated in
+   place; a higher-trust `"resume"`/`"manual"` row is never silently overwritten downward -- its
+   confidence only rises (never falls) and the corroboration is recorded in its evidence text, not
+   applied silently.
+2. **`JobSkill.gap_status` set to `SATISFIED`** for the project's affected jobs' matching skills,
+   so gap cards on Jobs reflect a proven skill immediately instead of only after the job is
+   re-analyzed.
+3. **`POST /api/coaching-projects/{id}/cancel`** -- the missing "abandon this honestly" action;
+   blocks cancelling an already-completed/cancelled project. Project completion itself already
+   auto-fires on a passed evaluation (existing behavior, kept as-is rather than made a separate
+   manual step).
+4. **Stale-project nudge** -- an `active` project with no task-status change or submission in 14+
+   days (fixed threshold; project task counts are too small for a per-project-cadence signal to be
+   meaningful) shows a "stale" badge on the Coaching page. New `ProjectTask.updated_at` column
+   (migration `0013`) tracks the signal; existing rows read as `NULL` and fall back to the
+   project's `opted_in_at`.
+Bridging a proven skill to a resume proposal was already wired in (`create_resume_proposal` on a
+pass) -- confirmed working, not new. Six new regression tests in `test_coaching_projects.py`.
 
 ### 2026-09-29 — v0.1.9
 

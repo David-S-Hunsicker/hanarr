@@ -46,6 +46,7 @@ from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
     JobPosting,
+    JobSkill,
     Profile,
     Project,
     ProjectMode,
@@ -60,6 +61,7 @@ from ..models import (
     ProvenSkill,
     SeenPosting,
     Skill,
+    SkillGapStatus,
     utc_now,
 )
 from ..pipeline import run_search_cycle
@@ -146,6 +148,31 @@ STUCK_TASK_BUFFER_SECONDS = 30.0
 # redundant background thread, a false "stuck" verdict would let two pulls
 # race on the same shared state.
 MODEL_PULL_STUCK_SECONDS = 3600.0
+
+# How long an "active" coaching project can go with no task-status change and
+# no new submission before the Coaching page nudges it as stale. A fixed
+# threshold, not one relative to the project's own task cadence -- most
+# projects only ever have 3-5 tasks, too few to derive a meaningful per-project
+# cadence from.
+STALE_PROJECT_DAYS = 14
+
+
+def _project_last_activity(project: Project) -> dt.datetime:
+    stamps = [project.opted_in_at]
+    for task in project.tasks:
+        if task.updated_at is not None:
+            stamps.append(task.updated_at)
+    for submission in project.submissions:
+        stamps.append(submission.created_at)
+        if submission.submitted_at is not None:
+            stamps.append(submission.submitted_at)
+    return max(stamps)
+
+
+def _project_is_stale(project: Project, now: dt.datetime) -> bool:
+    if project.status is not ProjectStatus.ACTIVE:
+        return False
+    return (now - _project_last_activity(project)) > dt.timedelta(days=STALE_PROJECT_DAYS)
 
 
 def task_is_stuck(task_state: dict, llm_timeout_seconds: float, now: float | None = None) -> bool:
@@ -1000,6 +1027,22 @@ def create_app(
             session.commit()
             return JSONResponse(project_status(project))
 
+    @app.post("/api/coaching-projects/{project_id}/cancel")
+    def cancel_project(request: Request, project_id: int):
+        """Lets a project be abandoned honestly instead of sitting "active"
+        forever with no way to close it out -- the counterpart to the
+        automatic completion that already happens on a passed evaluation."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            project = session.get(Project, project_id)
+            if project is None or project.profile_id != profile.id:
+                return JSONResponse({"error": "Coaching project not found."}, status_code=404)
+            if project.status in (ProjectStatus.COMPLETED, ProjectStatus.CANCELLED):
+                return JSONResponse({"error": f"Project is already {project.status.value}."}, status_code=400)
+            project.status = ProjectStatus.CANCELLED
+            session.commit()
+            return JSONResponse(project_status(project))
+
     @app.post("/api/coaching-projects/{project_id}/submissions")
     async def create_written_project_submission(project_id: int, request: Request):
         payload = await request.json()
@@ -1110,7 +1153,10 @@ def create_app(
                     if project.status is not ProjectStatus.COMPLETED:
                         project.status = ProjectStatus.COMPLETED
                         project.completed_at = utc_now()
+                    new_confidence = evaluation.score / 100 if evaluation.score is not None else None
+                    skill_ids = set()
                     for project_skill in project.skills:
+                        skill_ids.add(project_skill.skill_id)
                         if session.query(ProvenSkill).filter_by(
                             profile_id=profile.id, skill_id=project_skill.skill_id
                         ).first() is None:
@@ -1119,6 +1165,36 @@ def create_app(
                                 project_id=project.id, evaluation_id=evaluation.id,
                                 evidence=evaluation.feedback or project.target_outcome,
                             ))
+                        if new_confidence is None:
+                            continue
+                        profile_skill = session.query(ProfileSkill).filter_by(
+                            profile_id=profile.id, skill_id=project_skill.skill_id
+                        ).first()
+                        note = f'Coaching project "{project.title}" passed evaluation ({evaluation.score:.0f}/100).'
+                        if profile_skill is None:
+                            session.add(ProfileSkill(
+                                profile_id=profile.id, skill_id=project_skill.skill_id,
+                                source="project", confidence=new_confidence, evidence=note,
+                            ))
+                        elif profile_skill.source == "project":
+                            profile_skill.confidence = max(profile_skill.confidence or 0.0, new_confidence)
+                            profile_skill.evidence = note
+                        elif new_confidence > (profile_skill.confidence or 0.0):
+                            # Never silently overwrite a higher-trust resume/manual
+                            # source's confidence without saying so -- raise it (never
+                            # lower it) and record the corroboration in evidence text.
+                            profile_skill.confidence = new_confidence
+                            profile_skill.evidence = f"{profile_skill.evidence} Corroborated by a passed coaching project: {note}".strip()
+                    affected_job_ids = {link.job_id for link in project.affected_jobs}
+                    if skill_ids and affected_job_ids:
+                        for job_skill in session.query(JobSkill).filter(
+                            JobSkill.job_id.in_(affected_job_ids), JobSkill.skill_id.in_(skill_ids)
+                        ):
+                            job_skill.gap_status = SkillGapStatus.SATISFIED
+                            if new_confidence is not None:
+                                job_skill.confidence = max(job_skill.confidence or 0.0, new_confidence)
+                            job_skill.rationale = f'Satisfied by a passed coaching project: "{project.title}".'
+                            job_skill.analyzed_at = utc_now()
                     proposal = session.query(ResumeProposal).filter(
                         ResumeProposal.profile_id == profile.id,
                         ResumeProposal.project_id == project.id,
@@ -1160,6 +1236,7 @@ def create_app(
             )
             suggestions = coaching_suggestions(session, profile)
             demand = market_demand_summary(session, profile)
+            now = utc_now()
             project_cards = []
             for project in projects:
                 status = project_status(project)
@@ -1168,6 +1245,7 @@ def create_app(
                      "url": link.job.url, "dashboard_url": f"/#job-{link.job.id}"}
                     for link in project.affected_jobs
                 ]
+                status["stale"] = _project_is_stale(project, now)
                 project_cards.append(status)
             return templates.TemplateResponse(
                 request=request,

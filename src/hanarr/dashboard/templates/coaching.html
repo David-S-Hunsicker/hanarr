@@ -107,7 +107,7 @@
       {% for project in projects %}
       <div class="card" id="project-{{ project.id }}">
         <h3>{{ project.title }}</h3>
-        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span><span>{{ project.target_outcome }}</span></div>
+        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span>{% if project.stale %}<span class="pill" style="border-color:var(--warn);color:var(--warn);">stale — no activity in 14+ days</span>{% endif %}<span>{{ project.target_outcome }}</span>{% if project.status in ("planned", "active") %}<button type="button" class="btn btn-secondary cancel-project" data-project-id="{{ project.id }}" style="margin-left:auto;">Cancel project</button>{% endif %}</div>
         <p class="description">{{ project.description }}</p>
         {% if project.affected_jobs %}
         <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.dashboard_url }}">{{ job.title }} · {{ job.company }}</a> <a href="{{ job.url }}" target="_blank" rel="noopener" aria-label="Open {{ job.title }} externally">[open]</a>{% endfor %}</div>
@@ -236,6 +236,14 @@
       button.addEventListener("click", async () => {
         const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/submissions/${button.dataset.submissionId}/evaluate`, {method: "POST"});
         if (!response.ok) window.alert((await response.json()).error || "Could not evaluate submission.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".cancel-project").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!window.confirm("Cancel this project? It will stay visible but marked cancelled.")) return;
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/cancel`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not cancel project.");
         else window.location.reload();
       });
     });
