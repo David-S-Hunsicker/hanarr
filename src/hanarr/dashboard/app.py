@@ -725,8 +725,19 @@ def create_app(
             job = session.get(JobPosting, job_id)
             if job is None or job.profile_id != profile.id:
                 return JSONResponse({"error": "Saved job not found."}, status_code=404)
-            result = analyze_job(session, profile, job, market_analysis_llm)
-            session.commit()
+            try:
+                result = analyze_job(session, profile, job, market_analysis_llm)
+                session.commit()
+            except Exception as exc:  # noqa: BLE001
+                # Without this, any failure here (a DB hiccup, an LLM/network
+                # error not already absorbed by analyze_job's own fallback,
+                # etc.) surfaced as a bare 500 with no detail -- "Improve my
+                # fit" would just silently revert with zero indication of
+                # what actually went wrong, reported as "the button doesn't
+                # work" with nothing to debug from.
+                logger.exception("Skill-gap analysis failed for job %d", job_id)
+                message = f"Analysis failed — {exc}"
+                return JSONResponse({"error": message[:300]}, status_code=500)
             return JSONResponse(result)
 
     @app.get("/api/jobs/{job_id}/skill-gaps")

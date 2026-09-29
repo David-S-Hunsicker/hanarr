@@ -97,6 +97,7 @@
     <div class="job-actions">
       {% if not gap or gap.stale %}
       <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
+      <span class="fit-action-status"></span>
       {% endif %}
       <form method="post" action="/jobs/{{ job.id }}/status">
         <select class="status-select" name="new_status" onchange="this.form.submit()">

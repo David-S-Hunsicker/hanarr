@@ -352,6 +352,7 @@
     }
     .fit-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
     .fit-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .fit-action-status { margin-left: 0.5rem; font-size: 0.78rem; color: var(--status-serious); }
     .score-impact { margin-top: .45rem; font-size: .8rem; color: var(--text-secondary); }
     .score-impact strong { color: var(--status-good); }
 
@@ -491,20 +492,32 @@
         // Called on load, and again after every /jobs/panel swap -- a
         // fresh innerHTML has none of the listeners bound below.
         document.querySelectorAll(".fit-action").forEach((button) => {
+          const statusEl = button.parentElement.querySelector(".fit-action-status");
           button.addEventListener("click", function () {
             button.disabled = true;
             button.textContent = "Analyzing…";
+            if (statusEl) statusEl.textContent = "";
             fetch("/api/jobs/" + button.dataset.jobId + "/skill-gaps/analyze", { method: "POST" })
-              .then((response) => {
-                if (!response.ok) throw new Error("analysis failed");
-                return response.json();
+              .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+              .then(({ ok, data }) => {
+                if (!ok) {
+                  // Surface the real reason instead of just silently
+                  // reverting the button with no indication of what
+                  // actually went wrong -- a bare "try again" with no
+                  // detail is indistinguishable from the button simply
+                  // not working at all.
+                  button.disabled = false;
+                  button.textContent = "Try fit analysis again";
+                  if (statusEl) statusEl.textContent = data.error || "Analysis failed.";
+                  return;
+                }
+                window.location.reload();
               })
-              .then(() => window.location.reload())
               .catch(() => {
                 button.disabled = false;
                 button.textContent = "Try fit analysis again";
+                if (statusEl) statusEl.textContent = "Lost connection during analysis.";
               });
-
           });
         });
         document.querySelectorAll(".project-action").forEach((button) => {

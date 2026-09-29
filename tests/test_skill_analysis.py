@@ -133,6 +133,39 @@ def test_job_gap_detail_api_distinguishes_unanalyzed_and_analyzed_jobs(tmp_path)
     assert after.json()["gaps"][0]["skill"]["name"] == "python"
 
 
+def test_analyze_route_returns_the_real_error_instead_of_a_bare_500(tmp_path, monkeypatch):
+    """Regression test: a user reported "Improve my fit" silently
+    reverting with no indication of what went wrong -- indistinguishable
+    from the button simply not working. Root cause: an unexpected failure
+    inside analyze_job() (anything not already absorbed by its own
+    LLM-failure fallback -- a DB error, etc.) propagated as a bare 500
+    with no detail. The route must catch it and report the actual reason."""
+    import hanarr.dashboard.app as app_mod
+
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(app_mod, "analyze_job", boom)
+    client = TestClient(create_app(settings))
+
+    response = client.post(f"/api/jobs/{job_id}/skill-gaps/analyze")
+
+    assert response.status_code == 500
+    assert "database is locked" in response.json()["error"]
+
+
 def test_saved_job_gaps_flags_stale_when_active_resume_is_newer_than_the_analysis(tmp_path):
     """If a coaching project gets completed and its resume proposal
     approved, the active resume version changes -- any skill-gap analysis
