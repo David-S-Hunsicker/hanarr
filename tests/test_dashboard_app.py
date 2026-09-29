@@ -821,6 +821,96 @@ def test_resume_download_404s_with_no_resume_on_file(tmp_path):
     assert response.status_code == 404
 
 
+def test_reminder_ics_export_downloads_a_calendar_file(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        reminder = Reminder(
+            profile_id=profile.id, job_id=job.id, type=ReminderType.INTERVIEW_PREP,
+            message="Prep for the on-site.",
+            due_at=dt.datetime(2026, 3, 5, 14, 0, 0),
+        )
+        session.add(reminder)
+        session.commit()
+        reminder_id = reminder.id
+
+    client = TestClient(create_app(settings))
+    response = client.get(f"/reminders/{reminder_id}.ics")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")
+    assert f'filename="hanarr-reminder-{reminder_id}.ics"' in response.headers["content-disposition"]
+    assert "BEGIN:VEVENT" in response.text
+    assert "Acme" in response.text
+
+
+def test_reminder_ics_export_404s_for_a_missing_reminder(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.get("/reminders/999999.ics")
+
+    assert response.status_code == 404
+
+
+def test_all_reminders_ics_export_includes_only_pending_reminders_for_the_active_profile(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add_all([
+            Reminder(
+                profile_id=profile.id, type=ReminderType.FOLLOW_UP, message="pending one",
+                due_at=dt.datetime(2026, 3, 5, 14, 0, 0),
+            ),
+            Reminder(
+                profile_id=profile.id, type=ReminderType.FOLLOW_UP, message="already done",
+                due_at=dt.datetime(2026, 3, 1, 9, 0, 0), completed=True,
+            ),
+        ])
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    response = client.get("/reminders.ics")
+
+    assert response.status_code == 200
+    assert response.text.count("BEGIN:VEVENT") == 1
+    assert "pending one" in response.text
+    assert "already done" not in response.text
+
+
+def test_applications_page_links_to_calendar_export(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    session_factory = make_session_factory(settings)
+    with session_factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1", status=ApplicationStatus.APPLIED,
+        )
+        session.add(job)
+        session.commit()
+        session.add(Reminder(
+            profile_id=profile.id, job_id=job.id, type=ReminderType.FOLLOW_UP,
+            message="Follow up.", due_at=dt.datetime(2026, 3, 5, 14, 0, 0),
+        ))
+        session.commit()
+        reminder_id = session.query(Reminder).filter_by(profile_id=profile.id).one().id
+
+    client = TestClient(create_app(settings))
+    html = client.get("/applications").text
+
+    assert 'href="/reminders.ics"' in html
+    assert f'href="/reminders/{reminder_id}.ics"' in html
+
+
 def test_clear_jobs_wipes_postings_seen_and_related_reminders(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     session_factory = make_session_factory(settings)

@@ -33,6 +33,9 @@
     .app-score { color:var(--muted); font-size:.85rem; white-space:nowrap; }
     .reminders { margin-top:.6rem; padding-top:.6rem; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:.25rem; }
     .reminder { font-size:.82rem; color:var(--muted); } .reminder strong { color:var(--text); }
+    .reminder a.ics-link { color:var(--accent); text-decoration:none; font-weight:600; margin-left:.4rem; }
+    .reminder a.ics-link:hover { text-decoration:underline; }
+    .export-all-link { display:inline-block; margin-bottom:1rem; font-size:.85rem; }
     .empty { color:var(--muted); border:1px dashed var(--border); border-radius:10px; padding:1rem; }
   </style>
 </head>
@@ -56,6 +59,7 @@
     <span class="pill pill-{{ status }}">{{ status|capitalize }} · {{ count }}</span>
     {% endfor %}
   </div>
+  <a class="export-all-link" href="/reminders.ics">Export all reminders to calendar (.ics)</a>
 
   {% for status, applications in grouped_applications.items() %}
   <section class="section">
@@ -68,7 +72,7 @@
         {% if app.reminders %}
         <div class="reminders">
           {% for reminder in app.reminders %}
-          <div class="reminder"><strong>{{ reminder.type|replace("_", " ")|capitalize }}</strong> due {{ reminder.due_at.strftime("%b %d, %Y") }} — {{ reminder.message }}</div>
+          <div class="reminder"><strong>{{ reminder.type|replace("_", " ")|capitalize }}</strong> due {{ reminder.due_at.strftime("%b %d, %Y") }} — {{ reminder.message }}<a class="ics-link" href="/reminders/{{ reminder.id }}.ics">Add to calendar</a></div>
           {% endfor %}
         </div>
         {% endif %}

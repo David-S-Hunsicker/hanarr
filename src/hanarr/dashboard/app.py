@@ -38,6 +38,7 @@ from ..ollama_setup import (
     pull_model,
     stage_ollama_installer,
 )
+from ..calendar_export import reminders_to_ics
 from ..coaching_projects import create_coaching_project, project_status
 from ..cover_letter import generate_and_store_cover_letter
 from ..evaluator import evaluate_submission, resubmit_submission
@@ -1250,7 +1251,7 @@ def create_app(
                     "status_changed_at": job.status_changed_at,
                     "fit_score": job.fit_score,
                     "reminders": [
-                        {"type": r.type.value, "message": r.message, "due_at": r.due_at}
+                        {"id": r.id, "type": r.type.value, "message": r.message, "due_at": r.due_at}
                         for r in reminders_by_job.get(job.id, [])
                     ],
                 })
@@ -1263,6 +1264,35 @@ def create_app(
                     "total_count": len(jobs),
                     "active_profile": {"id": profile.id, "name": profile.name},
                 },
+            )
+
+    @app.get("/reminders.ics")
+    def export_all_reminders_ics(request: Request):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            reminders = (
+                session.query(Reminder)
+                .filter(Reminder.profile_id == profile.id, Reminder.completed.is_(False))
+                .order_by(Reminder.due_at.asc())
+                .all()
+            )
+            return PlainTextResponse(
+                reminders_to_ics(reminders),
+                media_type="text/calendar",
+                headers={"Content-Disposition": 'attachment; filename="hanarr-reminders.ics"'},
+            )
+
+    @app.get("/reminders/{reminder_id}.ics")
+    def export_reminder_ics(request: Request, reminder_id: int):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            reminder = session.get(Reminder, reminder_id)
+            if reminder is None or reminder.profile_id != profile.id:
+                return JSONResponse({"error": "Reminder not found."}, status_code=404)
+            return PlainTextResponse(
+                reminders_to_ics([reminder]),
+                media_type="text/calendar",
+                headers={"Content-Disposition": f'attachment; filename="hanarr-reminder-{reminder.id}.ics"'},
             )
 
     @app.post("/jobs/clear")
