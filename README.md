@@ -193,15 +193,17 @@ the installer, SHA-256 checksum, metadata, and an unsigned-installer warning. Th
 the publication approval; no signing secret is required. Windows may warn that the installer's
 publisher is unknown. `v0.1.0` and `v0.1.1` have shipped through this pipeline — see the
 [Releases page](https://github.com/David-S-Hunsicker/hanarr/releases). The installer never
-installs Ollama, and applying updates from
-within Hanarr is not implemented.
+installs Ollama.
 
-Update checks are available in Settings → Updates but are disabled by default. When enabled,
-Hanarr reads either a configured JSON release endpoint or the latest GitHub release, validates
-semver, release-note URLs, asset URLs, and SHA-256 checksums, and displays the current/latest
-version and release notes link. Checks fail clearly when offline. Download and installation are
-not implemented yet; the approval endpoint refuses to change files even after consent, so
-updates cannot silently replace the packaged runtime or affect local data.
+Update checks are on by default in Settings → Updates. Hanarr reads either a configured JSON
+release endpoint or the latest GitHub release, validates semver, release-note URLs, asset URLs,
+and SHA-256 checksums, and displays the current/latest version and release notes link. Checks
+fail clearly when offline. By default, a found update downloads, verifies its checksum, and
+installs itself after a visible, cancellable countdown (shown site-wide, with an "Update now" /
+"Cancel" option) — an in-progress search is never interrupted, so applying waits until no search
+is running. Unchecking "Automatically download and install updates" (leaving update checks
+themselves on) switches to manual-only: updates are found and shown, but only ever installed by
+clicking "Install now."
 
 Uploads are bounded and stored locally: resume uploads are limited to 10 MiB, and local
 submission artifacts are limited to 100 files, 10 MiB per file, and 50 MiB total. Uploads are
@@ -327,25 +329,12 @@ cover the prefilter and the rule-based fallback scorer.
 
 ## Roadmap ideas
 
-- Fuzzy/synonym skill matching (e.g. "JS" ↔ "JavaScript") — under discussion, not yet designed.
-- Manual job entry (add a posting Hanarr didn't find on its own) — deferred by request.
-- Persisted, cross-run activity history — the Jobs page already shows a live scrolling log while
-  a search runs, but it's ephemeral (only the most recent run on this server process); a real
-  history across restarts and past runs is still open.
-- A Workday connector (or similar) — Greenhouse/Lever/Ashby all skew toward VC-funded tech/
-  startup companies; Workday's public job-board API is where most traditional enterprises,
-  healthcare systems, and large non-tech employers actually post, which would meaningfully
-  widen coverage beyond what profile-based filtering alone can fix (see **Job sources** above).
-  Paused in favor of the filtering work; not yet built.
-- In-app auto-update — notify when a newer release is found, auto-apply after a visible delay
-  (cancellable), never interrupt an in-progress search, and always leave a manual fallback path.
-  Design agreed, not yet implemented; today, Settings → Updates only checks and links to release
-  notes (see above).
-- Cover-letter drafting from the LLM client already in place
-- Optional calendar-file (.ics) export for interview reminders
-- Per-profile search preferences (currently shared across all local profiles on an instance;
-  see "Running your own instance" above) — would need preferences to move from `config.yaml`
-  into the database, and the scheduler to run one cycle per profile with its own criteria.
+Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
+shipped and why. Current ideas: fuzzy/synonym skill matching, manual job entry, persisted
+cross-run activity history, a Workday connector for non-startup employers, cover-letter drafting,
+calendar-file (.ics) export for interview reminders, per-profile search preferences, a mini-
+interview skill assessment mechanic, a STAR behavioral-story builder, and an in-app "how to use
+Hanarr" guide page.
 
 ## License
 
