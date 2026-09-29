@@ -42,7 +42,7 @@
         <a class="apply-link" href="{{ job.url }}" target="_blank" rel="noopener">Apply &#8599;</a>
         {% if job.posted_at|is_recent_posting %}<span class="pill new-badge">New</span>{% endif %}
       </div>
-      <div class="job-company">Company: {{ job.company }}</div>
+      <div class="job-company">{{ job.company }}</div>
       {% set impact = score_impact_by_job.get(job.id) %}
       {% if impact %}
       <div class="score-impact">Resume impact: {{ "%.0f"|format(impact.before_score) if impact.before_score is not none else "—" }} → {{ "%.0f"|format(impact.after_score) }}{% if impact.delta is not none %} <strong>({{ "%+.0f"|format(impact.delta) }})</strong>{% endif %} · <a href="/resume">why this changed</a></div>

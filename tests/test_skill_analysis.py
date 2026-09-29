@@ -314,7 +314,7 @@ def test_index_shows_gap_indicator_and_preserves_status_action(tmp_path):
     assert f'id="job-{job_id}"' in html
     assert "View on Skills page" in html
     assert "Apply &#8599;" in html
-    assert "Company: Acme" in html
+    assert '<div class="job-company">Acme</div>' in html
     assert "Preferences &amp; config" not in html
 
 
