@@ -162,6 +162,11 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — v0.1.9
+
+Shipped: navigate straight to a newly created coaching project instead of reloading the Jobs page
+(see below), plus the LICENSE audit and roadmap scoping entries from earlier today.
+
 ### 2026-09-29 — LICENSE audit: attribution, trademark, and distribution-scope gaps
 
 Full adversarial re-read of `LICENSE`, prompted by a direct worry about someone taking the code,
