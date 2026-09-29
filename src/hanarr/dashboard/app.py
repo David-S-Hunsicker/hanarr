@@ -66,6 +66,7 @@ from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
 from .. import self_update
+from .. import __version__ as APP_VERSION
 from ..update_state import new_update_state
 from ..resume import (
     ALLOWED_RESUME_EXTENSIONS,
@@ -1550,6 +1551,7 @@ def create_app(
                 "common_dealbreakers": COMMON_DEALBREAKERS,
                 "dealbreakers_custom": custom_dealbreakers(preferences.dealbreakers),
                 "config_version": _config_version_for_tab(resolved_tab, request),
+                "app_version": APP_VERSION,
             },
         )
 
@@ -1807,6 +1809,7 @@ def create_app(
                     "common_dealbreakers": COMMON_DEALBREAKERS,
                     "dealbreakers_custom": custom_dealbreakers(conflict_preferences.dealbreakers),
                     "config_version": current_version,
+                    "app_version": APP_VERSION,
                 },
                 status_code=409,
             )
@@ -1836,6 +1839,7 @@ def create_app(
                     "common_dealbreakers": COMMON_DEALBREAKERS,
                     "dealbreakers_custom": custom_dealbreakers(error_preferences.dealbreakers),
                     "config_version": current_version,
+                    "app_version": APP_VERSION,
                 },
             )
 

@@ -114,6 +114,12 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — v0.1.6
+
+Shipped: the version number is now visible in the app itself (Settings page header), not just
+`pyproject.toml`/`__init__.py` — no reason to have to dig into the source tree to tell what
+you're running.
+
 ### 2026-09-29 — Per-profile search preferences
 
 Multiple local profiles have shared one set of match criteria (target titles, locations, salary

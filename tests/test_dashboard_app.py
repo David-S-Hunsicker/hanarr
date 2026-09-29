@@ -791,6 +791,20 @@ def test_config_get_shows_the_shared_default_for_an_unforked_profile(tmp_path):
     assert "Shared Config Title" in page
 
 
+def test_config_page_shows_the_app_version(tmp_path):
+    """The version was previously only visible in pyproject.toml/__init__.py
+    -- surfaced on Settings so the user can tell what they're running
+    without digging into the source tree."""
+    from hanarr import __version__
+
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    page = client.get("/config?tab=preferences").text
+
+    assert f"v{__version__}" in page
+
+
 def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
     """Regression test for the core multi-profile promise: switching the
     active-profile cookie must isolate jobs (and everything else keyed by

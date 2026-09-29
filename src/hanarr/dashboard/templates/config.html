@@ -239,11 +239,12 @@
       cursor: pointer;
     }
     button.save:hover { opacity: 0.9; }
+    .app-version { font-size: 0.55em; font-weight: normal; color: #888; vertical-align: middle; }
   </style>
 </head>
 <body>
   <div class="page-header">
-    <h1>Preferences &amp; config</h1>
+    <h1>Preferences &amp; config <span class="app-version">v{{ app_version }}</span></h1>
     <span>
       {% if active_profile %}<a class="nav-link" href="/profiles">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
       <a class="nav-link" href="/">&larr; Back to jobs</a>
