@@ -114,16 +114,18 @@ carry forward into a skimmable list.
 Shipped: the license change, SQLite WAL mode + checkpoint-before-backup, and file-backed logging
 with a catch-all exception handler, all described below.
 
-### 2026-09-29 — License changed from MIT to PolyForm Strict 1.0.0
+### 2026-09-29 — License changed from MIT to a modified PolyForm Strict 1.0.0
 
 Repo stays public/source-available, but the license itself now restricts what people can do with
 the code: view and run it for personal/noncommercial use, but not modify it, redistribute it
 (modified or not), or use it commercially without a separate agreement with the copyright holder.
-PolyForm Strict already does exactly this out of the box — its "permitted purposes" are limited to
-noncommercial use, personal use, and specific noncommercial organizations (charities, schools,
-government, public research/safety/health/environmental orgs); ordinary commercial/business use
-isn't a permitted purpose at all, so it requires the copyright holder's separate permission. See
-`LICENSE` (full text plus a plain-English summary at the bottom) and the polyformproject.org
+PolyForm Strict does exactly this out of the box, with one adjustment: its stock text carves out a
+blanket exemption for any charity/school/government/public-research/etc. organization regardless
+of funding source — removed here, since the ask was no organization gets a free pass, full stop.
+"Any noncommercial purpose is a permitted purpose" is now the only test, applied the same way to
+an individual, a business, or a nonprofit alike. See `LICENSE` (full text, with the removed
+section and the reasoning called out at the top, plus a plain-English summary at the bottom) and
+the polyformproject.org
 source this was pulled from verbatim, rather than drafting custom legal text from scratch.
 
 ### 2026-09-29 — SQLite WAL mode, for the same bug report

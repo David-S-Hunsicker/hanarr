@@ -1,9 +1,14 @@
 Copyright (c) 2026 David Hunsicker
 
-Licensed under the PolyForm Strict License 1.0.0. You may view the license
-text at <https://polyformproject.org/licenses/strict/1.0.0> or below.
+Licensed under a modified version of the PolyForm Strict License 1.0.0 --
+identical to the original except that the "Noncommercial Organizations"
+section has been removed, so no organization (charity, school, government,
+etc.) gets a blanket exemption; the "Any noncommercial purpose is a
+permitted purpose" line is the only test. The unmodified original is at
+<https://polyformproject.org/licenses/strict/1.0.0>; this file's actual
+terms are below.
 
-# PolyForm Strict License 1.0.0
+# PolyForm Strict License 1.0.0 (modified)
 
 <https://polyformproject.org/licenses/strict/1.0.0>
 
@@ -26,10 +31,6 @@ Any noncommercial purpose is a permitted purpose.
 ## Personal Uses
 
 Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
-
-## Noncommercial Organizations
-
-Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
 
 ## Fair Use
 
@@ -72,9 +73,11 @@ The **licensor** is the individual or entity offering these terms, and the **sof
   (modified or not) to anyone else.
 - Commercial use (using it for or within a business, or any revenue-generating purpose) is
   **not** a permitted purpose under this license and requires a separate agreement with the
-  copyright holder.
+  copyright holder -- this applies equally to a for-profit business, a nonprofit, a school, a
+  government agency, or any other organization. There is no blanket exemption for any category
+  of organization; the only test is whether the specific use is itself noncommercial.
 - Only the copyright holder (David Hunsicker) may modify, redistribute, or sell this software,
   or grant commercial licenses to others.
 
-This summary is provided for convenience only and is not part of the license; the PolyForm
-Strict License 1.0.0 text above is what actually governs.
+This summary is provided for convenience only and is not part of the license; the modified
+PolyForm Strict License 1.0.0 text above is what actually governs.
