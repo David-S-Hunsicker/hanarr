@@ -1572,6 +1572,28 @@ def test_debug_filtered_page_shows_rejected_postings_after_a_search(tmp_path, mo
     assert "unpaid" in html
 
 
+def test_why_this_score_label_is_not_duplicated(tmp_path):
+    """Regression test: the "Why this score" disclosure's visible label is
+    injected once by CSS (:before on the <summary>, which also supplies
+    the arrow icon) -- the <summary> tag must not ALSO contain that text
+    as real content, or it renders twice ("Why this score ▸  Why this
+    score")."""
+    settings = _make_isolated_settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(JobPosting(
+            profile_id=profile.id, source="test", external_id="rationale-1", company="Acme",
+            title="Engineer", url="https://example.test/rationale-1", fit_score=80.0,
+            fit_rationale="You have strong relevant experience.",
+        ))
+        session.commit()
+
+    html = TestClient(create_app(settings)).get("/").text
+    assert "<summary></summary>" in html
+    assert "<summary>Why this score</summary>" not in html
+
+
 def test_search_status_reports_already_seen_count_for_resumed_postings(tmp_path, monkeypatch):
     """"Do we think it's possible to resume a search that was paused or
     disrupted?" -- yes, via the SeenPosting dedup, but it needs to be
