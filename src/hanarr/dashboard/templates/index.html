@@ -165,6 +165,7 @@
     .toolbar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
     .toolbar button:disabled { color: var(--text-muted); cursor: default; }
     .toolbar .note { font-size: 0.85rem; color: var(--text-secondary); }
+    .sound-toggle { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
     #model-not-ready-note { font-size: 0.85rem; color: var(--text-secondary); margin: -0.5rem 0 1rem; }
     #model-not-ready-note a { color: var(--accent); text-decoration: none; }
     #model-not-ready-note a:hover { text-decoration: underline; }
@@ -515,6 +516,7 @@
       <button type="submit" class="stop-btn" id="clear-jobs-btn">Clear all jobs</button>
     </form>
     <a class="nav-link" href="/debug/filtered">Why were jobs filtered out?</a>
+    <label class="sound-toggle"><input type="checkbox" id="sound-toggle" checked> 🔊 Sound on new matches</label>
     <span class="note" id="search-note">{% if last_search_result %}{{ last_search_result }}{% endif %}</span>
   </div>
 
@@ -581,6 +583,43 @@
       const countLabel = document.getElementById("progress-count");
       const barFill = document.getElementById("progress-bar-fill");
       const logEl = document.getElementById("progress-log");
+      const soundToggle = document.getElementById("sound-toggle");
+
+      function soundEnabled() {
+        try {
+          return localStorage.getItem("hanarr_sound_enabled") !== "false";
+        } catch (e) {
+          return true;
+        }
+      }
+      if (soundToggle) {
+        soundToggle.checked = soundEnabled();
+        soundToggle.addEventListener("change", function () {
+          try {
+            localStorage.setItem("hanarr_sound_enabled", soundToggle.checked ? "true" : "false");
+          } catch (e) { /* localStorage unavailable -- toggle still works for this page view */ }
+        });
+      }
+
+      let audioCtx = null;
+      function playMatchDing() {
+        // A short synthesized tone -- no audio file to ship or host, and
+        // nothing plays unless a real match just landed and the toggle is on.
+        if (!soundEnabled()) return;
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = 880;
+          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.18);
+        } catch (e) { /* autoplay blocked or Web Audio unavailable -- silently skip */ }
+      }
 
       function bindJobCardHandlers() {
         // Called on load, and again after every /jobs/panel swap -- a
@@ -731,6 +770,7 @@
             // soon as it changes, instead of waiting for the run to finish
             // and the page to fully reload.
             if (lastRenderedMatchedCount !== null && data.matched_count !== lastRenderedMatchedCount) {
+              if (data.matched_count > lastRenderedMatchedCount) playMatchDing();
               refreshJobsPanel();
             }
             lastRenderedMatchedCount = data.matched_count;

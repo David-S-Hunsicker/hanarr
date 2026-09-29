@@ -49,6 +49,21 @@ def test_jobs_page_disables_search_when_ollama_model_is_not_downloaded(tmp_path,
     assert '/config?tab=app#provider' in html
 
 
+def test_jobs_page_has_a_sound_toggle_and_plays_a_tone_on_new_matches(tmp_path):
+    """A user asked for an audible cue when a job is scored and added
+    during a live search, with an easy way to turn it off -- no audio
+    file is shipped, it's a synthesized Web Audio tone gated on both the
+    toggle and an actual increase in matched_count (never on a run reset
+    back to 0)."""
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/").text
+
+    assert 'id="sound-toggle"' in html
+    assert "function playMatchDing" in html
+    assert "hanarr_sound_enabled" in html
+    assert "if (data.matched_count > lastRenderedMatchedCount) playMatchDing();" in html
+
+
 def test_jobs_page_search_enabled_when_ollama_model_is_downloaded(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     settings.llm.provider = "ollama"
