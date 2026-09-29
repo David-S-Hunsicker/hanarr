@@ -15,6 +15,22 @@ inline before work starts. (The third planned feature, the "How to use Hanarr" g
 
 ## Backlog
 
+- **Per-task model sizing** — right now every LLM call effectively uses whatever one model is
+  configured in Settings, sized for the heaviest task. `AgentOrchestrator`/`AgentName` in
+  `agent_orchestration.py`/`config.py` already support per-role (and even per-task) provider/model
+  overrides (`settings.agents.<role>`, `settings.agents.tasks`) — the plumbing exists — but nothing
+  in the dashboard exposes it; it's config.yaml-only today, and nobody's actually set it. Needs:
+  (1) a real assessment of the five existing roles (`profiler`, `market_analysis`, `curriculum`,
+  `evaluator`, `resume_writer`) and their actual call sites, characterizing which are simple/cheap
+  (e.g. short structured extraction) vs. genuinely complex (e.g. long-context reasoning, nuanced
+  judgment) — not guessed at, the same way the Workday connector's API contract was researched
+  before building anything; (2) a Settings UI section surfacing per-role model choice, with a
+  suggested default per role (reusing the existing hardware-based `recommend_model()` sizing logic
+  in `ollama_setup.py` as a starting point, extended per-role rather than one blanket
+  recommendation). Real potential upside: a household running Ollama locally could use a fast
+  small model for cheap/frequent calls and reserve a slower/larger one for the calls that actually
+  need it, instead of paying the heaviest cost on every call.
+
 ## Deferred / low priority
 
 Real ideas, but nobody's actually blocked by either — no need pulling on them right now, so they
