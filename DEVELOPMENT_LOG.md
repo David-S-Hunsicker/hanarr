@@ -109,6 +109,19 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — File-backed logging for the packaged build
+
+Real gap found from a live bug report: a 500 on the Jobs page after starting a search, reported
+against the standalone packaged build, with nothing to go on beyond "internal server error" — the
+packaged executable runs `--windowed` (no console), so every unhandled exception's traceback was
+going to stderr and vanishing into nothing. `logging_setup.configure_file_logging()` adds a
+rotating file handler (`<data_dir>/logs/hanarr.log`, capped at ~2MB × 3 files) alongside the
+existing console logging; `create_app()` also gained a catch-all FastAPI exception handler so an
+unhandled error is guaranteed to log a full traceback before returning a plain 500, rather than
+relying on uvicorn's own exception logging path. This doesn't fix the reported bug by itself —
+still needs a real reproduction with a traceback in hand — but makes any future occurrence (this
+one included) actually diagnosable instead of a dead end.
+
 ### 2026-09-29 — Workday connector
 
 Greenhouse/Lever/Ashby all skew toward VC-funded tech/startup companies; this reaches the

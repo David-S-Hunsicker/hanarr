@@ -13,6 +13,7 @@ from rich.table import Table
 from .config import DEFAULT_CONFIG_PATH, load_settings, save_settings_to_yaml
 from .db import get_or_create_profile, make_session_factory
 from .llm import build_llm_client
+from .logging_setup import configure_file_logging
 from .models import ApplicationStatus, JobPosting, ResumeVersion, utc_now
 from .pipeline import LLMUnavailableError, run_search_cycle
 from .reminders import (
@@ -191,6 +192,8 @@ def serve(ctx: click.Context, launch_mode: str | None):
     config_path = Path(ctx.obj["config_path"])
     first_run = not config_path.exists()
     settings = load_settings(config_path)
+    log_path = configure_file_logging(settings.data_dir)
+    console.print(f"[dim]Logging to {log_path}[/dim]")
     if first_run and config_path.exists():
         console.print(
             f"[green]First run: created {config_path} from the template.[/green] "

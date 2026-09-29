@@ -805,6 +805,34 @@ def test_config_page_shows_the_app_version(tmp_path):
     assert f"v{__version__}" in page
 
 
+def test_unhandled_exception_returns_500_and_logs_a_traceback_instead_of_crashing_silently(
+    tmp_path, monkeypatch
+):
+    """Regression coverage for a real gap: the packaged desktop build runs
+    --windowed (no console -- see scripts/build_windows.ps1), so an
+    unhandled exception previously vanished with nothing for a user to
+    report beyond "Internal Server Error". The global exception handler in
+    create_app() must turn that into a real logged traceback (which
+    logging_setup.configure_file_logging persists to a file at runtime)
+    without the test client itself raising."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings), raise_server_exceptions=False)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated failure for the regression test")
+
+    monkeypatch.setattr(app_mod, "get_active_profile", _boom)
+
+    logged = []
+    monkeypatch.setattr(app_mod.logger, "exception", lambda msg, *a: logged.append(msg % a))
+
+    response = client.get("/")
+
+    assert response.status_code == 500
+    assert "Internal Server Error" in response.text
+    assert logged and "Unhandled error on GET /" in logged[0]
+
+
 def test_two_profiles_see_only_their_own_jobs(tmp_path, monkeypatch):
     """Regression test for the core multi-profile promise: switching the
     active-profile cookie must isolate jobs (and everything else keyed by

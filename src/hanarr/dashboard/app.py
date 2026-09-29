@@ -202,6 +202,19 @@ def create_app(
     caller that doesn't run a scheduler) and a fresh, unshared one is
     created."""
     app = FastAPI(title="Hanarr")
+
+    @app.exception_handler(Exception)
+    async def _log_unhandled_exception(request: Request, exc: Exception):
+        # The packaged desktop build runs --windowed (no console -- see
+        # scripts/build_windows.ps1), so stderr goes nowhere: without this,
+        # an unhandled exception here left a user with nothing to report
+        # beyond "Internal Server Error" and no way to diagnose it. This
+        # guarantees a full traceback lands in the rotating log file
+        # logging_setup.configure_file_logging() sets up, regardless of
+        # uvicorn's own (log_level="warning") exception logging.
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return PlainTextResponse("Internal Server Error", status_code=500)
+
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.cache = None
     templates.env.filters["posting_age"] = format_posting_age
