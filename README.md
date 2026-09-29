@@ -276,11 +276,15 @@ text and job descriptions sent to Anthropic's API for scoring.
 This is still built as **one local instance, no hosted accounts or multi-tenancy** — there's no
 login, no remote database, and no isolation between people beyond what a single local machine
 already provides. Within that, one instance now supports **multiple local profiles**: each
-profile (created from the Profiles page) gets its own resume, jobs, applications, skills, and
-coaching projects, and a browser cookie tracks which profile it's acting as — useful for a
-household or a couple of people sharing one machine's instance. Search preferences (target
-titles, locations, connectors, LLM, schedule) are shared across every profile on the instance,
-not per-profile.
+profile (created from the Profiles page) gets its own resume, jobs, applications, skills, coaching
+projects, and — as of this pass — **its own match criteria** (target titles, locations, salary
+floor, dealbreakers, seniority, etc.), and a browser cookie tracks which profile it's acting as.
+Saving the Settings → Preferences tab while acting as one profile only affects that profile; a new
+profile starts from bare defaults rather than inheriting whatever the existing profile already has
+configured, since it's likely a different person. Job sources (company boards/connectors), the LLM
+provider, and the schedule remain shared across every profile on the instance — useful for a
+household sharing one machine's instance without re-entering the same company-board lists per
+person.
 
 This is not the same thing as a real multi-tenant, hosted product — there's still no
 authentication (anyone with access to the browser can switch profiles), no per-user access
@@ -330,11 +334,10 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. In progress or next up: per-profile search preferences (needed to make
-multi-profile support meaningfully multi-user, since preferences are currently shared across every
-profile on an instance) and a Workday connector for non-startup employers. A mini-interview skill
-assessment mechanic and a STAR behavioral-story builder are scoped but not started. Fuzzy/synonym
-skill matching and persisted cross-run activity history are deliberately shelved — real ideas, but
+shipped and why. Next up: a Workday connector for non-startup employers (needs its real public API
+contract researched first). A mini-interview skill assessment mechanic and a STAR behavioral-story
+builder are scoped but not started. Fuzzy/synonym skill matching and persisted cross-run activity
+history are deliberately shelved — real ideas, but
 nothing's actually blocked by either right now. An in-app **Guide** tab (`/guide` in the dashboard)
 already covers how to use Hanarr page by page, job cards can draft a cover letter directly from the
 stored resume, a "+ Add a job manually" form on Jobs tracks a posting the connectors didn't find,

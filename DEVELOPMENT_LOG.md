@@ -15,7 +15,6 @@ inline before work starts. (The third planned feature, the "How to use Hanarr" g
 
 ## Backlog
 
-- **Per-profile search preferences** — see below; in progress.
 - **A Workday connector** — Greenhouse/Lever/Ashby all skew toward VC-funded tech/startup
   companies; Workday's public job-board API is where most traditional enterprises, healthcare
   systems, and large non-tech employers actually post. Needs the real API contract researched
@@ -114,6 +113,22 @@ content to place, rather than guessing the right shape upfront.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — Per-profile search preferences
+
+Multiple local profiles have shared one set of match criteria (target titles, locations, salary
+floor, dealbreakers, etc.) from `config.yaml` since profiles first existed — real for a solo user,
+but not meaningfully multi-user for a household sharing an instance. `Profile.preferences_json`
+(empty by default) plus `config.effective_preferences(profile, settings)` (falls back live to the
+shared value until a profile saves its own) makes this per-profile with zero migration step for an
+existing single-profile install. Settings → Preferences now saves onto the active profile; a new
+profile starts from bare defaults, not a copy of whatever's already configured — likely a
+different person. Job sources, LLM provider, and schedule stay shared.
+
+Found a real bug via the isolation test itself, not from a bug report: the stale-save conflict
+check used one global version counter for every tab *and* every profile, so one profile saving
+would spuriously block a different profile's unrelated save. Fixed with a separate per-profile
+`preferences_version` counter (migration 0012) that only the Preferences tab checks.
 
 ### 2026-09-29 — Manual job entry
 
