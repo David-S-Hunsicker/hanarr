@@ -86,7 +86,10 @@
           {% for item in gap.gaps %}
           <li class="{{ item.status }}"><strong>{{ item.skill.name }}</strong> — {{ item.status }}{% if item.evidence %}; {{ item.evidence }}{% endif %}</li>
           {% if item.status in ["missing", "partial"] %}
-          <li><button type="button" class="project-action" data-job-id="{{ job.id }}" data-skill-id="{{ item.skill.id }}">Start project for {{ item.skill.name }}</button></li>
+          <li>
+            <button type="button" class="project-action" data-job-id="{{ job.id }}" data-skill-id="{{ item.skill.id }}">Start project for {{ item.skill.name }}</button>
+            <a class="skill-page-link" href="/skills#skill-{{ item.skill.id }}">View on Skills page</a>
+          </li>
           {% endif %}
           {% endfor %}
         </ul>

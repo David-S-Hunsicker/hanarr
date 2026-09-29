@@ -61,7 +61,7 @@
       <div class="skill-group" data-group>
         <h2>{{ group_name }} <span class="group-count">({{ group_skills|length }})</span></h2>
         {% for skill in group_skills %}
-        <details class="skill-row" data-skill-name="{{ skill.name|lower }}">
+        <details class="skill-row" id="skill-{{ skill.id }}" data-skill-name="{{ skill.name|lower }}">
           <summary>
             <span class="skill-name">{{ skill.name }}</span>
             {% if skill.capability.proficiency is not none %}<span class="pill">{{ "%.0f"|format(skill.capability.proficiency * 100) }}%</span>{% endif %}
@@ -141,6 +141,14 @@
           group.classList.toggle("no-visible-rows", !hasVisible);
         });
       });
+    }
+
+    if (location.hash.startsWith("#skill-")) {
+      const target = document.querySelector(location.hash);
+      if (target && target.tagName === "DETAILS") {
+        target.open = true;
+        target.scrollIntoView({block: "center"});
+      }
     }
   </script>
 </body>

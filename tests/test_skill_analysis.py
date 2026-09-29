@@ -312,6 +312,7 @@ def test_index_shows_gap_indicator_and_preserves_status_action(tmp_path):
     assert f"/jobs/{job_id}/status" in html
     assert 'document.querySelectorAll(".project-action").forEach' in html
     assert f'id="job-{job_id}"' in html
+    assert "View on Skills page" in html
 
 
 def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_path):
@@ -350,6 +351,7 @@ def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_pa
     assert "Python API project" in page.text
     assert "Affected jobs" in page.text
     assert "Not proven" in page.text
+    assert f'id="skill-{skill_id}"' in page.text
     assert client.get("/api/skills").json()["skills"][0]["proven"] is None
 
     updated = client.patch(
