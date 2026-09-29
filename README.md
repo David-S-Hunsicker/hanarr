@@ -49,8 +49,10 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 ## Status: what's actually verified
 
 The full test suite passes (453 tests), `src/` byte-compiles cleanly, and `git diff --check` is
-clean. Two tagged, signed-off releases (`v0.1.0`, `v0.1.1`) have shipped through the real GitHub
-Actions release pipeline. Beyond the automated suite, the following have been verified live
+clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
+[Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
+rather than a version count here that goes stale every time a new one ships. Beyond the automated
+suite, the following have been verified live
 against real infrastructure (a running Ollama instance with a real model loaded onto GPU, a real
 Windows build/install/uninstall cycle, real connector APIs) rather than only mocked in tests:
 
