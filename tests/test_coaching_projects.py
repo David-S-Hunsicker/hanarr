@@ -151,6 +151,10 @@ def test_coaching_page_shows_suggestions_projects_jobs_and_updates_task(tmp_path
     assert "Backend Engineer" in html
     assert "Affected jobs" in html
     assert f"/#job-{job_id}" in html
+    # Regression check: creating a project from a job's gap list navigates
+    # straight to it (see index.html's .project-action handler) -- the
+    # anchor id it targets must actually exist on the project's card.
+    assert f'id="project-{created["id"]}"' in html
 
     task_id = created["tasks"][0]["id"]
     updated = client.post(

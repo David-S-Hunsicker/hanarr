@@ -725,7 +725,7 @@
             }).then((response) => {
               if (!response.ok) throw new Error("project creation failed");
               return response.json();
-            }).then(() => window.location.reload())
+            }).then((project) => { window.location.href = "/coaching#project-" + project.id; })
               .catch(() => { button.disabled = false; button.textContent = "Project creation failed"; });
           });
         });

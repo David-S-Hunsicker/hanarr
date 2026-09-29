@@ -105,7 +105,7 @@
     <h2>Projects</h2>
     {% if projects %}
       {% for project in projects %}
-      <div class="card">
+      <div class="card" id="project-{{ project.id }}">
         <h3>{{ project.title }}</h3>
         <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span><span>{{ project.target_outcome }}</span></div>
         <p class="description">{{ project.description }}</p>
