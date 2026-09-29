@@ -6,15 +6,19 @@ structured skills/titles/years extraction.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .config import Preferences, Settings
 from .db import get_active_profile
+from .github_skills import detect_github_username, fetch_public_repo_languages, sync_github_skills
 from .llm.base import LLMClient
 from .matching import EXAMPLE_TARGET_TITLES as _EXAMPLE_TARGET_TITLES
 from .models import Profile, ResumeVersion, utc_now
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".txt", ".md"}
 
@@ -179,7 +183,13 @@ def parse_and_store_resume(
     defaults to resume_path's own name for `hanarr init`, where the
     configured path is the only name there ever was. `profile_id` targets a
     specific profile (e.g. the dashboard's active-profile cookie) rather
-    than always the default profile."""
+    than always the default profile.
+
+    Also does a best-effort scan of the resume text for a github.com/
+    <username> URL; if found, that user's public repo languages become
+    additional skill evidence (see github_skills.py). This never raises --
+    a rate limit, network failure, or private profile is logged and
+    otherwise ignored, since it's a niche enhancement, not a requirement."""
     resume_path = Path(resume_path) if resume_path is not None else Path(settings.profile.resume_path)
     resume_text = load_resume_text(resume_path)
     summary = extract_profile_summary(resume_text, llm)
@@ -203,6 +213,23 @@ def parse_and_store_resume(
         ))
 
     session.commit()
+
+    github_username = detect_github_username(resume_text)
+    if github_username:
+        try:
+            languages = fetch_public_repo_languages(github_username)
+            sync_github_skills(session, profile, languages, github_username)
+            session.commit()
+        except Exception:
+            # Best-effort and niche (mostly relevant to software engineers
+            # with a public GitHub profile listed) -- a failure here (rate
+            # limit, network, private profile) must never block a resume
+            # upload/parse, which is the actual thing the user asked for.
+            session.rollback()
+            logger.warning(
+                "Could not sync GitHub skills for profile %s (user %s)",
+                profile.id, github_username, exc_info=True,
+            )
 
     prefs_changed = False
     if not summary.get("_extraction_error"):

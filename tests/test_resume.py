@@ -1,12 +1,13 @@
 import json
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+import hanarr.resume as resume_module
 from hanarr.config import Preferences, Settings
 from hanarr.llm.base import LLMClient
-from hanarr.models import Base, ResumeVersion
+from hanarr.models import Base, ProfileSkill, ResumeVersion, Skill
 from hanarr.resume import (
     autopopulate_preferences_from_resume,
     parse_and_store_resume,
@@ -147,6 +148,49 @@ def test_parse_and_store_resume_saves_text_and_summary_and_updates_preferences(t
     assert prefs_changed is True
     assert settings.preferences.target_titles == ["AI Engineer"]
     assert settings.preferences.keywords_boost == ["pytorch", "kubernetes"]
+
+
+def test_parse_and_store_resume_syncs_skills_from_a_github_profile_in_the_resume(tmp_path, monkeypatch):
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. Portfolio: https://github.com/octocat")
+
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    llm = _FakeLLM({"titles": [], "skills": []})
+    session = _make_session()
+
+    monkeypatch.setattr(
+        resume_module, "fetch_public_repo_languages",
+        lambda username, client=None: {"Python": 4},
+    )
+
+    profile, _summary, _prefs_changed = parse_and_store_resume(session, settings, llm)
+
+    row = session.execute(select(ProfileSkill).where(ProfileSkill.profile_id == profile.id)).scalar_one()
+    skill = session.get(Skill, row.skill_id)
+    assert skill.name == "Python"
+    assert row.source == "github"
+    assert "octocat" in row.evidence
+
+
+def test_parse_and_store_resume_ignores_github_fetch_failures(tmp_path, monkeypatch):
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. Portfolio: https://github.com/octocat")
+
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    llm = _FakeLLM({"titles": [], "skills": []})
+    session = _make_session()
+
+    def _boom(username, client=None):
+        raise ValueError("GitHub API request was rate-limited or forbidden; try again later.")
+
+    monkeypatch.setattr(resume_module, "fetch_public_repo_languages", _boom)
+
+    profile, summary, _prefs_changed = parse_and_store_resume(session, settings, llm)
+
+    assert "Jane Doe" in profile.resume_text
+    assert session.execute(select(ProfileSkill)).scalars().all() == []
 
 
 def test_parse_and_store_resume_records_original_filename_and_parsed_time(tmp_path):
