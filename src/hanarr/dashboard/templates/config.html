@@ -282,6 +282,7 @@
   <div class="card">
     {% if active_tab == 'preferences' %}
     <form method="post" action="/config/preferences">
+      <input type="hidden" name="config_version" value="{{ config_version }}" id="config_version">
       <fieldset>
         <legend>What you're looking for</legend>
         <div class="field">
@@ -478,6 +479,7 @@
 
     {% elif active_tab == 'app' %}
     <form method="post" action="/config/app">
+      <input type="hidden" name="config_version" value="{{ config_version }}">
       <div class="banner notice">
         <div class="restart-row">
           <span>Changes on this tab take effect the next time Hanarr restarts.</span>
@@ -625,6 +627,7 @@
 
     {% elif active_tab == 'updates' %}
     <form method="post" action="/config/updates">
+      <input type="hidden" name="config_version" value="{{ config_version }}">
       <fieldset>
         <legend>Release metadata</legend>
         <div class="banner notice">
@@ -682,6 +685,7 @@
 
     {% elif active_tab == 'schedule' %}
     <form method="post" action="/config/schedule">
+      <input type="hidden" name="config_version" value="{{ config_version }}">
       <div class="banner notice">
         <div class="restart-row">
           <span>Interval changes on this tab take effect the next time Hanarr restarts.</span>
@@ -910,10 +914,17 @@
       // edited fields.
       const form = document.querySelector('form[action="/config/preferences"]');
       const statusEl = document.getElementById("autosave-status");
+      const versionInput = document.getElementById("config_version");
       if (!form || !statusEl) return;
 
       let dirty = false;
       let debounceTimer = null;
+      // Once a save reports a version conflict (settings changed via
+      // another tab/flow since this page loaded), stop autosaving
+      // entirely -- this page's other fields are also stale snapshots at
+      // that point, and silently pushing any of them risks reverting
+      // whatever changed elsewhere. A reload is the only way forward.
+      let blocked = false;
 
       function setStatus(text, isError) {
         statusEl.textContent = text;
@@ -923,17 +934,26 @@
       function save() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
+        if (blocked) return Promise.resolve(false);
         if (!dirty) return Promise.resolve(true);
         setStatus("Saving…", false);
         return fetch(form.action, {
           method: "POST",
           headers: { "X-Autosave": "1" },
           body: new FormData(form),
-        }).then((response) => response.json().then((data) => ({ ok: response.ok, data }))).then(({ ok, data }) => {
+        }).then((response) => response.json().then((data) => ({ ok: response.ok, status: response.status, data }))).then(({ ok, status, data }) => {
           if (ok && data.saved) {
             dirty = false;
+            if (typeof data.config_version !== "undefined" && versionInput) {
+              versionInput.value = data.config_version;
+            }
             setStatus("Saved", false);
             return true;
+          }
+          if (status === 409 || data.conflict) {
+            blocked = true;
+            setStatus((data.errors && data.errors[0]) || "Settings changed elsewhere — reload this page.", true);
+            return false;
           }
           setStatus((data.errors && data.errors[0]) || "Couldn't save.", true);
           return false;
@@ -944,6 +964,7 @@
       }
 
       function scheduleSave() {
+        if (blocked) return;
         dirty = true;
         setStatus("Unsaved changes…", false);
         clearTimeout(debounceTimer);
@@ -960,6 +981,12 @@
 
       document.querySelectorAll("a.tab, a.nav-link").forEach((link) => {
         link.addEventListener("click", function (event) {
+          if (blocked) {
+            if (!window.confirm("Settings changed elsewhere since this page loaded. Leave without saving your changes here?")) {
+              event.preventDefault();
+            }
+            return;
+          }
           if (!dirty) return;
           event.preventDefault();
           const destination = link.href;

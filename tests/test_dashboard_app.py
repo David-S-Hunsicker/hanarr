@@ -1743,9 +1743,104 @@ def test_preferences_autosave_saves_and_returns_json_without_redirecting(tmp_pat
     )
 
     assert response.status_code == 200
-    assert response.json() == {"saved": True}
+    assert response.json() == {"saved": True, "config_version": 1}
     assert settings.preferences.target_titles == ["Staff Engineer"]
     assert settings.matching.min_fit_score == 70
+
+
+def test_config_post_rejects_a_stale_config_version(tmp_path, monkeypatch):
+    """Regression test for a real data-loss incident: locations, salary
+    floor, and every job-source board were silently wiped back to blank
+    when a stale browser tab's full-form autosave overwrote fresher
+    settings. A form claiming a config_version that no longer matches the
+    live value must be refused outright -- not partially applied, not
+    silently accepted -- since its other, untouched fields reflect a
+    settings state that no longer exists."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    # A legitimate save "elsewhere" (e.g. a different tab, or the resume
+    # upload flow's auto-populated preferences) -- a real browser submits
+    # every current field, so this includes locations/company_boards too,
+    # moving the live version from 0 to 1.
+    elsewhere = client.post(
+        "/config/preferences",
+        data={
+            "remote_ok": "on", "min_fit_score": "60",
+            "locations": "Austin, TX",
+            "greenhouse_enabled": "on", "greenhouse_company_boards": "stripe\nairbnb",
+            "config_version": "0",
+        },
+        headers={"X-Autosave": "1"},
+    )
+    assert elsewhere.status_code == 200
+
+    # The stale tab: still believes it's version 0, and its cached DOM has
+    # blank locations/company_boards (loaded before "elsewhere" ran).
+    response = client.post(
+        "/config/preferences",
+        data={
+            "remote_ok": "on", "min_fit_score": "60",
+            "locations": "",  # the stale tab's blank snapshot of a field that was actually populated
+            "config_version": "0",  # still claims the original, now-outdated version
+        },
+        headers={"X-Autosave": "1"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["saved"] is False
+    # The critical assertion: the stale write must never have been applied.
+    assert settings.preferences.locations == ["Austin, TX"]
+    assert settings.sources.greenhouse.company_boards == ["stripe", "airbnb"]
+
+
+def test_config_post_accepts_a_matching_config_version_and_advances_it(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    first = client.post(
+        "/config/preferences",
+        data={"remote_ok": "on", "min_fit_score": "60", "config_version": "0"},
+        headers={"X-Autosave": "1"},
+    )
+    assert first.status_code == 200
+    assert first.json()["config_version"] == 1
+
+    second = client.post(
+        "/config/preferences",
+        data={"remote_ok": "on", "min_fit_score": "60", "locations": "Denver, CO", "config_version": "1"},
+        headers={"X-Autosave": "1"},
+    )
+    assert second.status_code == 200
+    assert second.json()["config_version"] == 2
+    assert settings.preferences.locations == ["Denver, CO"]
+
+
+def test_config_post_without_a_version_field_is_not_blocked(tmp_path, monkeypatch):
+    """Backward compatible: a submit that doesn't include config_version at
+    all (e.g. an older cached page, or a non-browser client) isn't
+    rejected outright -- the protection only activates once a client
+    actually asserts a version that turns out to be wrong."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/preferences",
+        data={"remote_ok": "on", "min_fit_score": "60"},  # no config_version at all
+        headers={"X-Autosave": "1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["saved"] is True
+
+
+def test_config_page_renders_the_current_config_version(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "preferences"}).text
+    assert 'name="config_version" value="0"' in html
 
 
 def test_autosave_returns_json_errors_instead_of_a_rendered_page(tmp_path):

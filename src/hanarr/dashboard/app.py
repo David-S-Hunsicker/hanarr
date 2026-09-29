@@ -218,6 +218,18 @@ def create_app(
     upd_state = update_state if update_state is not None else new_update_state()
     stop_event = threading.Event()
 
+    # Incremented on every successful config.yaml save. A page's rendered
+    # config_version travels with any save it makes (a hidden field, or the
+    # autosave script's tracked value); a mismatch means settings changed
+    # via some other path since this page was loaded (another tab, a
+    # resume upload's auto-populated preferences, etc.) -- see
+    # _handle_config_post. Without this, a stale tab silently overwrites
+    # whatever changed in the meantime the next time *any* field in it is
+    # touched, which is exactly what caused a real data-loss incident
+    # (locations, salary floor, and every job-source board wiped back to
+    # blank/defaults).
+    config_version = {"value": 0}
+
     def _log_event(entry: dict) -> None:
         search_log_event(state, entry)
 
@@ -1373,6 +1385,7 @@ def create_app(
                 "local_timezone": str(tzlocal.get_localzone()),
                 "common_dealbreakers": COMMON_DEALBREAKERS,
                 "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
+                "config_version": config_version["value"],
             },
         )
 
@@ -1573,6 +1586,42 @@ def create_app(
 
         form = await request.form()
         form_dict = {k: v for k, v in form.items()}
+
+        # Optimistic concurrency: the page this form came from rendered a
+        # snapshot of config_version. If the live value has since moved on
+        # (another tab saved, a resume upload auto-populated preferences,
+        # etc.), this form's untouched fields reflect a settings state that
+        # no longer exists -- applying it would silently revert or blank
+        # out whatever changed in the meantime. Refuse instead, rather than
+        # trusting a snapshot that's provably out of date.
+        submitted_version = form_dict.get("config_version")
+        if submitted_version is not None and submitted_version != str(config_version["value"]):
+            conflict_message = (
+                "Settings changed elsewhere since this page loaded (another tab, a resume "
+                "upload, etc.) — reload the page to see the latest before saving again."
+            )
+            if is_autosave:
+                return JSONResponse({"saved": False, "conflict": True, "errors": [conflict_message]}, status_code=409)
+            return templates.TemplateResponse(
+                request=request,
+                name="config.html",
+                context={
+                    "settings": settings,
+                    "active_tab": tab,
+                    "saved": False,
+                    "errors": [conflict_message],
+                    "provider_diagnostics": _provider_diagnostics(),
+                    "resume_upload": _resume_upload_status(_active_profile_id(request)),
+                    "active_profile": _active_profile_summary(request),
+                    "onboarding": _onboarding_status_for_request(request),
+                    "local_timezone": str(tzlocal.get_localzone()),
+                    "common_dealbreakers": COMMON_DEALBREAKERS,
+                    "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
+                    "config_version": config_version["value"],
+                },
+                status_code=409,
+            )
+
         current = settings_to_dict(settings)
         updated_dict = apply_fn(current, form_dict)
         new_settings, errors = validate_and_build(updated_dict)
@@ -1595,6 +1644,7 @@ def create_app(
                     "local_timezone": str(tzlocal.get_localzone()),
                     "common_dealbreakers": COMMON_DEALBREAKERS,
                     "dealbreakers_custom": custom_dealbreakers(settings.preferences.dealbreakers),
+                    "config_version": config_version["value"],
                 },
             )
 
@@ -1612,8 +1662,9 @@ def create_app(
 
         save_settings_to_yaml(settings, str(DEFAULT_CONFIG_PATH))
         persist_secrets_from_form(form_dict)
+        config_version["value"] += 1
         if is_autosave:
-            return JSONResponse({"saved": True})
+            return JSONResponse({"saved": True, "config_version": config_version["value"]})
         return RedirectResponse(f"/config?tab={tab}&saved=1", status_code=303)
 
     @app.post("/config/suggest-keywords")

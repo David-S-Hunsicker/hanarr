@@ -6,6 +6,7 @@ committed template — copy it to get started (see `hanarr init`).
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import shutil
 from pathlib import Path
@@ -295,11 +296,47 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     return settings
 
 
+MAX_CONFIG_BACKUPS = 20
+
+
+def _backup_config(settings: Settings, config_path: Path) -> None:
+    """Keeps the last MAX_CONFIG_BACKUPS copies of config.yaml (in
+    settings.data_dir/backups/, the same directory and naming pattern
+    db.py already uses for pre-migration database backups) before every
+    overwrite.
+
+    config.yaml has no version history of its own -- it's gitignored,
+    never committed, and every dashboard save fully replaces it. A stale
+    browser tab, a bug in a form handler, or anything else that produces a
+    bad write is otherwise unrecoverable. Best-effort: a failed backup
+    (e.g. a full disk) must never block saving the actual change."""
+    if not config_path.exists():
+        return
+    try:
+        backup_dir = settings.data_dir / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = backup_dir / f"config-{timestamp}.yaml"
+        suffix = 1
+        while backup_path.exists():
+            backup_path = backup_dir / f"config-{timestamp}-{suffix}.yaml"
+            suffix += 1
+        shutil.copy2(config_path, backup_path)
+
+        existing = sorted(backup_dir.glob("config-*.yaml"))
+        for stale in existing[:-MAX_CONFIG_BACKUPS]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_CONFIG_PATH) -> None:
     """Writes settings back to config.yaml, omitting secrets that
     load_settings() populates from the environment (ANTHROPIC_API_KEY,
     SMTP_PASSWORD) — those belong in .env, never in the gitignored-but-
     still-plaintext config file."""
+    config_path = Path(config_path)
+    _backup_config(settings, config_path)
     data = settings.model_dump(mode="json", exclude={"data_dir"})
     data["llm"].pop("api_key", None)
     data["agents"]["default"].pop("api_key", None)

@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from hanarr import secrets_store
-from hanarr.config import ScheduleConfig, Settings, load_settings
+from hanarr.config import ScheduleConfig, Settings, load_settings, save_settings_to_yaml
 
 
 def test_schedule_config_rejects_search_interval_below_one_hour():
@@ -108,3 +108,43 @@ def test_existing_config_is_left_untouched(tmp_path, monkeypatch):
     settings = load_settings(config_path)
 
     assert settings.preferences.salary_floor_usd == 1
+
+
+def test_save_settings_to_yaml_backs_up_the_previous_file(tmp_path):
+    """config.yaml has no version history of its own -- a real incident
+    (locations, salary floor, and every job-source board silently wiped by
+    a stale autosave) showed this is otherwise unrecoverable. Every save
+    must keep a copy of what was there before."""
+    settings = Settings(data_dir=tmp_path / "data")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("preferences:\n  salary_floor_usd: 111111\n", encoding="utf-8")
+
+    save_settings_to_yaml(settings, config_path)
+
+    backups = list((tmp_path / "data" / "backups").glob("config-*.yaml"))
+    assert len(backups) == 1
+    assert "111111" in backups[0].read_text(encoding="utf-8")
+
+
+def test_save_settings_to_yaml_does_not_back_up_when_no_file_exists_yet(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data")
+    config_path = tmp_path / "config.yaml"  # never created
+
+    save_settings_to_yaml(settings, config_path)
+
+    backups_dir = tmp_path / "data" / "backups"
+    assert not backups_dir.exists() or not list(backups_dir.glob("config-*.yaml"))
+
+
+def test_save_settings_to_yaml_prunes_backups_beyond_the_limit(tmp_path):
+    from hanarr.config import MAX_CONFIG_BACKUPS
+
+    settings = Settings(data_dir=tmp_path / "data")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("preferences: {}\n", encoding="utf-8")
+
+    for _ in range(MAX_CONFIG_BACKUPS + 5):
+        save_settings_to_yaml(settings, config_path)
+
+    backups = list((tmp_path / "data" / "backups").glob("config-*.yaml"))
+    assert len(backups) <= MAX_CONFIG_BACKUPS
