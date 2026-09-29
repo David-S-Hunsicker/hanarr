@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guide · Hanarr</title>
+  <style>
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; } }
+    * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
+    h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; font-weight:650; } h2 { font-size:1.05rem; margin:1.75rem 0 .6rem; } h3 { font-size:.95rem; margin-bottom:.3rem; }
+    .header { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+    .muted { color:var(--muted); }
+    .nav { display:flex; gap:.4rem; flex-wrap:wrap; margin:1rem 0 1.5rem; }
+    .nav a { color:var(--muted); padding:.45rem .9rem; text-decoration:none; font-size:.85rem; font-weight:600; border-radius:999px; border:1px solid var(--border); background:var(--surface); transition:background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color:var(--accent); color:var(--accent); }
+    .nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .search-activity-badge { display:inline-flex; background:var(--surface); border:1px solid var(--accent); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem; }
+    .search-activity-badge a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .search-activity-badge a:hover { text-decoration:underline; }
+    section.guide-section { margin:1.5rem 0; }
+    p { line-height:1.5; }
+    ol.steps, ul.page-list { padding-left:1.3rem; margin:.5rem 0; }
+    ol.steps li, ul.page-list li { margin:.5rem 0; line-height:1.5; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.9rem 1rem; margin:.6rem 0; }
+    .card h3 { margin-bottom:.35rem; }
+    a { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Guide</h1>
+    <span class="muted">How to get the most out of Hanarr</span>
+    {% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
+  </div>
+  <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/config">Settings</a><a class="active" href="/guide">Guide</a></nav>
+  {% include "_search_activity_badge.html" %}
+  {% include "_update_available_banner.html" %}
+
+  <p class="muted">Hanarr runs entirely on your machine: it parses your resume, searches job sources with
+  legitimate public APIs, scores how well each posting fits your stated preferences, and reminds you to
+  follow up. You review matches and make the calls — this page is a short map of how the pieces fit
+  together, not a full manual.</p>
+
+  <section class="guide-section">
+    <h2>Recommended order of operations</h2>
+    <ol class="steps">
+      <li><strong>Settings</strong> — add your resume and set your preferences (target titles, locations,
+        salary floor, dealbreakers, which job sources to enable). This is the only step you have to do
+        before anything else is useful.</li>
+      <li><strong>Set up a local AI model</strong> (optional but recommended, also in Settings) — without
+        one, matching falls back to plain keyword overlap, which is a much blunter signal than an LLM
+        actually reading each posting against your resume.</li>
+      <li><strong>Jobs</strong> — review what was found, sorted by fit. Mark status as you apply, hear
+        back, or interview; that automatically schedules a follow-up reminder.</li>
+      <li><strong>Coaching &amp; Skills</strong> — when a job shows a skill gap, decide whether to close
+        it with a quick refresher or a small project, and track your real capability evidence separately
+        from what your resume happens to say.</li>
+      <li><strong>Applications</strong> — your pipeline by status, once you've started acting on matches.</li>
+    </ol>
+  </section>
+
+  <section class="guide-section">
+    <h2>What each page is for</h2>
+    <div class="card"><h3>Jobs</h3><p>Discovery and decisions. Every matched posting, its fit score, and
+      why it scored that way. "Improve my fit" starts a coaching project for a posting's specific gaps
+      without changing the score itself — a score only changes when you approve a resume update from a
+      completed project.</p></div>
+    <div class="card"><h3>Coaching</h3><p>Active skill-gap projects: what to work on, why, and a
+      review-first way to submit evidence (written response, local files, or a GitHub repository) for
+      feedback before it ever touches your resume.</p></div>
+    <div class="card"><h3>Resume</h3><p>Your actual source content, the profile Hanarr extracted from it,
+      and any pending resume changes proposed by a completed project — nothing is applied without your
+      explicit approval, and every version stays available to roll back to.</p></div>
+    <div class="card"><h3>Skills</h3><p>Capability, evidence, and resume wording, kept deliberately
+      separate: a skill mentioned on your resume is not the same as one with real project evidence behind
+      it, and this page shows you which is which.</p></div>
+    <div class="card"><h3>Applications</h3><p>The jobs you've actually acted on, viewed as a pipeline by
+      status, with any pending reminders.</p></div>
+    <div class="card"><h3>Settings</h3><p>Preferences and matching criteria, job sources, your LLM
+      provider, resume upload, scheduling, and update checks — everything that controls how Hanarr
+      behaves.</p></div>
+  </section>
+
+  <section class="guide-section">
+    <h2>Understanding fit scores and skill gaps</h2>
+    <p>A fit score reflects how well a posting matches your stated preferences and resume — it's a
+    starting signal for triage, not a verdict. Click "View fit analysis" on a job to see exactly which
+    skills it's looking for and how each one is classified: <strong>satisfied</strong> (your profile
+    clearly covers it), <strong>partial</strong> (some evidence, but thinner than the posting wants), or
+    <strong>missing</strong>. "Improve my fit" turns a missing or partial skill into a coaching project;
+    it reappears automatically if your active resume changes after an analysis, so a stale result never
+    silently goes unnoticed.</p>
+  </section>
+
+  <section class="guide-section">
+    <h2>Local AI vs. a hosted model</h2>
+    <p>The default provider is <strong>Ollama</strong>, running fully on your own machine — free, private,
+    no API key, but it needs to actually be installed and have a model downloaded before scoring quality
+    is good (Settings will tell you exactly what's missing and walk you through it, one explicit click at
+    a time; nothing downloads without your consent). Switching to <strong>Anthropic</strong> in Settings
+    uses a hosted Claude model instead — higher quality, but your resume text and job descriptions are
+    sent to Anthropic's API, and it incurs usage cost. Skipping both (provider "none") still works, just
+    with plain keyword-overlap scoring instead of an LLM actually reading each posting.</p>
+  </section>
+
+  <section class="guide-section">
+    <h2>A few things worth knowing</h2>
+    <ul class="page-list">
+      <li>Preferences fields on Settings autosave as you edit them — there's still a Save button, but you
+        don't have to remember to click it.</li>
+      <li>More than one person can use the same instance: the <a href="/profiles">Profiles</a> page lets
+        you switch which local profile this browser is acting as — each gets its own resume, jobs,
+        applications, and skills, while search preferences stay shared.</li>
+      <li>Nothing Hanarr does is automatic in a way that could surprise you: projects are opted into,
+        resume changes are proposals requiring your approval, and application submission is never
+        unattended.</li>
+    </ul>
+  </section>
+</body>
+</html>

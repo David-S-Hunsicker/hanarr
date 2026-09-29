@@ -1434,6 +1434,30 @@ def test_manual_search_persists_last_search_to_the_profile(tmp_path, monkeypatch
         assert profile.last_search_at is not None
 
 
+def test_guide_page_renders_with_nav_and_explains_the_workflow(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.get("/guide")
+    assert response.status_code == 200
+    html = response.text
+    assert "Recommended order of operations" in html
+    assert "Improve my fit" in html
+    assert 'href="/guide">Guide</a>' in html
+
+
+def test_every_main_page_links_to_the_guide_page(tmp_path):
+    """The Guide nav link was added to every page's own duplicated nav
+    block (no shared include exists) -- regression-test that none of them
+    were missed."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ("/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles"):
+        html = client.get(page).text
+        assert 'href="/guide"' in html, f"{page} is missing a link to /guide"
+
+
 def test_all_pages_share_identical_shell_layout_values(tmp_path):
     """"All page formatting should basically look the same and not shift
     the text around... the header line shouldn't shift or move." Each page
@@ -1444,7 +1468,7 @@ def test_all_pages_share_identical_shell_layout_values(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
-    pages = ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles"]
+    pages = ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/guide"]
     responses = {page: client.get(page) for page in pages}
     for page, response in responses.items():
         assert response.status_code == 200, f"{page} did not load"

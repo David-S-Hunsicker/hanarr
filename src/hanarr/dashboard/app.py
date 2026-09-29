@@ -1142,6 +1142,15 @@ def create_app(
                 }
             )
 
+    @app.get("/guide")
+    def guide_page(request: Request):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            return templates.TemplateResponse(
+                request=request, name="guide.html",
+                context={"active_profile": {"id": profile.id, "name": profile.name}},
+            )
+
     @app.get("/skills")
     def skills_page(request: Request):
         with session_factory() as session:
