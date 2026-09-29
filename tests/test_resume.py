@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import hanarr.resume as resume_module
 from hanarr.config import Preferences, Settings
 from hanarr.llm.base import LLMClient
-from hanarr.models import Base, ProfileSkill, ResumeVersion, Skill
+from hanarr.models import Base, Profile, ProfileSkill, ResumeVersion, Skill
 from hanarr.resume import (
     autopopulate_preferences_from_resume,
     parse_and_store_resume,
@@ -146,8 +146,60 @@ def test_parse_and_store_resume_saves_text_and_summary_and_updates_preferences(t
     assert json.loads(profile.resume_summary_json)["titles"] == ["AI Engineer"]
     assert summary["titles"] == ["AI Engineer"]
     assert prefs_changed is True
-    assert settings.preferences.target_titles == ["AI Engineer"]
-    assert settings.preferences.keywords_boost == ["pytorch", "kubernetes"]
+    # Persisted onto the profile itself, not the shared settings object --
+    # see test_parse_and_store_resume_never_mutates_the_shared_settings_preferences
+    # for why that distinction matters once more than one profile exists.
+    saved_prefs = Preferences.model_validate_json(profile.preferences_json)
+    assert saved_prefs.target_titles == ["AI Engineer"]
+    assert saved_prefs.keywords_boost == ["pytorch", "kubernetes"]
+
+
+def test_parse_and_store_resume_never_mutates_the_shared_settings_preferences(tmp_path):
+    """An unforked profile's effective preferences ARE the shared
+    settings.preferences object (see config.effective_preferences) -- if
+    autopopulate mutated it in place instead of a copy, uploading one
+    profile's resume would silently change what every other unforked
+    profile on the instance sees as its own default."""
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Jane Doe. AI Engineer with PyTorch experience.")
+
+    settings = Settings()
+    settings.profile.resume_path = str(resume_file)
+    settings.preferences.target_titles = []
+    llm = _FakeLLM({"titles": ["AI Engineer"], "skills": ["pytorch"]})
+    session = _make_session()
+
+    parse_and_store_resume(session, settings, llm)
+
+    assert settings.preferences.target_titles == []
+
+
+def test_two_profiles_autopopulate_independently(tmp_path):
+    resume_a = tmp_path / "a.txt"
+    resume_a.write_text("AI Engineer with PyTorch experience.")
+    resume_b = tmp_path / "b.txt"
+    resume_b.write_text("Data Scientist with SQL experience.")
+
+    settings = Settings()
+    session = _make_session()
+
+    profile_a, _, _ = parse_and_store_resume(
+        session, settings, _FakeLLM({"titles": ["AI Engineer"], "skills": ["pytorch"]}),
+        resume_path=resume_a,
+    )
+    second_profile = Profile(name="Second person")
+    session.add(second_profile)
+    session.commit()
+    profile_b, _, _ = parse_and_store_resume(
+        session, settings, _FakeLLM({"titles": ["Data Scientist"], "skills": ["sql"]}),
+        resume_path=resume_b, profile_id=second_profile.id,
+    )
+
+    assert profile_b.id != profile_a.id
+    prefs_a = Preferences.model_validate_json(profile_a.preferences_json)
+    assert prefs_a.target_titles == ["AI Engineer"]
+    prefs_b = Preferences.model_validate_json(profile_b.preferences_json)
+    assert prefs_b.target_titles == ["Data Scientist"]
 
 
 def test_parse_and_store_resume_syncs_skills_from_a_github_profile_in_the_resume(tmp_path, monkeypatch):

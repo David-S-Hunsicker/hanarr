@@ -14,7 +14,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from . import self_update
-from .config import Settings
+from .config import Settings, effective_preferences
 from .db import get_or_create_profile, list_profiles, make_session_factory
 from .llm import build_llm_client
 from .models import Profile, utc_now
@@ -86,7 +86,8 @@ def start_scheduler(
                     # than once for the whole run.
                     resume_summary = json.loads(profile.resume_summary_json or "{}")
                     search_state["sources_total"] = len(build_enabled_connectors(
-                        settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+                        settings.sources, resume_summary=resume_summary,
+                        preferences=effective_preferences(profile, settings),
                     ))
                     try:
                         n = run_search_cycle(

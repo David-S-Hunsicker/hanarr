@@ -11,7 +11,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from .config import Preferences, Settings
+from .config import Preferences, Settings, effective_preferences
 from .db import get_active_profile
 from .github_skills import detect_github_username, fetch_public_repo_languages, sync_github_skills
 from .llm.base import LLMClient
@@ -36,7 +36,7 @@ def autopopulate_preferences_from_resume(prefs: Preferences, resume_summary: dic
     """If target_titles/keywords_boost are blank or still the example
     template's default values, fill them in from the resume's extracted
     titles/skills. Mutates `prefs` in place; returns True if it changed
-    anything (so the caller knows whether to persist config.yaml)."""
+    anything (so the caller knows whether to persist it)."""
     changed = False
 
     if not prefs.target_titles or prefs.target_titles == _EXAMPLE_TARGET_TITLES:
@@ -51,6 +51,26 @@ def autopopulate_preferences_from_resume(prefs: Preferences, resume_summary: dic
             prefs.keywords_boost = list(skills[:MAX_AUTO_BOOST_KEYWORDS])
             changed = True
 
+    return changed
+
+
+def _autopopulate_and_persist(
+    session: Session, profile: Profile, settings: Settings, summary: dict
+) -> bool:
+    """Runs autopopulate against this profile's own effective preferences
+    (never the shared settings.preferences object directly -- an unforked
+    profile's effective_preferences() returns that same shared instance by
+    reference, and mutating it in place would leak into every other
+    unforked profile on the instance) and persists the result onto the
+    profile if anything changed, forking it the same way a Settings ->
+    Preferences save would."""
+    if summary.get("_extraction_error"):
+        return False
+    prefs = effective_preferences(profile, settings).model_copy(deep=True)
+    changed = autopopulate_preferences_from_resume(prefs, summary)
+    if changed:
+        profile.preferences_json = prefs.model_dump_json()
+        session.commit()
     return changed
 
 SYSTEM_PROMPT = """You are extracting a structured profile from a resume for a job-matching \
@@ -158,9 +178,11 @@ def parse_and_store_resume(
     the LLM, and stores both the raw text and summary on the profile. Shared
     by `hanarr init` and the dashboard's upload/re-parse flow so the two
     surfaces can't drift. Also auto-populates target_titles/keywords_boost
-    on settings.preferences (mutated in place) if they're still blank or the
-    example template's defaults — the third return value says whether that
-    happened, so the caller knows whether to persist config.yaml. Raises
+    on this profile's own effective preferences (see config.effective_preferences)
+    if they're still blank or the example template's defaults, persisting
+    the result onto the profile itself (forking it from the shared
+    config.yaml value the same way a Settings -> Preferences save would)
+    — the third return value says whether that happened. Raises
     FileNotFoundError if the resume is missing; LLM extraction failures are
     caught and recorded in the returned summary's _extraction_error, not
     raised.
@@ -231,9 +253,7 @@ def parse_and_store_resume(
                 profile.id, github_username, exc_info=True,
             )
 
-    prefs_changed = False
-    if not summary.get("_extraction_error"):
-        prefs_changed = autopopulate_preferences_from_resume(settings.preferences, summary)
+    prefs_changed = _autopopulate_and_persist(session, profile, settings, summary)
 
     return profile, summary, prefs_changed
 
@@ -261,8 +281,6 @@ def retry_resume_extraction(
     profile.resume_parsed_at = utc_now()
     session.commit()
 
-    prefs_changed = False
-    if not summary.get("_extraction_error"):
-        prefs_changed = autopopulate_preferences_from_resume(settings.preferences, summary)
+    prefs_changed = _autopopulate_and_persist(session, profile, settings, summary)
 
     return profile, summary, prefs_changed

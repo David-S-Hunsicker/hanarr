@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 
-from ..config import DEFAULT_CONFIG_PATH, Settings
+from ..config import DEFAULT_CONFIG_PATH, Settings, effective_preferences
 from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import RawJobPosting, to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
@@ -249,7 +249,8 @@ def create_app(
                 profile = get_active_profile(session, settings, profile_id)
                 resume_summary = json.loads(profile.resume_summary_json or "{}")
                 state["sources_total"] = len(build_enabled_connectors(
-                    settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+                    settings.sources, resume_summary=resume_summary,
+                    preferences=effective_preferences(profile, settings),
                 ))
                 n = run_search_cycle(
                     session, settings, profile, market_analysis_llm,
@@ -308,7 +309,7 @@ def create_app(
                     keyword_state["error"] = "No resume text on file — run `hanarr init` first."
                     return
                 keywords = suggest_boost_keywords(
-                    profile.resume_text, settings.preferences.target_titles, profiler_llm
+                    profile.resume_text, effective_preferences(profile, settings).target_titles, profiler_llm
                 )
                 if not keywords:
                     keyword_state["error"] = "The model didn't return any keywords — try again."
@@ -547,7 +548,7 @@ def create_app(
         one, so it's surfaced as an optional suggestion, not a checklist
         item that blocks the banner from going away."""
         resume_done = bool(profile.resume_text)
-        preferences_done = bool(settings.preferences.target_titles)
+        preferences_done = bool(effective_preferences(profile, settings).target_titles)
         return {
             "resume_done": resume_done,
             "preferences_done": preferences_done,
@@ -782,7 +783,8 @@ def create_app(
                 salary_max=_parse_salary(salary_max),
             )
             score, rationale = score_fit(
-                raw_job, resume_summary, profile.resume_text or "", settings.preferences, market_analysis_llm
+                raw_job, resume_summary, profile.resume_text or "",
+                effective_preferences(profile, settings), market_analysis_llm
             )
             job = JobPosting(
                 profile_id=profile.id,

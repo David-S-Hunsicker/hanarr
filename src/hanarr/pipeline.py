@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import Settings
+from .config import Settings, effective_preferences
 from .connectors import build_enabled_connectors
 from .llm.base import LLMClient, NullLLMClient
 from .matching import prefilter_rejection_reason, score_fit
@@ -95,10 +95,11 @@ def run_search_cycle(
     not actually reachable/usable, before any connector or scoring work
     happens."""
     check_llm_available(llm, settings.data_dir)
+    prefs = effective_preferences(profile, settings)
     resume_summary = json.loads(profile.resume_summary_json or "{}")
     resume_text = profile.resume_text or ""
     connectors = build_enabled_connectors(
-        settings.sources, resume_summary=resume_summary, preferences=settings.preferences,
+        settings.sources, resume_summary=resume_summary, preferences=prefs,
     )
     new_count = 0
     stopped = False
@@ -126,7 +127,7 @@ def run_search_cycle(
                 stopped = True
                 break
 
-            prefilter_reason = prefilter_rejection_reason(job, settings.preferences)
+            prefilter_reason = prefilter_rejection_reason(job, prefs)
             if prefilter_reason is not None:
                 if on_progress:
                     on_progress({
@@ -150,7 +151,7 @@ def run_search_cycle(
             if on_progress:
                 on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
 
-            score, rationale = score_fit(job, resume_summary, resume_text, settings.preferences, llm)
+            score, rationale = score_fit(job, resume_summary, resume_text, prefs, llm)
             session.add(SeenPosting(profile_id=profile.id, source=job.source, external_id=job.external_id))
 
             if score < settings.matching.min_fit_score:
