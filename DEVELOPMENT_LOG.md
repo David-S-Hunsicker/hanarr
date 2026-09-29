@@ -109,6 +109,31 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-09-29 — SQLite WAL mode, for the same bug report
+
+Follow-up to the logging fix below, same bug report (a 500 after starting a search, on the
+Coaching page). Couldn't get a real traceback yet (the installed build predates the logging fix),
+but the shape fits a known SQLite footgun well enough to fix proactively: a background search
+commits frequently (once per matched/rejected posting) while the dashboard's own page loads run
+concurrent reads on separate connections from the same pool. SQLite's default rollback-journal
+mode lets a writer's transaction briefly block readers — under real contention (slow disk,
+antivirus intercepting file I/O, a slower LLM stretching out how long the search runs) that can
+exceed the default lock wait and surface as an unhandled "database is locked" error on whatever
+page was loading. `db.py` now sets `PRAGMA journal_mode=WAL` and a 30s `busy_timeout` on every
+connection — WAL is SQLite's standard fix for readers not blocking on an in-progress writer.
+
+Side effect worth calling out: WAL mode means a recent commit can sit only in the `-wal` file
+until checkpointed, so the existing pre-migration backup (a plain `shutil.copy2` of `hanarr.db`)
+needed a `PRAGMA wal_checkpoint` added right before it, or it could silently copy a stale (in one
+tested case, nearly-empty) snapshot. Tried `TRUNCATE`/`FULL` checkpoint mode first — both block
+against a concurrent reader/writer, and tested directly against one, `TRUNCATE` actually corrupted
+the checkpoint. Landed on `PASSIVE` (the default, no argument): never blocks or forces anything,
+just folds in whatever it safely can, which is what an already-single-threaded startup moment
+needs anyway.
+
+This may or may not be the actual bug behind the report — still waiting on a real traceback to
+confirm — but it's a real, independently-worth-fixing class of issue either way.
+
 ### 2026-09-29 — File-backed logging for the packaged build
 
 Real gap found from a live bug report: a 500 on the Jobs page after starting a search, reported

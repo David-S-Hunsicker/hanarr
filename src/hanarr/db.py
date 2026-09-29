@@ -9,11 +9,30 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 from .models import Base, Profile, utc_now
+
+
+def _set_sqlite_pragmas(dbapi_connection, connection_record) -> None:
+    """A background search commits frequently (once per matched/rejected
+    posting -- see pipeline.run_search_cycle) while the dashboard's own
+    page loads run concurrent reads on separate connections from the same
+    pool. SQLite's default rollback-journal mode lets a writer's
+    transaction briefly block readers; under real contention (a slow disk,
+    antivirus intercepting file I/O, a slower LLM stretching out how long
+    the search runs) that can exceed sqlite3's default 5-second lock wait
+    and surface as an unhandled "database is locked" error on whatever page
+    the reader was loading. WAL mode is SQLite's standard fix for exactly
+    this shape (readers no longer block on an in-progress writer); the
+    longer busy_timeout is a second line of defense for the write side
+    (two write transactions still can serialize against each other)."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
 
 
 def _project_root() -> Path:
@@ -33,6 +52,7 @@ def make_session_factory(settings: Settings) -> sessionmaker:
     db_path = data_dir / "hanarr.db"
     _migrate_legacy_db_filename(data_dir, db_path)
     engine = create_engine(f"sqlite:///{db_path}", future=True)
+    event.listen(engine, "connect", _set_sqlite_pragmas)
     _upgrade_database(engine, db_path, data_dir)
     return sessionmaker(bind=engine, future=True)
 
@@ -76,6 +96,17 @@ def _upgrade_database(engine, db_path: Path, data_dir: Path) -> None:
             current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
 
     if current != head:
+        with engine.connect() as connection:
+            # WAL mode means a recent commit can still be sitting only in
+            # the -wal file, not yet folded into hanarr.db itself --
+            # checkpoint first so the plain file copy _backup_database does
+            # is as complete as possible rather than stale. PASSIVE (the
+            # default, no argument) is deliberate here over TRUNCATE/FULL:
+            # those block against a concurrent reader/writer and, tested
+            # against one directly, produced a corrupted checkpoint --
+            # PASSIVE never blocks or forces anything, it just folds in
+            # whatever it safely can.
+            connection.execute(text("PRAGMA wal_checkpoint"))
         _backup_database(db_path, data_dir)
 
     try:
