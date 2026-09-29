@@ -9,9 +9,9 @@ live only in a chat transcript.
 
 ## Planned
 
-Two features are scoped below, not yet implemented. Each still needs a design decision flagged
-inline before work starts. (A third planned feature, coaching project loop closure, shipped — see
-the Log below. A fourth, the "How to use Hanarr" guide page, shipped earlier too.)
+One feature is scoped below, not yet implemented. (Mini-interview skill assessment and coaching
+project loop closure both shipped — see the Log below. The "How to use Hanarr" guide page shipped
+earlier too.)
 
 ## Backlog
 
@@ -42,48 +42,6 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 - **Persisted, cross-run activity history** — the Jobs page already shows a live scrolling log
   during an active search; this would only add value across restarts/past runs (an audit
   nice-to-have), not something blocking real use today.
-
-### Mini-interview skill assessment
-
-**Problem.** The Skills page's confidence is either resume-extracted (a guess from wording) or
-manually self-reported. Neither actually tests whether the person can still produce the
-knowledge — someone can claim "Kubernetes: 70%" and be right, rusty, or wrong, and the page can't
-tell the difference today.
-
-**Flow.**
-1. From a skill row on the Skills page, a "Quick skill check" action starts a short, bounded
-   Q&A: the LLM generates 2–4 targeted questions about that skill, calibrated to the claimed
-   proficiency and any existing evidence (resume wording, project evidence, prior interview
-   results) so the questions aren't generic trivia.
-2. The user answers in free text, one round — this is not an open-ended chat, to keep it
-   explainable and bounded like every other LLM-backed step in the app.
-3. One evaluation call classifies the result into one of three outcomes, per your framing:
-   - **Solid** — confidence is corroborated; bump `ProfileSkill.confidence` (new
-     `source="interview"` evidence row, evaluated the same way `sync_github_skills` avoids
-     clobbering an existing row — this one should be allowed to *update* an interview-sourced
-     row but never silently overwrite a higher-trust "resume"/"manual" source without saying so).
-   - **Remediation** — the person clearly has real experience but the answers show memory decay,
-     not absent skill. Suggest one or two named information sources (docs page, canonical
-     article/book, course) as a light refresher — no project needed.
-   - **Rebuild** — either a greenfield skill with no real depth yet, or experience that's degraded
-     badly enough that a refresher wouldn't cut it. Offer to start a coaching project instead,
-     reusing the existing `POST /api/coaching-projects` reusable-skill flow rather than building a
-     second project system.
-
-**Data model.** A new table (`SkillInterview` or similar): `profile_id`, `skill_id`, the
-questions/answers actually asked (for audit/review, same spirit as `AgentRun`/evaluation
-records elsewhere), the verdict (`solid` / `remediate` / `rebuild`), suggested resources (plain
-text/LLM-authored, clearly labeled as unverified — Hanarr has no web-search capability, so these
-are the model's suggestions, not fetched/validated links), and a link to a created project when
-the verdict is `rebuild` and the user opts in. Manual model output failures fall back to "could
-not assess" rather than guessing a verdict, matching the deterministic-fallback pattern used
-everywhere else (`extract_profile_summary`, coaching briefs, evaluations).
-
-**Open question.** Does this live as an inline expansion under the existing skill row
-(`skills.html`), or as its own small full-page flow launched from there? Inline keeps everything
-on one page but the Skills page is already dense; a dedicated page is cleaner for a
-multi-question flow. Leaning toward a dedicated page (`/skills/{id}/interview`) linked from the
-row, mirroring how Coaching is its own page rather than crammed into Jobs.
 
 ### STAR story builder
 
@@ -124,6 +82,40 @@ content to place, rather than guessing the right shape upfront.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-09-29 — v0.1.11
+
+Shipped: mini-interview skill assessment (see below).
+
+### 2026-09-29 — Mini-interview skill assessment
+
+Built the feature scoped in the removed Planned section above, with one deliberate scope cut from
+that scoping: an inline expansion under the existing skill row (`skills.html`) instead of the
+dedicated `/skills/{id}/interview` page it leaned toward — kept it inline since the actual flow
+(2-4 short questions, one round of free-text answers) turned out small enough not to need a
+separate page, and it matches the existing `confidence-editor` inline-expansion pattern already on
+that row.
+
+New `SkillInterview` table (migration `0014`) and `skill_interview.py`: `start_interview()` asks
+the LLM for 2-4 questions calibrated to the skill's claimed proficiency/confidence, existing
+evidence, and the most recent prior interview's verdict, falling back to two fixed
+still-non-generic questions on bad LLM output (`evaluator="deterministic"`); `submit_interview()`
+classifies the answers into `solid`/`remediate`/`rebuild`, or `could_not_assess` on bad LLM output
+(`evaluator="deterministic-fallback"`, no ProfileSkill change either way).
+
+A `solid` verdict writes/updates a `source="interview"` `ProfileSkill` row at a fixed 0.75
+confidence floor (not scaled by a score — unlike the coaching-project evaluator, this LLM call
+returns a category, not a comparable 0-100 number) — same non-clobbering rule as the coaching
+project bump: a higher-trust resume/manual source's confidence only ever rises, never silently
+drops, and the corroboration is recorded in evidence text. A `rebuild` verdict offers a "Start a
+coaching project" button that reuses the existing reusable-skill `POST /api/coaching-projects`
+flow rather than a second project system. `remediate` surfaces the LLM's suggested refresher
+resources, explicitly plain-text/unverified (Hanarr has no web-search capability to check them).
+Past interviews for a skill show in a small history list on the row.
+
+Two new routes: `POST /api/skills/{id}/interview/start`, `POST
+/api/skills/{id}/interview/{interview_id}/submit`. Seven new regression tests in
+`test_skill_interview.py`.
 
 ### 2026-09-29 — v0.1.10
 

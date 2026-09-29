@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Skills · Hanarr</title>
   <style>
-    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; }
-    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; } }
+    :root { color-scheme: light; --page:#f9f9f7; --surface:#fff; --text:#0b0b0b; --muted:#625f59; --border:rgba(11,11,11,.14); --accent:#1765ad; --good:#176b45; --warn:#8a5b00; --bad:#a23a3a; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --text:#fff; --muted:#c3c2b7; --border:rgba(255,255,255,.16); --accent:#67aaf0; --good:#6bd39a; --warn:#e9bd67; --bad:#e78888; } }
     * { box-sizing:border-box; } body { max-width:1000px; margin:0 auto; padding:2rem 1rem 4rem; background:var(--page); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
     @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
     h1,h2,h3 { margin:0; } h1 { font-size:1.35rem; font-weight:650; } h2 { font-size:1rem; margin-bottom:.6rem; display:flex; align-items:baseline; gap:.5rem; } h2 .group-count { font-size:.8rem; font-weight:500; color:var(--muted); }
@@ -37,6 +37,13 @@
     .preset-btn.medium:hover, .preset-btn.medium.active { background:var(--accent); border-color:var(--accent); color:#fff; }
     .preset-btn.high:hover, .preset-btn.high.active { background:var(--good); border-color:var(--good); color:#fff; }
     details.advanced-fields summary { color:var(--accent); font-size:.82rem; margin-top:.3rem; }
+    .interview-block { margin-top:1rem; padding-top:.8rem; border-top:1px solid var(--border); }
+    .interview-questions { display:grid; gap:.5rem; margin:.6rem 0; }
+    .interview-questions label { font-size:.85rem; }
+    .interview-questions textarea { width:100%; margin-top:.2rem; }
+    .interview-result { margin-top:.6rem; padding:.6rem .8rem; border:1px solid var(--border); border-radius:8px; background:var(--page); }
+    .verdict-solid { color:var(--good); } .verdict-remediate { color:var(--warn); } .verdict-rebuild { color:var(--bad); } .verdict-could_not_assess { color:var(--muted); }
+    .interview-history { margin-top:.6rem; font-size:.85rem; } .interview-history li { margin:.3rem 0; }
   </style>
 </head>
 <body>
@@ -78,6 +85,26 @@
               <div><div class="label">Resume wording</div><p>{% if skill.resume_wording %}Mentioned in the stored resume profile summary.{% else %}No resume wording recorded for this skill.{% endif %}</p><div class="label">Affected jobs</div>{% if skill.jobs %}<ul class="list">{% for job in skill.jobs %}<li><a href="/#job-{{ job.id }}">{{ job.title }} · {{ job.company }}</a> · {{ job.status }} ({{ job.requirement }}) · <a href="{{ job.url }}" target="_blank" rel="noopener">posting [open]</a></li>{% endfor %}</ul>{% else %}<p class="muted">No analyzed jobs yet.</p>{% endif %}</div>
             </div>
             {% if skill.market_demand %}<p class="meta"><strong>Market priority:</strong> {{ skill.market_demand.priority_score }} · {{ skill.market_demand.affected_job_count }} affected job{{ "" if skill.market_demand.affected_job_count == 1 else "s" }} · {{ skill.market_demand.required_count }} required / {{ skill.market_demand.preferred_count }} preferred · {{ skill.market_demand.estimated_effort }} effort</p>{% endif %}
+            <div class="interview-block" data-skill-id="{{ skill.id }}">
+              <div class="label">Quick skill check</div>
+              <p class="muted">Answer a short, targeted Q&amp;A to test this skill instead of just claiming it.</p>
+              <button type="button" class="start-interview" data-skill-id="{{ skill.id }}">Start a quick skill check</button>
+              <div class="interview-questions" data-questions hidden></div>
+              <div class="interview-result" data-result hidden></div>
+              {% if skill.interviews %}
+              <details class="interview-history"><summary>Past skill checks ({{ skill.interviews|length }})</summary>
+                <ul class="list">
+                {% for interview in skill.interviews %}
+                  <li>
+                    {% if interview.verdict %}<span class="verdict-{{ interview.verdict }}">{{ interview.verdict|replace("_", " ") }}</span>{% else %}<span class="muted">pending</span>{% endif %}
+                    {% if interview.created_at %} · {{ interview.created_at[:10] }}{% endif %}
+                    {% if interview.feedback %}<br><span class="muted">{{ interview.feedback }}</span>{% endif %}
+                  </li>
+                {% endfor %}
+                </ul>
+              </details>
+              {% endif %}
+            </div>
             <div class="confidence-editor">
               <div class="label">Know you're strong here? Set your confidence directly</div>
               <div class="preset-buttons">
@@ -125,6 +152,91 @@
         evidence.value = btn.dataset.level + " confidence, marked directly on the Skills page.";
       }
     }));
+
+    document.querySelectorAll(".start-interview").forEach((button) => {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        const block = button.closest(".interview-block");
+        const questionsEl = block.querySelector("[data-questions]");
+        const response = await fetch(`/api/skills/${button.dataset.skillId}/interview/start`, {method: "POST"});
+        const data = await response.json();
+        if (!response.ok) {
+          button.disabled = false;
+          window.alert(data.error || "Could not start skill check.");
+          return;
+        }
+        questionsEl.innerHTML = "";
+        data.questions.forEach((question, index) => {
+          const label = document.createElement("label");
+          label.textContent = question;
+          const textarea = document.createElement("textarea");
+          textarea.dataset.index = index;
+          label.appendChild(textarea);
+          questionsEl.appendChild(label);
+        });
+        const submitBtn = document.createElement("button");
+        submitBtn.type = "button";
+        submitBtn.textContent = "Submit answers";
+        submitBtn.addEventListener("click", async () => {
+          submitBtn.disabled = true;
+          const answers = Array.from(questionsEl.querySelectorAll("textarea")).map((t) => t.value);
+          const submitResponse = await fetch(
+            `/api/skills/${button.dataset.skillId}/interview/${data.id}/submit`,
+            {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({answers})}
+          );
+          const result = await submitResponse.json();
+          if (!submitResponse.ok) {
+            submitBtn.disabled = false;
+            window.alert(result.error || "Could not submit answers.");
+            return;
+          }
+          const resultEl = block.querySelector("[data-result]");
+          resultEl.innerHTML = "";
+          resultEl.hidden = false;
+          const verdictEl = document.createElement("strong");
+          verdictEl.className = "verdict-" + result.verdict;
+          verdictEl.textContent = result.verdict.replace("_", " ");
+          resultEl.appendChild(verdictEl);
+          const feedbackEl = document.createElement("p");
+          feedbackEl.textContent = result.feedback;
+          resultEl.appendChild(feedbackEl);
+          if (result.resources && result.resources.length) {
+            const ul = document.createElement("ul");
+            result.resources.forEach((item) => {
+              const li = document.createElement("li");
+              li.textContent = item;
+              ul.appendChild(li);
+            });
+            resultEl.appendChild(ul);
+          }
+          if (result.verdict === "rebuild") {
+            const startProjectBtn = document.createElement("button");
+            startProjectBtn.type = "button";
+            startProjectBtn.textContent = "Start a coaching project";
+            startProjectBtn.addEventListener("click", async () => {
+              startProjectBtn.disabled = true;
+              const projResponse = await fetch("/api/coaching-projects", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({mode: "reusable_skill", skill_id: Number(button.dataset.skillId)}),
+              });
+              if (!projResponse.ok) {
+                startProjectBtn.disabled = false;
+                window.alert((await projResponse.json()).error || "Could not start a project.");
+                return;
+              }
+              const project = await projResponse.json();
+              window.location.href = "/coaching#project-" + project.id;
+            });
+            resultEl.appendChild(startProjectBtn);
+          }
+          questionsEl.hidden = true;
+          questionsEl.innerHTML = "";
+          button.hidden = true;
+        });
+        questionsEl.appendChild(submitBtn);
+        questionsEl.hidden = false;
+      });
+    });
 
     const filterInput = document.getElementById("skill-filter");
     if (filterInput) {

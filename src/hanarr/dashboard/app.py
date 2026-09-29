@@ -62,6 +62,7 @@ from ..models import (
     SeenPosting,
     Skill,
     SkillGapStatus,
+    SkillInterview,
     utc_now,
 )
 from ..pipeline import run_search_cycle
@@ -91,6 +92,7 @@ from ..skill_analysis import (
     saved_job_gap,
     saved_job_gaps,
 )
+from ..skill_interview import interview_status, interviews_for_skill, start_interview, submit_interview
 from ..submissions import (
     create_github_submission,
     create_local_submission,
@@ -967,6 +969,38 @@ def create_app(
                 "evidence": row.evidence, "source": row.source,
             }, "proven": False})
 
+    @app.post("/api/skills/{skill_id}/interview/start")
+    def start_skill_interview(request: Request, skill_id: int):
+        """Generates 2-4 short, bounded questions testing whether a claimed
+        skill still holds up -- never an open-ended chat, same explainable,
+        bounded shape as every other LLM-backed step in the app."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                interview = start_interview(session, profile.id, skill_id, evaluator_llm)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(interview_status(interview), status_code=201)
+
+    @app.post("/api/skills/{skill_id}/interview/{interview_id}/submit")
+    async def submit_skill_interview(request: Request, skill_id: int, interview_id: int):
+        payload = await request.json()
+        answers = payload.get("answers") if isinstance(payload, dict) else None
+        if not isinstance(answers, list) or not all(isinstance(item, str) for item in answers):
+            return JSONResponse({"error": "answers must be a list of strings."}, status_code=400)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            interview_check = session.get(SkillInterview, interview_id)
+            if interview_check is None or interview_check.skill_id != skill_id:
+                return JSONResponse({"error": "Interview not found."}, status_code=404)
+            try:
+                interview = submit_interview(session, profile.id, interview_id, answers, evaluator_llm)
+                session.commit()
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(interview_status(interview))
+
     @app.post("/api/coaching-projects")
     async def create_project(request: Request):
         payload = await request.json()
@@ -1359,11 +1393,14 @@ def create_app(
     def skills_page(request: Request):
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
+            skills = profile_skill_page(session, profile)
+            for skill in skills:
+                skill["interviews"] = interviews_for_skill(session, profile.id, skill["id"])
             return templates.TemplateResponse(
                 request=request,
                 name="skills.html",
                 context={
-                    "skills": profile_skill_page(session, profile),
+                    "skills": skills,
                     "active_profile": {"id": profile.id, "name": profile.name},
                 },
             )

@@ -428,6 +428,28 @@ class ProvenSkill(Base):
     skill: Mapped["Skill"] = relationship(back_populates="proven_skills")
 
 
+class SkillInterview(Base):
+    """A short, bounded Q&A that tests whether a claimed skill still holds up,
+    rather than trusting resume wording or a self-reported number -- see
+    skill_interview.py. `verdict` is null until answered."""
+
+    __tablename__ = "skill_interviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"))
+    questions_json: Mapped[str] = mapped_column(Text, default="[]")
+    answers_json: Mapped[str] = mapped_column(Text, default="[]")
+    verdict: Mapped[str | None] = mapped_column(String, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    resources_json: Mapped[str] = mapped_column(Text, default="[]")
+    evaluator: Mapped[str] = mapped_column(String, default="pending")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
+    answered_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    skill: Mapped["Skill"] = relationship()
+
+
 class ResumeProposalStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
