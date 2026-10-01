@@ -193,6 +193,10 @@ def question_dict(question: StarQuestion, story: StarStory | None) -> dict[str, 
         "competency": question.competency,
         "source": question.source,
         "job_id": question.job_id,
+        "job": (
+            {"id": question.job.id, "title": question.job.title, "company": question.job.company}
+            if question.job is not None else None
+        ),
         "story": _story_dict(story) if story is not None else None,
     }
 

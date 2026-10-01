@@ -31,6 +31,29 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-01 — v0.1.16
+
+Shipped: job-specific interview prep is now reachable from the UI (see below).
+
+### 2026-10-01 — Job-specific interview prep, reachable
+
+Real gap found by surveying the app: `star_stories.generate_star_questions()` already supported
+weighting questions toward a specific saved job's title/description (`job_id` param), and
+`POST /api/star/questions/generate` already accepted it, but nothing in the dashboard ever passed
+one -- the Prep page's "Generate practice questions" button always called the generic path. The
+job-specific code path was dead from a user's perspective.
+
+A job marked **interviewing** now shows a "Practice for this interview" link on both the Jobs and
+Applications pages, linking to `/prep?job_id={id}`. The Prep page validates that job belongs to the
+active profile and, if so, shows a second, job-specific "Generate questions for the {title} @
+{company} interview" button alongside the generic one (never auto-triggered — still one explicit
+click, matching every other LLM-backed action in the app). `question_dict()` now includes the
+linked job's id/title/company so a job-specific question's badge links back to the job instead of
+just labeling it, and the deterministic fallback (bad LLM output) correctly still reports as
+generic, never falsely claiming job-specific weighting it couldn't actually do.
+
+Three new regression tests in `test_star_stories.py`.
+
 ### 2026-10-01 — v0.1.15
 
 Shipped: Guide page catch-up and a manual "Mark complete" action for coaching projects (see below).

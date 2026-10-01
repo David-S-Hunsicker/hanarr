@@ -49,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (480 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (483 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -316,7 +316,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (480 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (483 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -346,7 +346,9 @@ proven-skill confidence, satisfies the job's skill gap, and offers a resume prop
 updating nothing, a "Quick skill check" on the Skills page tests a claimed skill with a short
 bounded Q&A instead of trusting resume wording or a self-reported number, the **Prep** page
 generates behavioral-interview questions from the resume's actual work history and helps build
-STAR stories for them, Settings → App has a "Per-task model sizing" section so the five
+STAR stories for them (marking a job "interviewing" surfaces a one-click link to generate
+questions weighted toward that specific job), Settings → App has a "Per-task model sizing" section
+so the five
 LLM-backed roles can each use a differently-sized model instead of one blanket choice — researched
 from actual call sites rather than assumed: the highest-frequency role (job fit scoring) turned
 out to be the one that wants a *heavier* model, not a lighter one, since frequency and task

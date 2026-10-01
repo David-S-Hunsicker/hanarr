@@ -1086,15 +1086,21 @@ def create_app(
             return JSONResponse(question_dict(story.question, story))
 
     @app.get("/prep")
-    def prep_page(request: Request):
+    def prep_page(request: Request, job_id: int | None = None):
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
+            target_job = None
+            if job_id is not None:
+                job = session.get(JobPosting, job_id)
+                if job is not None and job.profile_id == profile.id:
+                    target_job = {"id": job.id, "title": job.title, "company": job.company}
             return templates.TemplateResponse(
                 request=request,
                 name="prep.html",
                 context={
                     **prep_page_status(session, profile),
                     "active_profile": {"id": profile.id, "name": profile.name},
+                    "target_job": target_job,
                 },
             )
 

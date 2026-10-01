@@ -68,7 +68,7 @@
     <div class="card app-card">
       <div class="app-main">
         <a class="title" href="/#job-{{ app.id }}">{{ app.title }}</a>
-        <div class="app-meta">{{ app.company }} · updated {{ app.status_changed_at.strftime("%b %d, %Y") }}</div>
+        <div class="app-meta">{{ app.company }} · updated {{ app.status_changed_at.strftime("%b %d, %Y") }}{% if status == "interviewing" %} · <a href="/prep?job_id={{ app.id }}">Practice for this interview</a>{% endif %}</div>
         {% if app.reminders %}
         <div class="reminders">
           {% for reminder in app.reminders %}

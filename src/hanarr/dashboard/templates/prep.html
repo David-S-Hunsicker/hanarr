@@ -58,8 +58,14 @@
   {% include "_update_available_banner.html" %}
   <p class="intro">Questions are generated from your resume's actual work history -- competency, seniority, and industries -- never invented achievements. Write a STAR story in your own words; review only tightens wording and flags a vague or unmeasured Result.</p>
 
+  {% if target_job %}
   <div class="toolbar">
-    <button type="button" class="btn btn-primary" id="generate-questions">Generate practice questions</button>
+    <button type="button" class="btn btn-primary" id="generate-job-questions" data-job-id="{{ target_job.id }}">Generate questions for the {{ target_job.title }} @ {{ target_job.company }} interview</button>
+    <span class="meta" id="generate-job-status"></span>
+  </div>
+  {% endif %}
+  <div class="toolbar">
+    <button type="button" class="btn {{ 'btn-secondary' if target_job else 'btn-primary' }}" id="generate-questions">Generate general practice questions</button>
     <span class="meta" id="generate-status"></span>
   </div>
 
@@ -70,7 +76,7 @@
     <details class="question-card" id="question-{{ question.id }}" data-question-id="{{ question.id }}">
       <summary>
         <span class="question-text">{{ question.question }}</span>
-        {% if question.source == "job_specific" %}<span class="pill pill-job-specific">job-specific</span>{% endif %}
+        {% if question.source == "job_specific" %}<span class="pill pill-job-specific">{% if question.job %}<a href="/#job-{{ question.job.id }}" style="color:inherit;">job-specific: {{ question.job.title }}</a>{% else %}job-specific{% endif %}</span>{% endif %}
         {% if question.story and question.story.status == "complete" %}<span class="pill pill-complete">complete</span>{% elif question.story %}<span class="pill">draft</span>{% endif %}
       </summary>
       <div class="story-form" data-story-container data-question-id="{{ question.id }}" data-story-id="{{ question.story.id if question.story else '' }}">
@@ -120,6 +126,26 @@
       }
       window.location.reload();
     });
+
+    const jobButton = document.getElementById("generate-job-questions");
+    if (jobButton) {
+      jobButton.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const status = document.getElementById("generate-job-status");
+        button.disabled = true;
+        status.textContent = "Generating...";
+        const response = await fetch("/api/star/questions/generate", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({job_id: Number(button.dataset.jobId)}),
+        });
+        if (!response.ok) {
+          button.disabled = false;
+          status.textContent = (await response.json()).error || "Could not generate questions.";
+          return;
+        }
+        window.location.reload();
+      });
+    }
 
     async function ensureStory(container) {
       let storyId = container.dataset.storyId;

@@ -111,6 +111,9 @@
       {% endif %}
       <button type="button" class="cover-letter-action" data-job-id="{{ job.id }}">{{ "Redraft cover letter" if job.cover_letter else "Draft cover letter" }}</button>
       <span class="cover-letter-status"></span>
+      {% if job.status.value == "interviewing" %}
+      <a class="prep-action" href="/prep?job_id={{ job.id }}">Practice for this interview</a>
+      {% endif %}
       <form method="post" action="/jobs/{{ job.id }}/status">
         <select class="status-select" name="new_status" onchange="this.form.submit()">
           {% for s in statuses %}

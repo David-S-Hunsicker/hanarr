@@ -6,7 +6,7 @@ from hanarr.config import Settings
 from hanarr.dashboard.app import create_app
 import hanarr.dashboard.app as app_module
 from hanarr.db import get_or_create_profile, make_session_factory
-from hanarr.models import JobPosting
+from hanarr.models import ApplicationStatus, JobPosting
 from hanarr.star_stories import generate_star_questions, get_or_create_story, review_story, save_story_draft
 
 
@@ -167,3 +167,92 @@ def test_prep_page_and_star_routes_round_trip(tmp_path, monkeypatch):
 
     bad_status = client.post(f"/api/star/stories/{story_id}/status", json={"status": "bogus"})
     assert bad_status.status_code == 400
+
+
+def test_prep_page_shows_a_job_specific_generate_button_for_a_valid_job(tmp_path):
+    """Regression test: generate_star_questions() already supported weighting
+    toward a job_id, but nothing in the UI ever reached that path -- the
+    Prep page always posted {} with no job context. A job_id query param on
+    /prep must surface a job-specific generate action, not just the generic
+    one, and must ignore/decline a job that isn't the active profile's."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Staff Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    page = client.get(f"/prep?job_id={job_id}").text
+    assert "Staff Engineer @ Acme" in page
+    assert 'data-job-id="%d"' % job_id in page
+
+    no_job_page = client.get("/prep").text
+    assert "Generate questions for the" not in no_job_page
+
+    bogus_page = client.get("/prep?job_id=999999").text
+    assert "Generate questions for the" not in bogus_page
+
+
+def test_job_specific_question_links_back_to_the_job(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Staff Engineer", url="https://example.test/1", description="Own the roadmap.",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    llm = FakeLLM(json.dumps({"questions": [
+        {"question": "Tell me about owning a roadmap.", "competency": "leadership"},
+    ]}))
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: llm)
+    client = TestClient(create_app(settings))
+
+    generated = client.post("/api/star/questions/generate", json={"job_id": job_id})
+    assert generated.status_code == 201
+    question = generated.json()["questions"][0]
+    assert question["source"] == "job_specific"
+    assert question["job"] == {"id": job_id, "title": "Staff Engineer", "company": "Acme"}
+
+    page = client.get("/prep").text
+    assert f'href="/#job-{job_id}"' in page
+    assert "job-specific: Staff Engineer" in page
+
+
+def test_interviewing_job_shows_a_practice_link_on_jobs_and_applications_pages(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Staff Engineer", url="https://example.test/1",
+            status=ApplicationStatus.INTERVIEWING,
+        )
+        other = JobPosting(
+            profile_id=profile.id, source="test", external_id="2", company="Beta",
+            title="Backend Engineer", url="https://example.test/2",
+            status=ApplicationStatus.APPLIED,
+        )
+        session.add_all([job, other])
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    jobs_page = client.get("/").text
+    assert f'href="/prep?job_id={job_id}"' in jobs_page
+
+    applications_page = client.get("/applications").text
+    assert f'href="/prep?job_id={job_id}"' in applications_page
+    # The applied-but-not-interviewing job must not get the same link.
+    assert applications_page.count("Practice for this interview") == 1
