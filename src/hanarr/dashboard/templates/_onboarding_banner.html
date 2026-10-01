@@ -1,10 +1,13 @@
 {% if onboarding and not onboarding.all_done %}
 <div class="banner notice onboarding-banner">
   <strong>Get set up:</strong>
+  <p class="optional-hint">Hanarr is built to use an AI model for reading resumes and scoring jobs, not
+  just keyword matching — <a href="/config?tab=app#provider">set up a local AI model</a> first (free,
+  runs on your machine) before uploading your resume below, so it's actually read instead of just
+  scanned for keywords.</p>
   <ul class="checklist">
     <li class="{{ 'done' if onboarding.resume_done else '' }}"><span class="check">{{ "✓" if onboarding.resume_done else "○" }}</span> <a href="/config?tab=app#resume">Add your resume</a></li>
     <li class="{{ 'done' if onboarding.preferences_done else '' }}"><span class="check">{{ "✓" if onboarding.preferences_done else "○" }}</span> <a href="/config?tab=preferences">Set your target titles</a></li>
   </ul>
-  <p class="optional-hint">Optional: <a href="/config?tab=app#provider">set up a local AI model</a> for better match quality — search still works without one, using keyword matching.</p>
 </div>
 {% endif %}

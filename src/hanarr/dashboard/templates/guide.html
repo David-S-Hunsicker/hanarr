@@ -30,7 +30,7 @@
 </head>
 <body>
   <div class="header">
-    <h1>Guide</h1>
+    <h1>Guide <span style="font-size:.55em;font-weight:normal;color:#888;vertical-align:middle;">v{{ app_version }}</span></h1>
     <span class="muted">How to get the most out of Hanarr</span>
     {% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
   </div>
@@ -46,12 +46,15 @@
   <section class="guide-section">
     <h2>Recommended order of operations</h2>
     <ol class="steps">
+      <li><strong>Set up a local AI model</strong> (Settings → App config) — Hanarr is built around an
+        LLM actually reading your resume and each posting, not keyword matching; do this before step 2
+        so your resume is parsed properly the first time instead of needing a later retry. Free, runs
+        entirely on your machine (Ollama), one explicit click to install.</li>
       <li><strong>Settings</strong> — add your resume and set your preferences (target titles, locations,
         salary floor, dealbreakers, which job sources to enable). This is the only step you have to do
-        before anything else is useful.</li>
-      <li><strong>Set up a local AI model</strong> (optional but recommended, also in Settings) — without
-        one, matching falls back to plain keyword overlap, which is a much blunter signal than an LLM
-        actually reading each posting against your resume.</li>
+        before anything else is useful. Without a model from step 1, resume parsing and job scoring both
+        fall back to plain keyword matching — a much blunter signal than an LLM actually reading the
+        text, and the degraded mode, not the intended one.</li>
       <li><strong>Jobs</strong> — review what was found, sorted by fit. Mark status as you apply, hear
         back, or interview; that automatically schedules a follow-up reminder.</li>
       <li><strong>Coaching &amp; Skills</strong> — when a job shows a skill gap, decide whether to close

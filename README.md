@@ -49,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (483 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (486 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -109,22 +109,11 @@ webview automatically, set that on Settings → App config, or pass `--launch-mo
 `webview` for one run. Webview mode needs `pip install -e ".[desktop]"` — see
 [`docs/desktop-launch.md`](docs/desktop-launch.md).
 
-### 2. Add your resume and preferences (Settings)
+### 2. Set up a local LLM (do this before step 3)
 
-- **Resume** — Settings → App config → "Choose file…" (`.pdf`/`.txt`/`.md`). Parsed
-  automatically on upload into a structured profile (titles, skills, seniority) used for
-  scoring. If structured extraction fails (most often because a local LLM isn't set up yet —
-  see step 3), the Resume page has a "Retry extraction" button that redoes it later without
-  needing to re-upload.
-- **Preferences** — Settings → Preferences: target titles, locations, salary floor, seniority,
-  employment types, dealbreakers (common ones are checkboxes, plus free text for anything else),
-  and which job sources to enable — see **Job sources** below for what each one needs. Fields
-  save automatically as you edit or navigate away; there's still a Save button too.
-- **Schedule** — Settings → Scheduling & reminders: how often automatic searches run (a
-  repeating interval or a fixed time once a day, in your machine's own local timezone) and how
-  follow-up reminders/email digest work.
-
-### 3. Set up a local LLM (recommended)
+Hanarr is built around an LLM actually reading your resume and each job posting — not keyword
+matching — so set this up before uploading your resume in step 3, or extraction degrades to the
+keyword-only fallback and you'll need to retry it later once a model is ready.
 
 Settings → App config reports whether Ollama's executable, local service, and configured model
 are detected, with a hardware-based starting model recommendation and a "Check for Ollama /
@@ -145,12 +134,29 @@ instead, set the provider to `anthropic` and enter your API key right there in S
 handed off to your OS's own credential store (Windows Credential Manager, macOS Keychain, Linux
 Secret Service) as soon as you save, never written to `config.yaml` or any file Hanarr writes,
 and the field never re-displays the saved value. Using Anthropic incurs API usage costs.
-Skipping this entirely (provider `none`) falls back to keyword-overlap scoring only.
+Skipping this entirely (provider `none`) is a degraded fallback, not the intended way to run
+Hanarr: resume parsing and job scoring both drop to plain keyword overlap instead of an LLM
+actually reading the text.
+
+### 3. Add your resume and preferences (Settings)
+
+- **Resume** — Settings → App config → "Choose file…" (`.pdf`/`.txt`/`.md`). Parsed
+  automatically on upload into a structured profile (titles, skills, seniority) used for
+  scoring. If structured extraction fails (most often because a local LLM isn't set up yet —
+  see step 2), the Resume page has a "Retry extraction" button that redoes it later without
+  needing to re-upload.
+- **Preferences** — Settings → Preferences: target titles, locations, salary floor, seniority,
+  employment types, dealbreakers (common ones are checkboxes, plus free text for anything else),
+  and which job sources to enable — see **Job sources** below for what each one needs. Fields
+  save automatically as you edit or navigate away; there's still a Save button too.
+- **Schedule** — Settings → Scheduling & reminders: how often automatic searches run (a
+  repeating interval or a fixed time once a day, in your machine's own local timezone) and how
+  follow-up reminders/email digest work.
 
 ### 4. Run a search
 
 Click "Run search now" on Jobs, or just leave `hanarr serve` running — it searches automatically
-on the schedule you set in step 2. While a search runs, the Jobs page updates live: the job
+on the schedule you set in step 3. While a search runs, the Jobs page updates live: the job
 list, stats bar, and filter counts refresh as each posting is scored, instead of only after the
 whole run finishes. Mark a job's status (applied / interviewing / etc.) as you go to get
 follow-up reminders automatically.
@@ -316,7 +322,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (483 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (486 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -355,7 +361,13 @@ out to be the one that wants a *heavier* model, not a lighter one, since frequen
 complexity don't move together here — an in-app **Guide** tab (`/guide` in the dashboard) covers
 how to use Hanarr page by page, job cards can draft a cover letter directly from the stored
 resume, a "+ Add a job manually" form on Jobs tracks a posting the connectors didn't find, and
-reminders export to a real calendar app as .ics files.
+reminders export to a real calendar app as .ics files. The site-wide update banner had a real bug
+where an inline `display` style silently defeated its `hidden` attribute, leaving "Update now"
+visible at all times regardless of whether an update was actually staged — fixed, along with
+adding a simulated progress indicator during install and showing the running app version on every
+page, not just buried in Settings. The Guide, onboarding checklist, and README's getting-started
+steps now tell you to set up a local AI model *before* uploading a resume, since resume parsing
+without one silently degrades to a keyword-only fallback rather than an LLM actually reading it.
 
 ## License
 

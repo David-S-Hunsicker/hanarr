@@ -258,6 +258,10 @@ def create_app(
     templates.env.cache = None
     templates.env.filters["posting_age"] = format_posting_age
     templates.env.filters["is_recent_posting"] = is_recent_posting
+    # A Jinja global rather than per-route context so every page -- not just
+    # the ones that remembered to pass it -- can show what version is
+    # actually running, without a shared nav partial to hang it on.
+    templates.env.globals["app_version"] = APP_VERSION
     session_factory = make_session_factory(settings)
     orchestrator = AgentOrchestrator(settings, client_builder=build_llm_client)
     market_analysis_llm = orchestrator.client_for("market_analysis")

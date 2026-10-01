@@ -31,6 +31,39 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-01 — v0.1.17
+
+Shipped: three user-reported update-flow/documentation bugs fixed (see below).
+
+### 2026-10-01 — Update banner visibility bug, version display, and AI-first docs
+
+User report: "the update now button always shows", "no easy way to see what version the user is
+on", and the Guide/README/onboarding text told people to upload a resume before setting up an AI
+model even though resume parsing silently degrades to keyword matching without one.
+
+Three independent fixes:
+
+1. **Real bug**: `_update_available_banner.html`'s root div carried both the `hidden` attribute
+   and an inline `style="display:inline-flex; ..."`. Inline `style` always wins over the
+   `[hidden] { display: none }` user-agent rule, so the banner — "Update now" button included —
+   was visible on every page at all times, regardless of whether an update was actually staged.
+   `banner.hidden = true` in the polling JS had no visual effect. Fixed by moving `display`
+   toggling into JS (`banner.style.display`) instead of relying on the attribute alone, in both
+   the site-wide banner and the Settings → Updates tab's own install button.
+2. Added a simulated/indeterminate progress bar (CSS animation, since the actual install runs
+   outside this process once launched) to both the site-wide banner's "installing" state and the
+   Settings tab's "Downloading and verifying…" / "Installing…" states — previously the only
+   feedback was a text string that didn't appear until the whole blocking download+install
+   request resolved.
+3. `app_version` is now a Jinja global (`templates.env.globals`) shown next to the page title on
+   every page, and Settings → Updates states the running version plainly ("Running v0.1.17.") —
+   previously the version was only visible in the Settings page's own `<h1>`.
+4. Reordered and reworded the Guide page's "Recommended order of operations", the onboarding
+   checklist banner, and README's getting-started steps: setting up a local AI model now comes
+   *before* uploading a resume (not after, as an "optional" afterthought), and `provider: none`
+   keyword-overlap matching is now described as a degraded fallback, not an equally valid default
+   — matching how the app is actually meant to be run.
+
 ### 2026-10-01 — v0.1.16
 
 Shipped: job-specific interview prep is now reachable from the UI (see below).

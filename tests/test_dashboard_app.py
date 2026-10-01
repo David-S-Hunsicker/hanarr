@@ -1851,6 +1851,22 @@ def test_guide_page_renders_with_nav_and_explains_the_workflow(tmp_path):
     assert 'href="/guide">Guide</a>' in html
 
 
+def test_guide_recommends_setting_up_an_ai_model_before_uploading_a_resume(tmp_path):
+    """Regression test: the order-of-operations list told the user to add
+    their resume first and treated the AI model as an afterthought
+    ("optional but recommended"), even though uploading a resume with no
+    model configured degrades extraction to a keyword-only fallback -- the
+    model setup step must come first, and the fallback must read as
+    degraded, not as an equally valid default."""
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/guide").text
+
+    model_step = html.index("Set up a local AI model")
+    resume_step = html.index("add your resume and set your preferences")
+    assert model_step < resume_step, "AI model setup must be recommended before resume upload"
+    assert "degraded mode, not the intended one" in html
+
+
 def test_guide_page_documents_prep_quick_skill_check_and_per_task_model_sizing(tmp_path):
     """Regression test: the Guide page's "What each page is for" section went
     stale after Prep, the Skills page's mini-interview, and Settings'
@@ -2131,6 +2147,42 @@ def test_update_available_banner_present_on_every_page(tmp_path):
     for page in ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/debug/filtered"]:
         html = client.get(page).text
         assert 'id="update-available-banner"' in html, f"{page} is missing the update-available banner"
+
+
+def test_update_banner_markup_has_no_inline_display_that_defeats_hidden(tmp_path):
+    """Regression test for a real bug: the banner's root div carried `hidden`
+    *and* an inline `style="display:inline-flex; ..."`. Inline style always
+    wins over the `[hidden] { display: none }` user-agent rule, so the banner
+    -- including its "Update now" button -- was visible on every page
+    regardless of whether an update was actually available. The fix moves
+    `display` toggling into JS (banner.style.display), so the static markup
+    must never again hard-code `display:` inside that element's own inline
+    style attribute."""
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/").text
+
+    import re
+
+    match = re.search(r'<div id="update-available-banner" hidden\s+style="([^"]*)"', html)
+    assert match, "update-available-banner markup not found or changed shape"
+    assert "display:" not in match.group(1), (
+        "inline display on the hidden banner div defeats [hidden]'s display:none"
+    )
+    assert "banner.style.display" in html, "JS must toggle display explicitly, not rely on .hidden alone"
+
+
+def test_app_version_shown_on_main_pages(tmp_path):
+    """Regression test: the running app version was never rendered anywhere
+    in the UI (only the Settings page title), so there was no easy way for a
+    user to tell what version they're on without digging into Settings."""
+    from hanarr import __version__
+
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ["/", "/coaching", "/resume", "/skills", "/applications", "/prep", "/guide", "/profiles", "/config"]:
+        html = client.get(page).text
+        assert f"v{__version__}" in html, f"{page} does not show the app version"
 
 
 def test_updates_tab_shows_auto_update_controls(tmp_path):

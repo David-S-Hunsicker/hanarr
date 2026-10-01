@@ -88,6 +88,7 @@
     }
     @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
     h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
+    .app-version { font-size: 0.55em; font-weight: normal; color: #888; vertical-align: middle; }
 
     .page-header {
       display: flex;
@@ -482,7 +483,7 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Hanarr</h1>
+    <h1>Hanarr <span class="app-version">v{{ app_version }}</span></h1>
     <span>
       {% if active_profile %}<a class="nav-link" href="/profiles">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
     </span>
