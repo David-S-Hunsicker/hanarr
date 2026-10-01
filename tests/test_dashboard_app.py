@@ -1851,6 +1851,20 @@ def test_guide_page_renders_with_nav_and_explains_the_workflow(tmp_path):
     assert 'href="/guide">Guide</a>' in html
 
 
+def test_guide_page_documents_prep_quick_skill_check_and_per_task_model_sizing(tmp_path):
+    """Regression test: the Guide page's "What each page is for" section went
+    stale after Prep, the Skills page's mini-interview, and Settings'
+    per-task model sizing shipped without a doc pass -- it listed only the
+    original six pages and said nothing about either feature."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    html = client.get("/guide").text
+    assert "<h3>Prep</h3>" in html
+    assert "Quick skill check" in html
+    assert "Per-task model sizing" in html
+
+
 def test_every_main_page_links_to_the_guide_page(tmp_path):
     """The Guide nav link was added to every page's own duplicated nav
     block (no shared include exists) -- regression-test that none of them
@@ -1858,7 +1872,7 @@ def test_every_main_page_links_to_the_guide_page(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
-    for page in ("/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles"):
+    for page in ("/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/prep"):
         html = client.get(page).text
         assert 'href="/guide"' in html, f"{page} is missing a link to /guide"
 
@@ -1873,7 +1887,7 @@ def test_all_pages_share_identical_shell_layout_values(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
-    pages = ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/guide"]
+    pages = ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/prep", "/guide"]
     responses = {page: client.get(page) for page in pages}
     for page, response in responses.items():
         assert response.status_code == 200, f"{page} did not load"

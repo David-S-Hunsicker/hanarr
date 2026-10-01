@@ -31,6 +31,33 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-01 — v0.1.15
+
+Shipped: Guide page catch-up and a manual "Mark complete" action for coaching projects (see below).
+
+### 2026-10-01 — Guide page catch-up and manual project completion
+
+Two small, real gaps found by surveying the app rather than inventing new work:
+
+1. **Guide page was stale.** "What each page is for" still listed only the original six pages —
+   no card for **Prep** (shipped in v0.1.13), and the Skills/Settings cards said nothing about
+   "Quick skill check" (v0.1.12) or "Per-task model sizing" (v0.1.14). Caught up all three, plus
+   the Coaching card now describes auto-complete-on-pass, manual completion, cancellation, and the
+   stale-project nudge.
+2. **No manual project completion.** The original coaching-project loop-closure scoping wanted
+   completion "suggested once all tasks are done and/or a submission has passed, not
+   auto-forced" — what shipped (v0.1.10) was only auto-complete-on-pass plus Cancel, with no way
+   to mark a project complete without ever submitting evidence for an LLM review. New
+   `POST /api/coaching-projects/{id}/complete` and a "Mark complete" button alongside the existing
+   Cancel button. Deliberately asymmetric with a passed evaluation: it sets `Project.status` and
+   `completed_at` only — it never touches `ProvenSkill`, bumps `ProfileSkill.confidence`, or marks
+   a `JobSkill.gap_status` satisfied, since those are evidence-backed claims an unreviewed
+   self-declaration shouldn't silently earn.
+
+Three new regression tests across `test_dashboard_app.py` and `test_coaching_projects.py`; `/prep`
+added to the existing nav-link and shared-shell-layout consistency tests (it was missing from both
+page lists since it shipped).
+
 ### 2026-10-01 — v0.1.14
 
 Shipped: per-task model sizing (see below).

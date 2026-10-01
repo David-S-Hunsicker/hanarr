@@ -36,7 +36,7 @@
     .pill-status-submitted { border-color: var(--accent); color: var(--accent); }
     .pill-status-evaluated { border-color: var(--good); color: var(--good); }
     .pill-stale { border-color: var(--warn); color: var(--warn); }
-    .cancel-project { margin-left: auto; }
+    .project-status-actions { margin-left: auto; display: flex; gap: .4rem; }
     .field-label { display: block; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 1.1rem 0 .4rem; }
     .tasks { margin: .8rem 0 0; padding: 0; list-style: none; } .tasks li { display: flex; gap: .6rem; align-items: center; border-top: 1px solid var(--border); padding: .55rem 0; }
     .tasks form { margin-left: auto; } select { font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .45rem; background: var(--surface); color: var(--text); }
@@ -109,7 +109,7 @@
       {% for project in projects %}
       <div class="card" id="project-{{ project.id }}">
         <h3>{{ project.title }}</h3>
-        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span>{% if project.stale %}<span class="pill pill-stale">stale — no activity in 14+ days</span>{% endif %}<span>{{ project.target_outcome }}</span>{% if project.status in ("planned", "active") %}<button type="button" class="btn btn-secondary cancel-project" data-project-id="{{ project.id }}">Cancel project</button>{% endif %}</div>
+        <div class="meta"><span class="pill">{{ project.status }}</span><span class="pill">{{ project.mode|replace("_", " ") }}</span>{% if project.stale %}<span class="pill pill-stale">stale — no activity in 14+ days</span>{% endif %}<span>{{ project.target_outcome }}</span>{% if project.status in ("planned", "active") %}<div class="project-status-actions"><button type="button" class="btn btn-secondary mark-complete-project" data-project-id="{{ project.id }}">Mark complete</button><button type="button" class="btn btn-secondary cancel-project" data-project-id="{{ project.id }}">Cancel project</button></div>{% endif %}</div>
         <p class="description">{{ project.description }}</p>
         {% if project.affected_jobs %}
         <div class="jobs"><strong>Affected jobs:</strong>{% for job in project.affected_jobs %}<a href="{{ job.dashboard_url }}">{{ job.title }} · {{ job.company }}</a> <a href="{{ job.url }}" target="_blank" rel="noopener" aria-label="Open {{ job.title }} externally">[open]</a>{% endfor %}</div>
@@ -246,6 +246,14 @@
         if (!window.confirm("Cancel this project? It will stay visible but marked cancelled.")) return;
         const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/cancel`, {method: "POST"});
         if (!response.ok) window.alert((await response.json()).error || "Could not cancel project.");
+        else window.location.reload();
+      });
+    });
+    document.querySelectorAll(".mark-complete-project").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!window.confirm("Mark this project complete? This won't update any skill confidence or job gaps -- only a passed evaluation does that.")) return;
+        const response = await fetch(`/api/coaching-projects/${button.dataset.projectId}/complete`, {method: "POST"});
+        if (!response.ok) window.alert((await response.json()).error || "Could not mark project complete.");
         else window.location.reload();
       });
     });

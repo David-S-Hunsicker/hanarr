@@ -1174,6 +1174,26 @@ def create_app(
             session.commit()
             return JSONResponse(project_status(project))
 
+    @app.post("/api/coaching-projects/{project_id}/complete")
+    def complete_project(request: Request, project_id: int):
+        """A manual counterpart to the automatic completion a passed
+        evaluation already triggers -- for work you're satisfied with
+        without ever submitting it for an LLM review. Unlike a passed
+        evaluation, this never touches ProvenSkill/ProfileSkill confidence
+        or JobSkill.gap_status: those are evidence-backed claims an
+        unreviewed self-declaration shouldn't silently grant."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            project = session.get(Project, project_id)
+            if project is None or project.profile_id != profile.id:
+                return JSONResponse({"error": "Coaching project not found."}, status_code=404)
+            if project.status in (ProjectStatus.COMPLETED, ProjectStatus.CANCELLED):
+                return JSONResponse({"error": f"Project is already {project.status.value}."}, status_code=400)
+            project.status = ProjectStatus.COMPLETED
+            project.completed_at = utc_now()
+            session.commit()
+            return JSONResponse(project_status(project))
+
     @app.post("/api/coaching-projects/{project_id}/submissions")
     async def create_written_project_submission(project_id: int, request: Request):
         payload = await request.json()

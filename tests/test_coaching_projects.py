@@ -701,6 +701,62 @@ def test_cancel_project_is_reachable_and_blocks_double_cancellation(tmp_path):
     assert "Cancel project" not in coaching_html
 
 
+def test_manual_complete_is_reachable_and_never_touches_skill_evidence(tmp_path):
+    """Regression test for the loop-closure gap: the original scoping wanted
+    completion "suggested... not auto-forced", but only auto-complete-on-pass
+    shipped -- there was no way to mark a project complete without submitting
+    evidence for an LLM review. Unlike a passed evaluation, this must not
+    grant ProvenSkill/ProfileSkill-confidence/JobSkill.gap_status credit --
+    those are evidence-backed claims an unreviewed self-declaration shouldn't
+    silently earn."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+
+    completed = client.post(f"/api/coaching-projects/{project_id}/complete")
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+
+    again = client.post(f"/api/coaching-projects/{project_id}/complete")
+    assert again.status_code == 400
+
+    with factory() as session:
+        assert session.execute(select(ProfileSkill)).scalars().first() is None
+        job_skill = session.execute(
+            select(JobSkill).where(JobSkill.job_id == job_id, JobSkill.skill_id == skill_id)
+        ).scalar_one()
+        assert job_skill.gap_status is SkillGapStatus.MISSING
+
+    coaching_html = client.get("/coaching").text
+    assert "completed" in coaching_html
+    assert "Mark complete" not in coaching_html
+    assert "Cancel project" not in coaching_html
+
+
+def test_cannot_manually_complete_an_already_cancelled_project(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job, skill = _analyzed_job(session, profile)
+        job_id, skill_id = job.id, skill.id
+    client = TestClient(create_app(settings))
+    project_id = client.post("/api/coaching-projects", json={
+        "mode": "posting_specific", "job_id": job_id, "skill_id": skill_id,
+    }).json()["id"]
+    client.post(f"/api/coaching-projects/{project_id}/cancel")
+
+    response = client.post(f"/api/coaching-projects/{project_id}/complete")
+    assert response.status_code == 400
+
+
 def test_stale_active_project_is_flagged_after_two_weeks_of_no_activity(tmp_path):
     settings = _settings(tmp_path)
     factory = make_session_factory(settings)
