@@ -13,6 +13,7 @@ from hanarr.ollama_setup import (
     installer_offer,
     pull_model,
     recommend_model,
+    recommend_model_for_role,
     stage_ollama_installer,
 )
 
@@ -74,6 +75,47 @@ def test_low_storage_prefers_small_model():
 
     assert recommendation.model == "qwen2.5:3b"
     assert "storage" in recommendation.reason.lower()
+
+
+def test_market_analysis_shifts_to_a_heavier_model_than_the_baseline():
+    """Regression test for the per-task model sizing research: market_analysis
+    (fit scoring) is the single highest-frequency LLM call in the app (every
+    posting, every search) but also the most complex one, so it should shift
+    toward a heavier model, not a lighter one, unlike the naive "frequent =
+    cheap" assumption."""
+    baseline = recommend_model(HardwareInfo(12, 50, "Windows"))
+    shifted = recommend_model_for_role("market_analysis", HardwareInfo(12, 50, "Windows"))
+
+    assert baseline.model == "qwen2.5:7b"
+    assert shifted.model == "qwen2.5:14b"
+    assert "every posting" in shifted.reason
+
+
+def test_curriculum_shifts_to_a_lighter_model_than_the_baseline():
+    shifted = recommend_model_for_role("curriculum", HardwareInfo(12, 50, "Windows"))
+    assert shifted.model == "qwen2.5:3b"
+    assert "structured" in shifted.reason.lower()
+
+
+def test_unshifted_roles_match_the_hardware_baseline():
+    hardware = HardwareInfo(12, 50, "Windows")
+    baseline = recommend_model(hardware)
+    for role in ("profiler", "evaluator", "resume_writer"):
+        assert recommend_model_for_role(role, hardware) == baseline
+
+
+def test_market_analysis_never_shifts_past_the_storage_safety_floor():
+    """The <10GB-free storage floor in recommend_model() is a hard safety
+    constraint, not a preference -- a role shift must never push past it."""
+    hardware = HardwareInfo(32, 5, "Windows")
+    assert recommend_model(hardware).model == "qwen2.5:3b"
+    assert recommend_model_for_role("market_analysis", hardware).model == "qwen2.5:3b"
+
+
+def test_role_shift_is_clamped_at_the_top_tier():
+    hardware = HardwareInfo(32, 500, "Windows")
+    assert recommend_model(hardware).model == "qwen2.5:14b"
+    assert recommend_model_for_role("market_analysis", hardware).model == "qwen2.5:14b"
 
 
 def test_detect_ollama_reports_service_models_and_missing_configured_model(monkeypatch, tmp_path: Path):

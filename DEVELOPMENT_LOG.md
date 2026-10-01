@@ -9,28 +9,9 @@ live only in a chat transcript.
 
 ## Planned
 
-Nothing is currently scoped and unstarted here. (STAR story builder, mini-interview skill
-assessment, and coaching project loop closure all shipped — see the Log below. The "How to use
-Hanarr" guide page shipped earlier too. Per-task model sizing remains scoped in the Backlog below
-it — research-first, not build-ready yet.)
-
-## Backlog
-
-- **Per-task model sizing** — right now every LLM call effectively uses whatever one model is
-  configured in Settings, sized for the heaviest task. `AgentOrchestrator`/`AgentName` in
-  `agent_orchestration.py`/`config.py` already support per-role (and even per-task) provider/model
-  overrides (`settings.agents.<role>`, `settings.agents.tasks`) — the plumbing exists — but nothing
-  in the dashboard exposes it; it's config.yaml-only today, and nobody's actually set it. Needs:
-  (1) a real assessment of the five existing roles (`profiler`, `market_analysis`, `curriculum`,
-  `evaluator`, `resume_writer`) and their actual call sites, characterizing which are simple/cheap
-  (e.g. short structured extraction) vs. genuinely complex (e.g. long-context reasoning, nuanced
-  judgment) — not guessed at, the same way the Workday connector's API contract was researched
-  before building anything; (2) a Settings UI section surfacing per-role model choice, with a
-  suggested default per role (reusing the existing hardware-based `recommend_model()` sizing logic
-  in `ollama_setup.py` as a starting point, extended per-role rather than one blanket
-  recommendation). Real potential upside: a household running Ollama locally could use a fast
-  small model for cheap/frequent calls and reserve a slower/larger one for the calls that actually
-  need it, instead of paying the heaviest cost on every call.
+Nothing is currently scoped and unstarted. Per-task model sizing shipped — see the Log below. STAR
+story builder, mini-interview skill assessment, and coaching project loop closure shipped before
+it. The "How to use Hanarr" guide page shipped earlier still.
 
 ## Deferred / low priority
 
@@ -49,6 +30,40 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-10-01 — v0.1.14
+
+Shipped: per-task model sizing (see below).
+
+### 2026-10-01 — Per-task model sizing
+
+Closed the last Backlog item, starting with the research step the Backlog entry itself demanded
+("not guessed at"): read every `orchestrator.client_for(...)` call site in `dashboard/app.py` to
+characterize what each of the five roles actually does.
+
+**The real finding, which changed the plan.** The original framing assumed frequency and
+complexity move together — "lighter model for cheap/frequent calls, heavier for the calls that
+need it." They don't. `market_analysis` (`matching.score_fit`, called once per posting in every
+search — the single highest-frequency LLM call in the app) is also the most complex: full resume
+text plus the full posting, careful "claimed vs. demonstrated experience" judgment (see
+`matching.SYSTEM_PROMPT`). It's the one role that should shift to a *heavier* model, not a lighter
+one. `curriculum` (coaching-project briefs, STAR practice questions) is the one role where
+"lighter" is actually safe — short structured JSON, triggered manually and infrequently, and
+already has a deterministic fallback on bad output. `profiler`, `evaluator`, and `resume_writer`
+each mix simple and complex sub-tasks without a clear case to shift either way, so they stay at
+the hardware-based baseline.
+
+**Shipped.** `ollama_setup.recommend_model_for_role(role, hardware)`: the same hardware-tier
+baseline as `recommend_model()`, shifted one tier up for `market_analysis`, one tier down for
+`curriculum`, unchanged for the other three — and never shifted past the existing <10GB-free-
+storage safety floor, even for a role that would otherwise want a heavier model. A new "Per-task
+model sizing" section on Settings → App lists all five roles with a one-line description of what
+each actually does, a dropdown (installed models + the role's suggestion + custom) defaulting to
+"use the shared model above," and the reasoning behind each suggestion. `AgentRoute.model`
+overrides were already the storage mechanism (`agent_orchestration.py`/`config.py`) — this just
+exposes it; a blank field keeps inheriting the shared model, exactly as before.
+
+Seven new regression tests across `test_ollama_setup.py` and `test_dashboard_app.py`.
 
 ### 2026-09-29 — v0.1.13
 

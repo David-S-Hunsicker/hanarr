@@ -105,11 +105,15 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     return data
 
 
+AGENT_ROLES = ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer")
+
+
 def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:
     data = dict(current)
     profile = dict(data["profile"])
     llm = dict(data["llm"])
     dashboard = dict(data["dashboard"])
+    agents = {k: (dict(v) if isinstance(v, dict) else v) for k, v in data["agents"].items()}
 
     profile["resume_path"] = form.get("resume_path", profile["resume_path"])
 
@@ -117,6 +121,12 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     llm["model"] = form.get("llm_model", llm["model"])
     llm["base_url"] = form.get("llm_base_url", llm["base_url"])
     llm["timeout_seconds"] = float(_int_or_none(form.get("llm_timeout_seconds")) or llm["timeout_seconds"])
+
+    # A blank field means "use the shared llm.model above" -- AgentRoute.model
+    # stays None (inherited), not overwritten with an empty string.
+    for role in AGENT_ROLES:
+        role_model = form.get(f"agent_model_{role}", "").strip()
+        agents[role] = {**agents[role], "model": role_model or None}
 
     dashboard["host"] = form.get("dashboard_host", dashboard["host"])
     dashboard["port"] = _int_or_none(form.get("dashboard_port")) or dashboard["port"]
@@ -133,6 +143,7 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     data["profile"] = profile
     data["llm"] = llm
     data["dashboard"] = dashboard
+    data["agents"] = agents
     return data
 
 

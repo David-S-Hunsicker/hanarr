@@ -628,6 +628,45 @@
         </div>
       </fieldset>
 
+      <fieldset id="per-task-models">
+        <legend>Per-task model sizing</legend>
+        <div class="hint">
+          Each task below uses the model above by default. Override one only if you want it
+          sized differently -- for example, a lighter model for short/infrequent tasks, or a
+          heavier one for a task that weighs a lot of text at once. Hanarr never downloads an
+          overridden model automatically; pick one that's already installed, or download it from
+          the Model field above first.
+        </div>
+        {% set agent_roles = [
+          ("profiler", "Resume parsing & keyword suggestions"),
+          ("market_analysis", "Job fit scoring & skill-gap analysis -- runs on every posting in every search"),
+          ("curriculum", "Coaching-project briefs & practice questions"),
+          ("evaluator", "Skill checks & submission review"),
+          ("resume_writer", "Cover letters & resume proposals"),
+        ] %}
+        {% for role, role_description in agent_roles %}
+        {% set rec = agent_recommendations[role] %}
+        {% set role_installed = provider_diagnostics.installed_models|map(attribute="name")|list %}
+        {% set role_known = role_installed + [rec.recommendation.model] + ([rec.current_override] if rec.current_override else []) %}
+        {% set role_is_custom = rec.current_override and rec.current_override not in role_installed and rec.current_override != rec.recommendation.model %}
+        <div class="field">
+          <label for="agent_model_select_{{ role }}">{{ role_description }}</label>
+          <select id="agent_model_select_{{ role }}" class="agent-model-select" data-role="{{ role }}">
+            <option value="" {% if not rec.current_override %}selected{% endif %}>Use default ({{ settings.llm.model }})</option>
+            {% for m in provider_diagnostics.installed_models %}
+            <option value="{{ m.name }}" {% if m.name == rec.current_override %}selected{% endif %}>{{ m.name }} — installed{% if m.size_gb %} ({{ "%.1f"|format(m.size_gb) }} GB){% endif %}</option>
+            {% endfor %}
+            {% if rec.recommendation.model not in role_installed %}
+            <option value="{{ rec.recommendation.model }}" {% if rec.recommendation.model == rec.current_override %}selected{% endif %}>{{ rec.recommendation.model }} — suggested for this task</option>
+            {% endif %}
+            <option value="__custom__" {% if role_is_custom %}selected{% endif %}>Custom model name…</option>
+          </select>
+          <input type="text" id="agent_model_{{ role }}" name="agent_model_{{ role }}" value="{{ rec.current_override or '' }}" placeholder="e.g. qwen2.5:7b" {% if not role_is_custom %}hidden{% endif %}>
+          <div class="hint">{{ rec.recommendation.reason }}</div>
+        </div>
+        {% endfor %}
+      </fieldset>
+
       <fieldset>
         <legend>Dashboard</legend>
         <div class="row">
@@ -1279,6 +1318,21 @@
         }
       }).catch(() => {});
     })();
+  </script>
+  <script>
+    document.querySelectorAll(".agent-model-select").forEach((select) => {
+      const input = document.getElementById("agent_model_" + select.dataset.role);
+      if (!input) return;
+      select.addEventListener("change", () => {
+        if (select.value === "__custom__") {
+          input.hidden = false;
+          input.focus();
+        } else {
+          input.value = select.value;
+          input.hidden = true;
+        }
+      });
+    });
   </script>
   {% endif %}
   {% if active_tab == 'updates' %}

@@ -2423,6 +2423,69 @@ def test_saving_an_anthropic_key_stores_it_in_keyring_not_config_yaml(tmp_path, 
     assert "api_key" not in config_yaml
 
 
+def test_app_config_page_shows_per_task_model_sizing_and_saves_an_override(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    page = client.get("/config?tab=app").text
+    assert "Per-task model sizing" in page
+    assert 'name="agent_model_market_analysis"' in page
+    assert "runs on every posting in every search" in page
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "agent_model_profiler": "",
+            "agent_model_market_analysis": "qwen2.5:14b",
+            "agent_model_curriculum": "",
+            "agent_model_evaluator": "",
+            "agent_model_resume_writer": "",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert settings.agents.market_analysis.model == "qwen2.5:14b"
+    assert settings.agents.profiler.model is None
+
+    saved_page = client.get("/config?tab=app").text
+    assert 'value="qwen2.5:14b"' in saved_page
+
+
+def test_blank_agent_model_override_clears_a_previously_saved_one(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    settings.agents.market_analysis.model = "qwen2.5:14b"
+    client = TestClient(create_app(settings))
+
+    client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "agent_model_profiler": "",
+            "agent_model_market_analysis": "",
+            "agent_model_curriculum": "",
+            "agent_model_evaluator": "",
+            "agent_model_resume_writer": "",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+        },
+        follow_redirects=False,
+    )
+    assert settings.agents.market_analysis.model is None
+
+
 def test_blank_anthropic_key_field_leaves_the_stored_key_unchanged(tmp_path, monkeypatch, fake_keyring):
     monkeypatch.chdir(tmp_path)  # a successful save must never touch the real repo's config.yaml
     settings = _make_isolated_settings(tmp_path)

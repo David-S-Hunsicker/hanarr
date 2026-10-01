@@ -319,6 +319,63 @@ def recommend_model(hardware: HardwareInfo) -> ModelRecommendation:
     )
 
 
+_MODEL_TIERS = ("qwen2.5:3b", "qwen2.5:7b", "qwen2.5:14b")
+
+# Frequency and task complexity don't move together here -- researched from the
+# actual call sites (dashboard/app.py's orchestrator.client_for(...) usage),
+# not guessed at. market_analysis (matching.score_fit) is both the single
+# highest-frequency call in the app (once per posting, every search) AND the
+# most complex: full resume text plus the full posting, careful "claimed vs.
+# demonstrated experience" judgment -- the one role that should shift to a
+# heavier model, not a lighter one. curriculum (coaching-project briefs, STAR
+# practice questions) is short, structured JSON, triggered manually and
+# infrequently, and already has a safe deterministic fallback on bad output --
+# the one role where a lighter model is clearly fine. profiler (resume
+# parsing/keyword suggestion), evaluator (skill-check verdicts, submission
+# review), and resume_writer (cover letters, resume proposals) are each
+# infrequent but matter when they run, with mixed simple/complex sub-tasks --
+# none of them has a clear case to shift off the hardware-based baseline.
+_ROLE_TIER_SHIFT: dict[str, int] = {
+    "market_analysis": 1,
+    "profiler": 0,
+    "curriculum": -1,
+    "evaluator": 0,
+    "resume_writer": 0,
+}
+
+_ROLE_SHIFT_REASON: dict[str, str] = {
+    "market_analysis": (
+        "Fit-scoring runs on every posting in every search and weighs full resume/posting "
+        "text against each other -- shifted to a heavier model for that reason."
+    ),
+    "curriculum": (
+        "Coaching-project and practice-question generation is short, structured, infrequent, "
+        "and already falls back safely on bad output -- shifted to a lighter model for that reason."
+    ),
+}
+
+
+def recommend_model_for_role(role: str, hardware: HardwareInfo) -> ModelRecommendation:
+    """Same hardware-based baseline as recommend_model(), nudged per role (see
+    _ROLE_TIER_SHIFT) rather than assuming "lighter is always fine" for anything
+    called often -- the highest-frequency role here is also the most complex one."""
+    base = recommend_model(hardware)
+    shift = _ROLE_TIER_SHIFT.get(role, 0)
+    if shift == 0 or base.model not in _MODEL_TIERS:
+        return base
+    # The storage safety floor in recommend_model() is a hard constraint, not a
+    # preference -- never shift to a heavier model past it even for a role
+    # that would otherwise want one.
+    if shift > 0 and hardware.free_storage_gb is not None and hardware.free_storage_gb < 10:
+        return base
+    index = _MODEL_TIERS.index(base.model)
+    shifted_index = max(0, min(len(_MODEL_TIERS) - 1, index + shift))
+    if shifted_index == index:
+        return base
+    reason = _ROLE_SHIFT_REASON.get(role, base.reason)
+    return ModelRecommendation(_MODEL_TIERS[shifted_index], reason, base.confidence)
+
+
 def _executable_details(path: str | None) -> str | None:
     if not path:
         return None

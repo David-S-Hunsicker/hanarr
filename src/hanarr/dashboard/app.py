@@ -37,6 +37,7 @@ from ..ollama_setup import (
     detect_ollama,
     installer_offer,
     pull_model,
+    recommend_model_for_role,
     stage_ollama_installer,
 )
 from ..calendar_export import reminders_to_ics
@@ -1768,6 +1769,7 @@ def create_app(
                 "saved": saved == "1",
                 "errors": [],
                 "provider_diagnostics": provider_diagnostics,
+                "agent_recommendations": _agent_recommendations(provider_diagnostics),
                 "resume_upload": _resume_upload_status(_active_profile_id(request)),
                 "active_profile": _active_profile_summary(request),
                 "onboarding": _onboarding_status_for_request(request),
@@ -1781,6 +1783,19 @@ def create_app(
 
     def _provider_diagnostics():
         return detect_ollama(settings.llm.model, settings.llm.base_url, settings.data_dir)
+
+    def _agent_recommendations(diagnostics):
+        """Per-role model suggestion plus the current override (if any) for
+        the Settings > App "Per-task model sizing" section -- see
+        ollama_setup.recommend_model_for_role for why this isn't just
+        "lighter for everything that isn't the main model."""
+        return {
+            role: {
+                "current_override": getattr(settings.agents, role).model,
+                "recommendation": recommend_model_for_role(role, diagnostics.hardware),
+            }
+            for role in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer")
+        }
 
     def _active_profile_summary(request: Request) -> dict:
         with session_factory() as session:
@@ -2016,6 +2031,7 @@ def create_app(
             if is_autosave:
                 return JSONResponse({"saved": False, "conflict": True, "errors": [conflict_message]}, status_code=409)
             conflict_preferences = _active_effective_preferences(request)
+            conflict_diagnostics = _provider_diagnostics()
             return templates.TemplateResponse(
                 request=request,
                 name="config.html",
@@ -2025,7 +2041,8 @@ def create_app(
                     "active_tab": tab,
                     "saved": False,
                     "errors": [conflict_message],
-                    "provider_diagnostics": _provider_diagnostics(),
+                    "provider_diagnostics": conflict_diagnostics,
+                    "agent_recommendations": _agent_recommendations(conflict_diagnostics),
                     "resume_upload": _resume_upload_status(_active_profile_id(request)),
                     "active_profile": _active_profile_summary(request),
                     "onboarding": _onboarding_status_for_request(request),
@@ -2046,6 +2063,7 @@ def create_app(
             if is_autosave:
                 return JSONResponse({"saved": False, "errors": errors}, status_code=400)
             error_preferences = _active_effective_preferences(request)
+            error_diagnostics = _provider_diagnostics()
             return templates.TemplateResponse(
                 request=request,
                 name="config.html",
@@ -2055,7 +2073,8 @@ def create_app(
                     "active_tab": tab,
                     "saved": False,
                     "errors": errors,
-                    "provider_diagnostics": _provider_diagnostics(),
+                    "provider_diagnostics": error_diagnostics,
+                    "agent_recommendations": _agent_recommendations(error_diagnostics),
                     "resume_upload": _resume_upload_status(_active_profile_id(request)),
                     "active_profile": _active_profile_summary(request),
                     "onboarding": _onboarding_status_for_request(request),
