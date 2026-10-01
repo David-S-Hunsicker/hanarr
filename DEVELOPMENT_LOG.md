@@ -31,6 +31,32 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-01 — v0.1.18
+
+Shipped: a follow-up audit of the v0.1.17 update-banner fix found the same
+`hidden`-defeated-by-`display` bug in two more spots (see below).
+
+### 2026-10-01 — Same hidden/display bug, two more instances
+
+A deliberate audit after the v0.1.17 fix (grep every template for the same
+shape: an element with `hidden` plus an inline `style="display:..."` or an
+author CSS rule setting `display` on its own selector) turned up two more
+real instances, both silently non-functional the same way the update
+banner was:
+
+- Settings → Updates' own install-progress indicator (`config.html`) had
+  the same inline-style-defeats-`hidden` shape as the banner; fixed the
+  same way (`style.display` toggled explicitly alongside `hidden`).
+- Settings → App config's Ollama-setup spinner used a bare
+  `.spinner { display: inline-block }` class rule with no `[hidden]`
+  override — author-level `display` beats the user-agent `[hidden]` rule
+  by cascade *origin*, not specificity, so a class rule causes the exact
+  same defect as inline style. Fixed with a more-specific
+  `.spinner[hidden] { display: none; }` override rather than touching the
+  single JS toggle site. The Skills page's `.interview-questions` grid had
+  the identical latent defect (low visual impact today since the div is
+  empty while hidden) and got the same override for consistency.
+
 ### 2026-10-01 — v0.1.17
 
 Shipped: three user-reported update-flow/documentation bugs fixed (see below).

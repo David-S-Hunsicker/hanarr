@@ -38,6 +38,11 @@
     .preset-btn.high:hover, .preset-btn.high.active { background:var(--good); border-color:var(--good); color:#fff; }
     details.advanced-fields summary { color:var(--accent); font-size:.82rem; margin-top:.3rem; }
     .interview-block { margin-top:1rem; padding-top:.8rem; border-top:1px solid var(--border); }
+    /* Author-level `display` beats the UA `[hidden]{display:none}` rule
+       regardless of specificity (origin, not specificity, decides); this
+       more-specific author rule restores `hidden` actually hiding it --
+       same defect class as the update-banner bug. */
+    .interview-questions[hidden] { display:none; }
     .interview-questions { display:grid; gap:.5rem; margin:.6rem 0; }
     .interview-questions label { font-size:.85rem; }
     .interview-questions textarea { width:100%; margin-top:.2rem; }

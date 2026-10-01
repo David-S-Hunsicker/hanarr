@@ -2171,6 +2171,37 @@ def test_update_banner_markup_has_no_inline_display_that_defeats_hidden(tmp_path
     assert "banner.style.display" in html, "JS must toggle display explicitly, not rely on .hidden alone"
 
 
+def test_other_hidden_elements_dont_have_an_author_display_rule_that_defeats_hidden(tmp_path):
+    """Regression test: the update-banner bug (inline `style="display:..."`
+    or a CSS rule setting `display` on the same selector beats the UA
+    `[hidden]{display:none}` rule by cascade *origin*, not specificity, so
+    `.hidden = true` silently has no visual effect) turned out to have two
+    more instances once audited: the Settings > Updates install-progress
+    span (inline style) and the Settings > App config Ollama-setup spinner
+    (a bare `.spinner { display: inline-block }` class rule with no
+    `[hidden]` override). Both are now fixed -- this pins the fix shape so a
+    future edit can't silently reintroduce either."""
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "updates"}).text
+
+    import re
+
+    match = re.search(r'<span id="update-install-progress" hidden\s+style="([^"]*)"', html)
+    assert match, "update-install-progress markup not found or changed shape"
+    assert "display:" not in match.group(1)
+    assert "setProgressVisible" in html
+
+    app_html = TestClient(create_app(settings)).get("/config", params={"tab": "app"}).text
+    assert ".spinner[hidden] { display: none; }" in app_html, (
+        "the Ollama-setup spinner's author-level display:inline-block needs an [hidden] override"
+    )
+
+    skills_html = TestClient(create_app(settings)).get("/skills").text
+    assert ".interview-questions[hidden] { display:none; }" in skills_html, (
+        "the interview-questions grid's author-level display needs an [hidden] override"
+    )
+
+
 def test_app_version_shown_on_main_pages(tmp_path):
     """Regression test: the running app version was never rendered anywhere
     in the UI (only the Settings page title), so there was no easy way for a
