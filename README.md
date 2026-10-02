@@ -49,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (497 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (498 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -325,7 +325,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (497 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (498 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -379,6 +379,10 @@ dismissed tutorials" button in Settings → App config, the start of a general m
 contextual tutorial popups rather than a one-off for just this banner. The first such popup
 shipped on top of it: a site-wide "New here? The Guide page walks through what each tab does."
 banner, shown until dismissed (or until you actually visit Guide, which dismisses it for you).
+Three more followed on Coaching, Skills, and Prep, each calling out that page's one non-obvious
+first-visit behavior (review-first evidence submission, "Quick skill check" testing a claimed
+skill instead of trusting resume wording, and writing a STAR story ahead of time) — each
+dismisses independently and needed no migration, which was the point of the narrow table design.
 
 ## License
 

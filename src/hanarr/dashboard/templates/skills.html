@@ -59,6 +59,9 @@
   {% include "_search_activity_badge.html" %}
   {% include "_update_available_banner.html" %}
   {% include "_guide_pointer_banner.html" %}
+  {% set tutorial_key = "skills_intro" %}
+  {% set tutorial_message = "Capability, evidence, and resume wording are tracked separately here — try \"Quick skill check\" on a skill to test it with a short Q&A instead of just trusting the resume wording." %}
+  {% include "_tutorial_banner.html" %}
   <p class="muted">A resume mention is not proof. A project becomes proven only after a passing evaluation; corrections below update capability evidence without creating a proven-skill record.</p>
 
   {% if skills %}

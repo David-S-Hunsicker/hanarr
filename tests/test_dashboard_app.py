@@ -2095,6 +2095,35 @@ def test_unknown_tutorial_key_status_check_returns_404(tmp_path):
     assert response.status_code == 404
 
 
+def test_page_specific_tutorials_appear_on_their_own_page_and_dismiss_independently(tmp_path):
+    """Regression test for the three contextual tutorials built on the
+    generic _tutorial_banner.html partial: each must render only on its own
+    page, start visible, and dismissing one must not affect the others --
+    they're independent rows in the same dismissed_tutorials table."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    page_by_key = {
+        "coaching_intro": "/coaching",
+        "skills_intro": "/skills",
+        "prep_intro": "/prep",
+    }
+    for key, page in page_by_key.items():
+        html = client.get(page).text
+        assert f'id="tutorial-banner-{key}"' in html, f"{page} is missing its {key} banner"
+        assert client.get(f"/api/tutorials/{key}/status").json() == {"visible": True}
+
+    # Each banner only belongs on its own page, not the others.
+    coaching_html = client.get("/coaching").text
+    assert 'id="tutorial-banner-skills_intro"' not in coaching_html
+    assert 'id="tutorial-banner-prep_intro"' not in coaching_html
+
+    client.post("/api/tutorials/dismiss", data={"tutorial_key": "skills_intro"})
+    assert client.get("/api/tutorials/skills_intro/status").json() == {"visible": False}
+    assert client.get("/api/tutorials/coaching_intro/status").json() == {"visible": True}
+    assert client.get("/api/tutorials/prep_intro/status").json() == {"visible": True}
+
+
 def test_debug_filtered_page_is_empty_before_any_search(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     html = TestClient(create_app(settings)).get("/debug/filtered").text

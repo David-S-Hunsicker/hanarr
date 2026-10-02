@@ -57,6 +57,9 @@
   {% include "_search_activity_badge.html" %}
   {% include "_update_available_banner.html" %}
   {% include "_guide_pointer_banner.html" %}
+  {% set tutorial_key = "prep_intro" %}
+  {% set tutorial_message = "Questions here are generated from your actual work history — write each one up as a STAR story ahead of time so you're not building an answer from scratch in the interview." %}
+  {% include "_tutorial_banner.html" %}
   <p class="intro">Questions are generated from your resume's actual work history -- competency, seniority, and industries -- never invented achievements. Write a STAR story in your own words; review only tightens wording and flags a vague or unmeasured Result.</p>
 
   {% if target_job %}

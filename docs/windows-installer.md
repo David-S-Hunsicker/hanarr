@@ -33,7 +33,7 @@ On Windows, install [Inno Setup 6](https://jrsoftware.org/isinfo.php), ensure
 Setup, or a required packaging input is missing. The full script installs the optional
 `packaging` dependencies, creates both
 PyInstaller executables, then invokes `installer\hanarr.iss`. It writes an
-**unsigned** `installer\output\Hanarr-Setup-0.1.20.exe`, a SHA-256 sidecar, and output metadata;
+**unsigned** `installer\output\Hanarr-Setup-0.1.21.exe`, a SHA-256 sidecar, and output metadata;
 this repository does
 not claim that artifact is signed or released. A successful compiler exit is not sufficient:
 the script also checks that the expected non-empty installer artifact exists.

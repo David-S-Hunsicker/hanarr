@@ -31,6 +31,28 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-02 — v0.1.21
+
+Shipped: three contextual tutorials on Coaching, Skills, and Prep (see below).
+
+### 2026-10-02 — Contextual page tutorials
+
+Extended the dismissible-tutorials mechanism past the one-off guide-pointer banner into a generic,
+reusable partial (`_tutorial_banner.html`) that any page can drop in with two `{% set %}` lines
+(`tutorial_key`, `tutorial_message`) before the include -- self-contained like the others, polling
+its own `GET /api/tutorials/{key}/status`. Three tutorials added on top of it, one per page that
+has a non-obvious first-visit behavior worth calling out:
+
+- `coaching_intro` — Coaching: evidence submission is review-first, nothing touches the resume
+  without that review.
+- `skills_intro` — Skills: "Quick skill check" tests a claimed skill instead of trusting resume
+  wording.
+- `prep_intro` — Prep: write up a STAR story ahead of time instead of building one cold in the
+  interview.
+
+No migration needed, again — the narrow `dismissed_tutorials` table just gained three more
+`tutorial_key` values. Each dismisses independently of the others and of the master switch.
+
 ### 2026-10-02 — v0.1.20
 
 Shipped: a first-run tutorial pointing new users to the Guide page (see below).
