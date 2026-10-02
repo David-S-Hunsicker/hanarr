@@ -22,7 +22,7 @@ from hanarr.models import (
     SkillGapStatus,
 )
 from hanarr.skill_analysis import analyze_job, saved_job_gaps
-from hanarr.skill_analysis import market_demand_summary
+from hanarr.skill_analysis import coaching_suggestions, market_demand_summary, profile_skill_page
 
 
 class FakeLLM:
@@ -70,7 +70,7 @@ def test_analyze_job_persists_requirements_and_compares_proven_skills(tmp_path):
         assert session.execute(select(Skill)).scalars().all()
 
 
-def test_api_returns_only_analyzed_saved_jobs_and_does_not_change_fit(tmp_path):
+def test_analyzed_saved_job_shows_up_in_saved_job_gaps_without_changing_fit(tmp_path):
     settings = _settings(tmp_path)
     factory = make_session_factory(settings)
     with factory() as session:
@@ -93,9 +93,11 @@ def test_api_returns_only_analyzed_saved_jobs_and_does_not_change_fit(tmp_path):
     response = client.post(f"/api/jobs/{job_id}/skill-gaps/analyze")
     assert response.status_code == 200
     assert response.json()["gap_counts"]["missing"] == 2
-    listed = client.get("/api/skill-gaps")
-    assert listed.status_code == 200
-    assert listed.json()["jobs"][0]["job"]["fit_score"] == 73
+
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        gaps = saved_job_gaps(session, profile)
+        assert gaps[0]["job"]["fit_score"] == 73
 
     with factory() as session:
         stored = session.get(JobPosting, job_id)
@@ -392,7 +394,9 @@ def test_skills_page_separates_capability_project_resume_and_job_evidence(tmp_pa
     assert "Affected jobs" in page.text
     assert "Not proven" in page.text
     assert f'id="skill-{skill_id}"' in page.text
-    assert client.get("/api/skills").json()["skills"][0]["proven"] is None
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        assert profile_skill_page(session, profile)[0]["proven"] is None
 
     updated = client.patch(
         f"/api/skills/{skill_id}/profile",
@@ -533,7 +537,7 @@ def test_market_demand_prioritizes_required_gaps_and_surfaces_manual_correction(
     assert summary[0]["user_correction"]["evidence"] == "User corrected capability level"
 
 
-def test_coaching_api_and_pages_expose_reusable_market_priorities(tmp_path):
+def test_coaching_suggestions_and_pages_expose_reusable_market_priorities(tmp_path):
     settings = _settings(tmp_path)
     factory = make_session_factory(settings)
     with factory() as session:
@@ -551,11 +555,14 @@ def test_coaching_api_and_pages_expose_reusable_market_priorities(tmp_path):
         ))
         session.commit()
         job_id, skill_id = job.id, skill.id
-    client = TestClient(create_app(settings))
 
-    coaching = client.get("/api/coaching")
-    assert coaching.status_code == 200
-    assert coaching.json()["suggestions"][0]["skill"]["id"] == skill_id
-    assert coaching.json()["market_demand"][0]["affected_job_ids"] == [job_id]
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        suggestions = coaching_suggestions(session, profile)
+        demand = market_demand_summary(session, profile)
+    assert suggestions[0]["skill"]["id"] == skill_id
+    assert demand[0]["affected_job_ids"] == [job_id]
+
+    client = TestClient(create_app(settings))
     assert "Market demand" in client.get("/coaching").text
     assert "Market priority" in client.get("/skills").text

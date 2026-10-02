@@ -1,6 +1,6 @@
 #define MyAppName "Hanarr"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.21"
+  #define MyAppVersion "0.1.22"
 #endif
 #define MyAppPublisher "Hanarr"
 #define MyAppExeName "HanarrDesktop.exe"

@@ -22,6 +22,7 @@ from hanarr.models import (
     SkillGapStatus,
     ResumeVersion,
 )
+from hanarr.resume_loop import resume_status
 
 
 class PassingLLM:
@@ -87,7 +88,9 @@ def test_pass_generates_pending_proposal_and_approval_rescores_affected_job(tmp_
         assert snapshots[-1].trigger == "resume_approved"
         assert session.get(ResumeProposal, proposal_id).status.value == "approved"
     assert client.get("/resume").status_code == 200
-    assert client.get("/api/resume").json()["active"]["content"]
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        assert resume_status(profile, session)["active"]["content"]
 
 
 def test_stale_resume_proposal_cannot_replace_new_active_version(tmp_path):

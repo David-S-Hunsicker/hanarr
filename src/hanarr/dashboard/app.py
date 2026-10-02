@@ -933,27 +933,6 @@ def create_app(
                 )
             return JSONResponse({"analyzed": True, **result})
 
-    @app.get("/api/skill-gaps")
-    def get_skill_gaps(request: Request):
-        with session_factory() as session:
-            profile = get_active_profile(session, settings, _active_profile_id(request))
-            return JSONResponse({"jobs": saved_job_gaps(session, profile)})
-
-    @app.get("/api/skills")
-    def get_skills(request: Request):
-        with session_factory() as session:
-            profile = get_active_profile(session, settings, _active_profile_id(request))
-            return JSONResponse({"skills": profile_skill_page(session, profile)})
-
-    @app.get("/api/coaching")
-    def get_coaching(request: Request):
-        with session_factory() as session:
-            profile = get_active_profile(session, settings, _active_profile_id(request))
-            return JSONResponse({
-                "suggestions": coaching_suggestions(session, profile),
-                "market_demand": market_demand_summary(session, profile),
-            })
-
     @app.patch("/api/skills/{skill_id}/profile")
     async def update_profile_skill(skill_id: int, request: Request):
         payload = await request.json()
@@ -1464,12 +1443,6 @@ def create_app(
                     "active_profile": {"id": profile.id, "name": profile.name},
                 },
             )
-
-    @app.get("/api/resume")
-    def get_resume(request: Request):
-        with session_factory() as session:
-            profile = get_active_profile(session, settings, _active_profile_id(request))
-            return JSONResponse(resume_page_status(profile, session))
 
     @app.post("/api/resume/proposals/{proposal_id}/approve")
     def approve_proposal(request: Request, proposal_id: int):

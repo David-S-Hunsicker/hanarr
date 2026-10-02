@@ -31,6 +31,21 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-02 — v0.1.22
+
+Shipped: removed four dead API endpoints found by audit (see below).
+
+### 2026-10-02 — Removed four orphaned API endpoints
+
+Found by a deliberate audit: `GET /api/skill-gaps`, `GET /api/skills`, `GET /api/coaching`, and
+`GET /api/resume` had zero callers in any template -- only in tests, and only because the pages
+they used to back (Skills, Coaching, Resume) are now server-rendered directly from the same
+underlying functions (`saved_job_gaps`, `profile_skill_page`, `coaching_suggestions`,
+`market_demand_summary`, `resume_status`). Removed the four routes; the tests that exercised them
+now call those functions directly instead of through a dead HTTP layer. The functions themselves
+are untouched and still back their pages -- this only removed the redundant API surface, not any
+behavior.
+
 ### 2026-10-02 — v0.1.21
 
 Shipped: three contextual tutorials on Coaching, Skills, and Prep (see below).
