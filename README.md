@@ -49,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (487 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (493 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -265,7 +265,10 @@ scripting or reading `config.example.yaml` directly, not instructions for hand-e
   download, and the Anthropic API key (stored via your OS's credential store, never in
   `config.yaml`). Specialized agent roles (`profiler`, `market_analysis`, `curriculum`,
   `evaluator`, `resume_writer` — each can independently override the main LLM settings via
-  `agents.*` in `config.yaml`) all reuse that one key.
+  `agents.*` in `config.yaml`) all reuse that one key. A "Tutorials" section here has a master
+  "Show tutorials" switch and a "Reset dismissed tutorials" button — each tutorial (currently just
+  the onboarding checklist) also has its own "don't show this again" dismiss, tracked per profile
+  independently of this switch.
 - **Scheduling & reminders** tab — how often searches run (a repeating interval or a fixed time
   once a day, in your machine's own local timezone, not UTC) and how reminders/email digest work
   (the SMTP password is also stored via your OS's credential store). A minimum-interval floor
@@ -322,7 +325,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (487 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (493 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -368,6 +371,12 @@ adding a simulated progress indicator during install and showing the running app
 page, not just buried in Settings. The Guide, onboarding checklist, and README's getting-started
 steps now tell you to set up a local AI model *before* uploading a resume, since resume parsing
 without one silently degrades to a keyword-only fallback rather than an LLM actually reading it.
+A follow-up audit of that banner fix found the same `hidden`-defeated-by-`display` defect in two
+more spots (an install-progress indicator and the Ollama-setup spinner), both fixed the same way.
+The onboarding checklist is now individually dismissible ("don't show this again", persisted per
+profile in a `dismissed_tutorials` table) with a master "Show tutorials" switch and a "Reset
+dismissed tutorials" button in Settings → App config, the start of a general mechanism for future
+contextual tutorial popups rather than a one-off for just this banner.
 
 ## License
 

@@ -1991,6 +1991,60 @@ def test_onboarding_banner_shows_partial_progress(tmp_path):
     assert '<li class=""><span class="check">○</span> <a href="/config?tab=preferences">Set your target titles</a></li>' in html
 
 
+def test_dismissing_a_tutorial_hides_it_even_though_setup_is_incomplete(tmp_path):
+    """Regression test for the new dismissible-tutorial mechanism: a profile
+    that explicitly dismisses the onboarding checklist must not see it again
+    on a later page load, even though resume/preferences are still
+    incomplete (the thing that would otherwise keep the banner showing)."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    assert "Get set up" in client.get("/").text
+
+    dismissed = client.post("/api/tutorials/dismiss", data={"tutorial_key": "onboarding_checklist"})
+    assert dismissed.status_code == 200
+    assert dismissed.json() == {"status": "dismissed", "tutorial_key": "onboarding_checklist"}
+
+    assert "Get set up" not in client.get("/").text
+    assert "Get set up" not in client.get("/config").text
+
+
+def test_dismissing_an_unknown_tutorial_key_is_rejected(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    response = client.post("/api/tutorials/dismiss", data={"tutorial_key": "not_a_real_tutorial"})
+    assert response.status_code == 400
+
+
+def test_resetting_dismissed_tutorials_brings_the_banner_back(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    client.post("/api/tutorials/dismiss", data={"tutorial_key": "onboarding_checklist"})
+    assert "Get set up" not in client.get("/").text
+
+    reset = client.post("/api/tutorials/reset")
+    assert reset.status_code == 200
+    assert "Get set up" in client.get("/").text
+
+
+def test_global_tutorials_switch_hides_the_banner_regardless_of_dismissal(tmp_path):
+    """The config.yaml-level ui.tutorials_enabled switch is a blunt override
+    on top of per-tutorial dismissal -- turning it off must hide the banner
+    even for a profile that never explicitly dismissed anything."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.ui.tutorials_enabled = False
+    client = TestClient(create_app(settings))
+    assert "Get set up" not in client.get("/").text
+
+
+def test_settings_app_tab_shows_tutorials_controls(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "app"}).text
+    assert 'id="ui_tutorials_enabled" name="ui_tutorials_enabled" checked' in html
+    assert 'id="tutorials-reset-btn"' in html
+
+
 def test_debug_filtered_page_is_empty_before_any_search(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     html = TestClient(create_app(settings)).get("/debug/filtered").text
@@ -2554,6 +2608,34 @@ def test_app_config_page_shows_per_task_model_sizing_and_saves_an_override(tmp_p
 
     saved_page = client.get("/config?tab=app").text
     assert 'value="qwen2.5:14b"' in saved_page
+
+
+def test_unchecking_show_tutorials_persists_to_config(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    assert settings.ui.tutorials_enabled is True
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+            # ui_tutorials_enabled omitted entirely -- an unchecked checkbox
+            # simply isn't present in the submitted form.
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert settings.ui.tutorials_enabled is False
+
+    page = client.get("/config?tab=app").text
+    assert 'id="ui_tutorials_enabled" name="ui_tutorials_enabled" checked' not in page
 
 
 def test_blank_agent_model_override_clears_a_previously_saved_one(tmp_path, monkeypatch, fake_keyring):

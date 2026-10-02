@@ -688,8 +688,45 @@
         </div>
       </fieldset>
 
+      <fieldset>
+        <legend>Tutorials</legend>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ui_tutorials_enabled" name="ui_tutorials_enabled" {% if settings.ui.tutorials_enabled %}checked{% endif %}>
+          <label for="ui_tutorials_enabled">Show tutorials</label>
+        </div>
+        <div class="hint">
+          Turns off the onboarding checklist and any other dismissible tutorial popups entirely.
+          Individual tutorials can also be dismissed with their own "don't show this again" button
+          without touching this switch.
+        </div>
+        <div class="field">
+          <button type="button" class="suggest-btn" id="tutorials-reset-btn">Reset dismissed tutorials</button>
+          <span class="suggest-status" id="tutorials-reset-status"></span>
+        </div>
+      </fieldset>
+
       <div class="save-row"><button type="submit" class="save">Save app config</button></div>
     </form>
+    <script>
+      (function () {
+        const resetBtn = document.getElementById("tutorials-reset-btn");
+        const status = document.getElementById("tutorials-reset-status");
+        if (!resetBtn) return;
+        resetBtn.addEventListener("click", async () => {
+          resetBtn.disabled = true;
+          status.textContent = "Resetting…";
+          try {
+            await fetch("/api/tutorials/reset", { method: "POST" });
+            status.textContent = "Done -- dismissed tutorials will show again.";
+          } catch (error) {
+            status.textContent = "Could not reset; you may be offline.";
+            status.className = "suggest-status error";
+          } finally {
+            resetBtn.disabled = false;
+          }
+        });
+      })();
+    </script>
 
     {% elif active_tab == 'updates' %}
     <form method="post" action="/config/updates">

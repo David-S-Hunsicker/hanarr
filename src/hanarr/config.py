@@ -252,6 +252,16 @@ class UpdatesConfig(BaseModel):
     apply_delay_seconds: int = Field(default=120, ge=10)
 
 
+class UiConfig(BaseModel):
+    # Master switch for all dismissible tutorials (the onboarding checklist,
+    # and any future contextual tutorial popups) -- separate from per-
+    # tutorial dismissal, which is per-profile state in the
+    # dismissed_tutorials table (see models.py/tutorials.py). This is a
+    # single global on/off, so it lives with the rest of Settings in
+    # config.yaml rather than per profile.
+    tutorials_enabled: bool = True
+
+
 class Settings(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     preferences: Preferences = Field(default_factory=Preferences)
@@ -263,6 +273,7 @@ class Settings(BaseModel):
     reminders: RemindersConfig = Field(default_factory=RemindersConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
+    ui: UiConfig = Field(default_factory=UiConfig)
 
     # Where instance data (db, logs) lives; not user-configurable via YAML
     # to keep it out of the way of the gitignore boundary.

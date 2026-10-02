@@ -31,6 +31,34 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-02 — v0.1.19
+
+Shipped: dismissible tutorials with a master switch and per-tutorial "don't show this again" (see
+below).
+
+### 2026-10-02 — Dismissible tutorials
+
+User request: a way to turn off tutorial popups, either globally or one at a time ("don't show
+again"). Built as a general mechanism rather than a one-off for the existing onboarding checklist,
+since more contextual tutorial popups are planned for other pages later.
+
+Design decided with the user: a narrow `dismissed_tutorials` table
+(`profile_id`, `tutorial_key`, `dismissed_at`, unique on the pair) rather than one boolean column
+per tutorial on `Profile` — adding a new tutorial later needs zero migrations, just a new
+`tutorial_key` value written/read against the same table. The master on/off switch
+(`settings.ui.tutorials_enabled`) is separate: a single global behavior flag in `config.yaml`
+alongside the rest of Settings, not per-profile state, since "turn off all tutorials" is one
+decision, not one per tutorial.
+
+- `tutorials.py`: `is_tutorial_visible()` (true only when the global switch is on AND this profile
+  hasn't dismissed that key), `dismiss_tutorial()`, `reset_dismissed_tutorials()`.
+- The onboarding banner (`_onboarding_banner.html`) now has its own "✕ don't show this again"
+  button, posting to `/api/tutorials/dismiss`. `_onboarding_status()` gained a `visible` field
+  folding in both the dismissal and the global switch, on top of the existing `all_done` check.
+- Settings → App config has a new "Tutorials" section: a "Show tutorials" checkbox
+  (`ui.tutorials_enabled`) and a "Reset dismissed tutorials" button (`/api/tutorials/reset`) that
+  un-dismisses everything for the active profile, independent of the global switch.
+
 ### 2026-10-01 — v0.1.18
 
 Shipped: a follow-up audit of the v0.1.17 update-banner fix found the same

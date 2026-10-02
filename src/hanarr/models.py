@@ -492,6 +492,24 @@ class StarStory(Base):
     question: Mapped["StarQuestion"] = relationship(back_populates="stories")
 
 
+class DismissedTutorial(Base):
+    """One row per tutorial a profile has dismissed ("don't show this again").
+    Narrow (profile_id, tutorial_key) shape rather than one column per
+    tutorial on Profile -- adding a new tutorial later needs zero migrations,
+    just a new tutorial_key value written/read against this same table. The
+    master on/off switch for tutorials as a whole is a single global
+    behavior flag in config.yaml (settings.ui.tutorials_enabled), not
+    per-profile state here -- see tutorials.py."""
+
+    __tablename__ = "dismissed_tutorials"
+    __table_args__ = (UniqueConstraint("profile_id", "tutorial_key", name="uq_dismissed_tutorial"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    tutorial_key: Mapped[str] = mapped_column(String)
+    dismissed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class ResumeProposalStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"

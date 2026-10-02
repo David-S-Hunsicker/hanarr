@@ -70,6 +70,7 @@ from ..pipeline import run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
 from .. import self_update
+from .. import tutorials
 from .. import __version__ as APP_VERSION
 from ..update_state import new_update_state
 from ..resume import (
@@ -602,20 +603,28 @@ def create_app(
             session.commit()
         return RedirectResponse("/profiles", status_code=303)
 
-    def _onboarding_status(profile, settings: Settings) -> dict:
+    def _onboarding_status(session, profile, settings: Settings) -> dict:
         """Whether the active profile has what it needs for a search to be
         useful. Computed fresh from existing data on every render -- no
         persisted "setup complete" flag to drift from reality. Local LLM
         setup is deliberately not part of `all_done`: search still works
         (rule-based keyword fallback) without it, it's just better with
         one, so it's surfaced as an optional suggestion, not a checklist
-        item that blocks the banner from going away."""
+        item that blocks the banner from going away.
+
+        `visible` additionally folds in the global tutorials_enabled switch
+        and this profile's own "don't show this again" dismissal -- `
+        all_done` alone used to be the only thing hiding the banner."""
         resume_done = bool(profile.resume_text)
         preferences_done = bool(effective_preferences(profile, settings).target_titles)
+        all_done = resume_done and preferences_done
         return {
             "resume_done": resume_done,
             "preferences_done": preferences_done,
-            "all_done": resume_done and preferences_done,
+            "all_done": all_done,
+            "visible": not all_done and tutorials.is_tutorial_visible(
+                session, settings, profile.id, "onboarding_checklist"
+            ),
         }
 
     RECENT_POSTING_WINDOW_DAYS = 7
@@ -722,7 +731,7 @@ def create_app(
             "gap_by_job": gap_by_job,
             "projects": [project_status(project) for project in projects],
             "score_impact_by_job": score_impact_by_job,
-            "onboarding": _onboarding_status(profile, settings),
+            "onboarding": _onboarding_status(session, profile, settings),
             "model_ready": model_readiness["ready"],
             "model_not_ready_reason": model_readiness["reason"],
             "job_filter_href": job_filter_href,
@@ -1203,6 +1212,30 @@ def create_app(
             project.completed_at = utc_now()
             session.commit()
             return JSONResponse(project_status(project))
+
+    @app.post("/api/tutorials/dismiss")
+    async def dismiss_tutorial_route(request: Request):
+        form = await request.form()
+        tutorial_key = str(form.get("tutorial_key", "")).strip()
+        if tutorial_key not in tutorials.TUTORIAL_KEYS:
+            return JSONResponse({"error": f"Unknown tutorial_key {tutorial_key!r}."}, status_code=400)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            tutorials.dismiss_tutorial(session, profile.id, tutorial_key)
+            session.commit()
+        return JSONResponse({"status": "dismissed", "tutorial_key": tutorial_key})
+
+    @app.post("/api/tutorials/reset")
+    def reset_tutorials_route(request: Request):
+        """Settings' "Reset dismissed tutorials" -- brings back every
+        tutorial this profile previously dismissed, independent of the
+        global tutorials_enabled switch (that's a separate on/off, not
+        reset by this)."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            tutorials.reset_dismissed_tutorials(session, profile.id)
+            session.commit()
+        return JSONResponse({"status": "reset"})
 
     @app.post("/api/coaching-projects/{project_id}/submissions")
     async def create_written_project_submission(project_id: int, request: Request):
@@ -1835,7 +1868,7 @@ def create_app(
     def _onboarding_status_for_request(request: Request) -> dict:
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
-            return _onboarding_status(profile, settings)
+            return _onboarding_status(session, profile, settings)
 
     def _config_version_for_tab(tab: str, request: Request) -> int:
         """The Preferences tab's stale-save check must compare against the

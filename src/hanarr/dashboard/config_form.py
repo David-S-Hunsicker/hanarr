@@ -113,6 +113,7 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     profile = dict(data["profile"])
     llm = dict(data["llm"])
     dashboard = dict(data["dashboard"])
+    ui = dict(data["ui"])
     agents = {k: (dict(v) if isinstance(v, dict) else v) for k, v in data["agents"].items()}
 
     profile["resume_path"] = form.get("resume_path", profile["resume_path"])
@@ -131,6 +132,8 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     dashboard["host"] = form.get("dashboard_host", dashboard["host"])
     dashboard["port"] = _int_or_none(form.get("dashboard_port")) or dashboard["port"]
 
+    ui["tutorials_enabled"] = "ui_tutorials_enabled" in form
+
     # The key itself is never stored in config.yaml (see secrets_store.py) --
     # only reflected here in memory so the rest of Settings validates and the
     # running app has it immediately. persist_secrets_from_form() is what
@@ -143,6 +146,7 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     data["profile"] = profile
     data["llm"] = llm
     data["dashboard"] = dashboard
+    data["ui"] = ui
     data["agents"] = agents
     return data
 

@@ -1,6 +1,10 @@
-{% if onboarding and not onboarding.all_done %}
-<div class="banner notice onboarding-banner">
-  <strong>Get set up:</strong>
+{% if onboarding and onboarding.visible %}
+<div class="banner notice onboarding-banner" id="onboarding-banner">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem;">
+    <strong>Get set up:</strong>
+    <button type="button" id="onboarding-dismiss-btn" title="Don't show this again"
+            style="font:inherit; border:none; background:none; cursor:pointer; color:inherit; opacity:.6; line-height:1;">✕</button>
+  </div>
   <p class="optional-hint">Hanarr is built to use an AI model for reading resumes and scoring jobs, not
   just keyword matching — <a href="/config?tab=app#provider">set up a local AI model</a> first (free,
   runs on your machine) before uploading your resume below, so it's actually read instead of just
@@ -10,4 +14,19 @@
     <li class="{{ 'done' if onboarding.preferences_done else '' }}"><span class="check">{{ "✓" if onboarding.preferences_done else "○" }}</span> <a href="/config?tab=preferences">Set your target titles</a></li>
   </ul>
 </div>
+<script>
+  (function () {
+    var banner = document.getElementById("onboarding-banner");
+    var dismissBtn = document.getElementById("onboarding-dismiss-btn");
+    if (!banner || !dismissBtn) return;
+    dismissBtn.addEventListener("click", function () {
+      banner.style.display = "none";
+      fetch("/api/tutorials/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "tutorial_key=onboarding_checklist",
+      }).catch(function () {});
+    });
+  })();
+</script>
 {% endif %}
