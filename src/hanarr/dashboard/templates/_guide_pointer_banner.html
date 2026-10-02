@@ -1,0 +1,35 @@
+<div id="guide-pointer-banner" hidden
+     style="align-items:center; flex-wrap:wrap; gap:.5rem; background:#eef6ff; color:#1a4d7a; border:1px solid #6ca9dd; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; margin:0 0 1rem;">
+  <span>New here? The <a href="/guide" style="color:inherit;font-weight:600;">Guide</a> page walks through what each tab does.</span>
+  <button type="button" id="guide-pointer-dismiss-btn" title="Don't show this again"
+          style="font:inherit; border:none; background:none; cursor:pointer; color:inherit; opacity:.6; line-height:1;">✕</button>
+</div>
+<script>
+  (function () {
+    var banner = document.getElementById("guide-pointer-banner");
+    var dismissBtn = document.getElementById("guide-pointer-dismiss-btn");
+    if (!banner) return;
+
+    // Same shape as the update banner's setVisible: `hidden` alone isn't
+    // enough once an explicit `display` is ever set, so both are always
+    // toggled together.
+    function setVisible(visible) {
+      banner.hidden = !visible;
+      banner.style.display = visible ? "inline-flex" : "none";
+    }
+
+    fetch("/api/tutorials/guide_pointer/status")
+      .then(function (r) { return r.json(); })
+      .then(function (data) { setVisible(!!data.visible); })
+      .catch(function () {});
+
+    dismissBtn.addEventListener("click", function () {
+      setVisible(false);
+      fetch("/api/tutorials/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "tutorial_key=guide_pointer",
+      }).catch(function () {});
+    });
+  })();
+</script>

@@ -2045,6 +2045,56 @@ def test_settings_app_tab_shows_tutorials_controls(tmp_path):
     assert 'id="tutorials-reset-btn"' in html
 
 
+def test_guide_pointer_banner_present_on_every_page_except_guide_itself(tmp_path):
+    """The first-run "New here? The Guide page..." popup is self-contained
+    (polls its own visibility, like the update banner) so it doesn't need
+    every route to compute and pass it down -- the onboarding checklist's
+    mistake of only reaching 2 of 10 pages. It must not appear on /guide
+    itself, since arriving there already fulfills its purpose."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    for page in ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/prep", "/debug/filtered"]:
+        html = client.get(page).text
+        assert 'id="guide-pointer-banner"' in html, f"{page} is missing the guide-pointer banner"
+
+    assert 'id="guide-pointer-banner"' not in client.get("/guide").text
+
+
+def test_guide_pointer_status_endpoint_reflects_dismissal_and_the_global_switch(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    assert client.get("/api/tutorials/guide_pointer/status").json() == {"visible": True}
+
+    client.post("/api/tutorials/dismiss", data={"tutorial_key": "guide_pointer"})
+    assert client.get("/api/tutorials/guide_pointer/status").json() == {"visible": False}
+
+    client.post("/api/tutorials/reset")
+    assert client.get("/api/tutorials/guide_pointer/status").json() == {"visible": True}
+
+    settings.ui.tutorials_enabled = False
+    assert client.get("/api/tutorials/guide_pointer/status").json() == {"visible": False}
+
+
+def test_visiting_the_guide_page_auto_dismisses_its_own_pointer_tutorial(tmp_path):
+    """Following the guide-pointer banner's own link already satisfies its
+    purpose -- requiring a separate "don't show again" click afterward would
+    be redundant, so /guide dismisses it automatically."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    assert client.get("/api/tutorials/guide_pointer/status").json() == {"visible": True}
+    guide_html = client.get("/guide").text
+    assert "tutorial_key=guide_pointer" in guide_html
+
+
+def test_unknown_tutorial_key_status_check_returns_404(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    response = TestClient(create_app(settings)).get("/api/tutorials/not_a_real_tutorial/status")
+    assert response.status_code == 404
+
+
 def test_debug_filtered_page_is_empty_before_any_search(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     html = TestClient(create_app(settings)).get("/debug/filtered").text

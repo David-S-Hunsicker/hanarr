@@ -13,7 +13,7 @@ from .models import DismissedTutorial
 # Every tutorial_key currently in the app. Keeping one explicit set here
 # (rather than discovering keys ad hoc) is what makes "reset all" possible
 # without a wildcard DELETE matching keys this profile never actually saw.
-TUTORIAL_KEYS = ("onboarding_checklist",)
+TUTORIAL_KEYS = ("onboarding_checklist", "guide_pointer")
 
 
 def is_tutorial_visible(session: Session, settings: Settings, profile_id: int, tutorial_key: str) -> bool:

@@ -134,5 +134,15 @@
         unattended.</li>
     </ul>
   </section>
+  <script>
+    // Arriving here already satisfies the guide-pointer tutorial's whole
+    // purpose -- dismiss it automatically instead of making someone who
+    // followed its own link also click a separate "don't show again".
+    fetch("/api/tutorials/dismiss", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "tutorial_key=guide_pointer",
+    }).catch(function () {});
+  </script>
 </body>
 </html>

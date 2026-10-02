@@ -31,6 +31,22 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-02 — v0.1.20
+
+Shipped: a first-run tutorial pointing new users to the Guide page (see below).
+
+### 2026-10-02 — Guide-pointer tutorial
+
+The first tutorial popup built on the dismissible-tutorials mechanism shipped just before this:
+a "New here? The Guide page walks through what each tab does." banner, shown site-wide (every
+page except Guide itself) until dismissed. Self-contained like the update banner -- it polls its
+own `GET /api/tutorials/{key}/status` rather than needing every route to compute and pass
+`onboarding`-style context, which is exactly how the onboarding checklist ended up only ever
+wired into 2 of 10 pages. Visiting the Guide page auto-dismisses it (`fetch(...dismiss...)` on
+page load), since following its own link already satisfies its purpose -- no redundant second
+click needed. `guide_pointer` added to `tutorials.TUTORIAL_KEYS`, no migration required (the
+narrow table design paying off exactly as planned when it was built).
+
 ### 2026-10-02 — v0.1.19
 
 Shipped: dismissible tutorials with a master switch and per-tutorial "don't show this again" (see

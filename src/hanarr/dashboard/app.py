@@ -1213,6 +1213,21 @@ def create_app(
             session.commit()
             return JSONResponse(project_status(project))
 
+    @app.get("/api/tutorials/{tutorial_key}/status")
+    def tutorial_status_route(request: Request, tutorial_key: str):
+        """Polled by self-contained tutorial-popup partials (see
+        _guide_pointer_banner.html) the same way the update banner polls
+        /update/status -- lets a popup decide its own visibility from
+        JS without every page route needing to compute and pass it down,
+        which is how the onboarding checklist ended up only ever wired into
+        two of ten pages."""
+        if tutorial_key not in tutorials.TUTORIAL_KEYS:
+            return JSONResponse({"error": f"Unknown tutorial_key {tutorial_key!r}."}, status_code=404)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            visible = tutorials.is_tutorial_visible(session, settings, profile.id, tutorial_key)
+        return JSONResponse({"visible": visible})
+
     @app.post("/api/tutorials/dismiss")
     async def dismiss_tutorial_route(request: Request):
         form = await request.form()
