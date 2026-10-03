@@ -206,6 +206,47 @@ sources:
     # and less durable since Workday hasn't committed to keeping this
     # endpoint's shape stable the way Greenhouse/Lever/Ashby have.
     career_site_urls: []
+  recruitee:
+    enabled: true
+    # Company slugs, e.g. for vandebron.recruitee.com -> "vandebron".
+    # Verified live the same way as the lists above (a non-empty `offers`
+    # array from https://<slug>.recruitee.com/api/offers/). Recruitee skews
+    # European and toward small/mid-size employers rather than the
+    # funded-startup skew of the Greenhouse/Lever/Ashby lists above, so this
+    # genuinely reaches a different slice of employers, not just more of
+    # the same.
+    company_boards:
+      - "vandebron"
+      - "duravermeer"
+      - "myjewellery"
+      - "dckgroup"
+      - "bunq"
+      - "vanmossel"
+      - "channable"
+  workable:
+    enabled: false
+    # No company list here (unlike the sources above) -- most individual
+    # Workable accounts return zero current postings even for well-known
+    # names, since Workable has no stable public directory of slugs to
+    # verify against the way Greenhouse/Lever/Ashby/Recruitee do. Instead
+    # this searches Workable's own public cross-employer job search by
+    # keyword (the same thing typing into jobs.workable.com's search box
+    # does) -- add your target titles/keywords, e.g.:
+    #   queries:
+    #     - "software engineer"
+    #     - "data analyst"
+    queries: []
+  usajobs:
+    enabled: false
+    # The official US federal government jobs API -- reaches federal/public
+    # sector postings none of the sources above touch at all. Requires a
+    # free API key, one per registered email, requested at
+    # https://developer.usajobs.gov/apirequest -- there's no anonymous
+    # access the way the sources above allow. Settings -> Preferences has a
+    # "USAJOBS" section that stores the key in your OS credential store,
+    # never here in config.yaml.
+    user_agent_email: ""
+    queries: []
   # The default company_boards/companies lists above skew heavily toward
   # tech/startup companies. When true, a search only queries default-list
   # companies whose known hiring mix overlaps the candidate's own resume

@@ -108,6 +108,39 @@ class ArbeitnowSource(BaseModel):
     enabled: bool = False
 
 
+class WorkableSource(BaseModel):
+    enabled: bool = False
+    # Workable has no per-company "board token" the way Greenhouse/Lever/
+    # Ashby do -- most Workable-hosted accounts return zero current
+    # postings even for well-known names (see connectors/workable.py's
+    # module docstring), so this connector queries Workable's own public
+    # cross-employer search (jobs.workable.com) by keyword instead, the
+    # same shape as RemoteOKSource.tags.
+    queries: list[str] = Field(default_factory=list)
+
+
+class RecruiteeSource(BaseModel):
+    enabled: bool = False
+    company_boards: list[str] = Field(default_factory=list)
+
+
+class UsajobsSource(BaseModel):
+    enabled: bool = False
+    # USAJOBS requires every caller to register their own free API key at
+    # developer.usajobs.gov/apirequest, tied to an email address -- there is
+    # no shared/anonymous access the way Greenhouse/Lever/Ashby/Recruitee
+    # allow. user_agent_email is sent as the required User-Agent header (not
+    # secret, just an identifier); api_key is a real credential and follows
+    # the same OS-keyring-not-config.yaml treatment as llm.api_key (see
+    # secrets_store.py, load_settings(), save_settings_to_yaml()).
+    user_agent_email: str = ""
+    api_key: Optional[str] = None
+    # Federal job titles/keywords to search for -- there's no "company
+    # board" concept here (postings span every federal agency), so this is
+    # shaped like WorkableSource.queries rather than company_boards.
+    queries: list[str] = Field(default_factory=list)
+
+
 class WorkdaySource(BaseModel):
     enabled: bool = False
     # A company's own public Workday careers URL (e.g.
@@ -126,6 +159,9 @@ class SourcesConfig(BaseModel):
     workday: WorkdaySource = Field(default_factory=WorkdaySource)
     remoteok: RemoteOKSource = Field(default_factory=RemoteOKSource)
     arbeitnow: ArbeitnowSource = Field(default_factory=ArbeitnowSource)
+    workable: WorkableSource = Field(default_factory=WorkableSource)
+    recruitee: RecruiteeSource = Field(default_factory=RecruiteeSource)
+    usajobs: UsajobsSource = Field(default_factory=UsajobsSource)
     # The shipped default company boards skew heavily toward tech/startup
     # companies -- when on, a search only queries default-list companies
     # whose known hiring categories overlap the candidate's own resume, so a
@@ -332,6 +368,10 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
         settings.reminders.email.smtp_password = (
             secrets_store.get_secret(secrets_store.SMTP_PASSWORD) or os.getenv("SMTP_PASSWORD")
         )
+    if settings.sources.usajobs.enabled and not settings.sources.usajobs.api_key:
+        settings.sources.usajobs.api_key = (
+            secrets_store.get_secret(secrets_store.USAJOBS_API_KEY) or os.getenv("USAJOBS_API_KEY")
+        )
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
@@ -374,8 +414,8 @@ def _backup_config(settings: Settings, config_path: Path) -> None:
 def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_CONFIG_PATH) -> None:
     """Writes settings back to config.yaml, omitting secrets that
     load_settings() populates from the environment (ANTHROPIC_API_KEY,
-    SMTP_PASSWORD) — those belong in .env, never in the gitignored-but-
-    still-plaintext config file."""
+    SMTP_PASSWORD, USAJOBS_API_KEY) — those belong in .env, never in the
+    gitignored-but-still-plaintext config file."""
     config_path = Path(config_path)
     _backup_config(settings, config_path)
     data = settings.model_dump(mode="json", exclude={"data_dir"})
@@ -386,5 +426,6 @@ def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_
     for route in data["agents"]["tasks"].values():
         route.pop("api_key", None)
     data["reminders"]["email"].pop("smtp_password", None)
+    data["sources"]["usajobs"].pop("api_key", None)
     with open(config_path, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

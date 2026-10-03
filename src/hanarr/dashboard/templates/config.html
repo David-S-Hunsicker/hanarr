@@ -497,6 +497,64 @@
             </div>
           </div>
         </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="recruitee_enabled" name="recruitee_enabled" {% if settings.sources.recruitee.enabled %}checked{% endif %}>
+            <label for="recruitee_enabled">Recruitee</label>
+          </div>
+          <div class="field">
+            <label for="recruitee_company_boards">Company boards</label>
+            <textarea id="recruitee_company_boards" name="recruitee_company_boards">{{ "\n".join(settings.sources.recruitee.company_boards) }}</textarea>
+            <div class="hint">Slugs from &lt;slug&gt;.recruitee.com, one per line</div>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="workable_enabled" name="workable_enabled" {% if settings.sources.workable.enabled %}checked{% endif %}>
+            <label for="workable_enabled">Workable</label>
+          </div>
+          <div class="field">
+            <label for="workable_queries">Search keywords</label>
+            <textarea id="workable_queries" name="workable_queries">{{ "\n".join(settings.sources.workable.queries) }}</textarea>
+            <div class="hint">
+              Workable has no per-company board directory the way the sources above do, so this
+              searches Workable's own public cross-employer job search by keyword instead (e.g.
+              your target titles) -- one per line.
+            </div>
+          </div>
+        </div>
+        <div class="source-block">
+          <div class="checkbox-row">
+            <input type="checkbox" id="usajobs_enabled" name="usajobs_enabled" {% if settings.sources.usajobs.enabled %}checked{% endif %}>
+            <label for="usajobs_enabled">USAJOBS (federal government)</label>
+          </div>
+          <div class="field">
+            <label for="usajobs_queries">Search keywords</label>
+            <textarea id="usajobs_queries" name="usajobs_queries">{{ "\n".join(settings.sources.usajobs.queries) }}</textarea>
+            <div class="hint">Federal job titles/keywords to search for, one per line -- there's no company list here, postings span every US federal agency.</div>
+          </div>
+          <div class="field">
+            <label for="usajobs_user_agent_email">Registered email</label>
+            <input type="text" id="usajobs_user_agent_email" name="usajobs_user_agent_email" value="{{ settings.sources.usajobs.user_agent_email }}" placeholder="you@example.com">
+            <div class="hint">The email you registered at <a href="https://developer.usajobs.gov/apirequest" target="_blank" rel="noopener">developer.usajobs.gov/apirequest</a> to get an API key -- sent as a required header, not a secret.</div>
+          </div>
+          <div class="field">
+            <label for="usajobs_api_key">API key</label>
+            <input type="password" id="usajobs_api_key" name="usajobs_api_key" autocomplete="off"
+                   placeholder="{% if settings.sources.usajobs.api_key %}•••• (already set){% else %}paste your key here{% endif %}">
+            {% if settings.sources.usajobs.api_key %}
+            <div class="checkbox-row">
+              <input type="checkbox" id="usajobs_api_key_clear" name="usajobs_api_key_clear">
+              <label for="usajobs_api_key_clear">Clear the stored key</label>
+            </div>
+            {% endif %}
+            <div class="hint">
+              Free, one per registered email, requested at the link above. Handed off to your
+              operating system's own credential manager as soon as you save -- never written to
+              config.yaml. Leave blank to keep whatever key is already saved.
+            </div>
+          </div>
+        </div>
       </fieldset>
 
       <div class="save-row">

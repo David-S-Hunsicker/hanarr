@@ -27,6 +27,7 @@ SERVICE_NAME = "hanarr"
 
 ANTHROPIC_API_KEY = "anthropic_api_key"
 SMTP_PASSWORD = "smtp_password"
+USAJOBS_API_KEY = "usajobs_api_key"
 
 
 def get_secret(name: str) -> str | None:

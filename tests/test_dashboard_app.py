@@ -2717,6 +2717,49 @@ def test_unchecking_show_tutorials_persists_to_config(tmp_path, monkeypatch, fak
     assert 'id="ui_tutorials_enabled" name="ui_tutorials_enabled" checked' not in page
 
 
+def test_saving_a_usajobs_key_stores_it_in_keyring_not_config_yaml(tmp_path, monkeypatch, fake_keyring):
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/preferences",
+        data={
+            "config_version": "0",
+            "usajobs_enabled": "on",
+            "usajobs_queries": "software engineer",
+            "usajobs_user_agent_email": "me@example.com",
+            "usajobs_api_key": "super-secret-federal-key",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.sources.usajobs.enabled is True
+    assert settings.sources.usajobs.queries == ["software engineer"]
+    assert settings.sources.usajobs.user_agent_email == "me@example.com"
+    assert settings.sources.usajobs.api_key == "super-secret-federal-key"
+    assert fake_keyring._store[("hanarr", "usajobs_api_key")] == "super-secret-federal-key"
+
+    config_yaml = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "super-secret-federal-key" not in config_yaml
+    assert "api_key" not in config_yaml
+
+
+def test_config_preferences_tab_shows_the_new_job_source_sections(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "preferences"}).text
+
+    assert 'id="recruitee_enabled"' in html
+    assert 'id="recruitee_company_boards"' in html
+    assert 'id="workable_enabled"' in html
+    assert 'id="workable_queries"' in html
+    assert 'id="usajobs_enabled"' in html
+    assert 'id="usajobs_queries"' in html
+    assert 'id="usajobs_user_agent_email"' in html
+    assert 'id="usajobs_api_key"' in html
+
+
 def test_blank_agent_model_override_clears_a_previously_saved_one(tmp_path, monkeypatch, fake_keyring):
     monkeypatch.chdir(tmp_path)
     settings = _make_isolated_settings(tmp_path)

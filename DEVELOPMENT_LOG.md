@@ -9,14 +9,6 @@ live only in a chat transcript.
 
 ## Planned
 
-- **More job source connectors: Workable, Recruitee, USAJobs** — same shape as the existing
-  Greenhouse/Lever/Ashby connectors (`connectors/*.py`): a legitimate public posting API, no
-  scraping. Workable and Recruitee both publish a job-board API structured like Greenhouse's
-  (company slug → list of postings), so they should mostly reuse that connector's parsing/matching
-  pipeline rather than needing new logic. USAJobs (`api.usajobs.gov`) is a different shape — a
-  free-key government API — and reaches a candidate pool (federal/public sector) none of the
-  current sources touch at all, not just more of the same postings.
-
 - **Networking outreach email drafts** — the "hidden job market" angle instead of more postings:
   draft a short cold outreach / informational-interview email to a specific contact at a target
   company, in the same "LLM drafts, you send it yourself" shape cover letters already use. The hard
@@ -61,6 +53,39 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-10-03 — v0.1.23
+
+Shipped: three new job source connectors -- Workable, Recruitee, USAJOBS (see below).
+
+### 2026-10-03 — Three new job source connectors: Workable, Recruitee, USAJOBS
+
+Scoped as a single Planned item ("more job source connectors"), researched and built as three
+genuinely different shapes rather than one pattern stamped out three times -- each API's actual
+contract was verified live before writing any code, the same discipline the Workday connector was
+built with:
+
+- **Recruitee** (`connectors/recruitee.py`) -- same per-company-board shape as Greenhouse/Lever/
+  Ashby (`https://<slug>.recruitee.com/api/offers/`, public, no auth). Ships with 7 default boards,
+  each verified live, skewing European and toward small/mid-size employers (energy, construction,
+  retail, automotive) rather than funded startups -- categorized in `company_categories.py` for the
+  existing profile-based board filter.
+- **Workable** -- turned out *not* to fit the per-company-board pattern at all: most individual
+  Workable accounts (`www.workable.com/api/accounts/<slug>`) return zero current postings, since
+  Workable has no stable public directory of slugs the way the other sources do. Built instead
+  against Workable's own public cross-employer search (`jobs.workable.com/api/v1/jobs?query=...`),
+  shaped like `RemoteOKSource.tags` -- free-text keyword queries rather than company slugs.
+- **USAJOBS** (`connectors/usajobs.py`) -- the official US federal government jobs API, a third
+  different shape again: requires a free API key registered to an email
+  (`developer.usajobs.gov/apirequest`), sent as `Authorization-Key`/`User-Agent` headers, with no
+  anonymous access at all. The key gets the same OS-keyring treatment as the Anthropic API key
+  (`secrets_store.USAJOBS_API_KEY`, never written to config.yaml) with the registered email as a
+  plain (non-secret) config field. Reaches federal/public-sector postings none of the existing
+  sources touch at all -- the actual "more opportunities" goal, not just more of the same
+  startup-board postings.
+
+All three wired into Settings → Preferences → Job sources alongside the existing six, and into
+`connectors/registry.py`'s `build_enabled_connectors()`. No database migration needed.
 
 ### 2026-10-02 — v0.1.22
 

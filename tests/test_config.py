@@ -100,6 +100,43 @@ def test_load_settings_falls_back_to_env_when_keyring_has_no_value(tmp_path, mon
     assert settings.llm.api_key == "from-env"
 
 
+def test_load_settings_reads_usajobs_key_from_keyring_before_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("sources:\n  usajobs:\n    enabled: true\n", encoding="utf-8")
+    monkeypatch.setenv("USAJOBS_API_KEY", "from-env")
+    monkeypatch.setattr(secrets_store, "get_secret", lambda name: "from-keyring")
+
+    settings = load_settings(tmp_path / "config.yaml")
+
+    assert settings.sources.usajobs.api_key == "from-keyring"
+
+
+def test_load_settings_falls_back_to_env_for_usajobs_key_when_keyring_has_no_value(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("sources:\n  usajobs:\n    enabled: true\n", encoding="utf-8")
+    monkeypatch.setenv("USAJOBS_API_KEY", "from-env")
+    monkeypatch.setattr(secrets_store, "get_secret", lambda name: None)
+
+    settings = load_settings(tmp_path / "config.yaml")
+
+    assert settings.sources.usajobs.api_key == "from-env"
+
+
+def test_save_settings_to_yaml_excludes_usajobs_api_key(tmp_path):
+    """Same treatment as the Anthropic API key -- a real credential, so it
+    must never land in the plaintext config.yaml even though it was present
+    on the in-memory Settings object (e.g. just loaded from the keyring)."""
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.sources.usajobs.api_key = "super-secret-key"
+    config_path = tmp_path / "config.yaml"
+
+    save_settings_to_yaml(settings, config_path)
+
+    saved = config_path.read_text(encoding="utf-8")
+    assert "super-secret-key" not in saved
+    assert "api_key" not in saved
+
+
 def test_existing_config_is_left_untouched(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.example.yaml").write_text("preferences:\n  salary_floor_usd: 999\n", encoding="utf-8")

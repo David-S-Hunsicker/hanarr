@@ -49,7 +49,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (498 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (516 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -236,6 +236,9 @@ account and isn't something to build around.
 | RemoteOK | An optional tag filter | Free public API |
 | Arbeitnow | Nothing — just enable it | Free public API, mostly EU-heavy listings |
 | Workday | A company's own public Workday careers URL, one per line | Public but *undocumented* — the same JSON endpoint the careers page's own JavaScript calls, not a contract Workday publishes or supports. Reaches traditional-enterprise/healthcare/large-non-tech employers the sources above mostly miss. Slower per company (a second request per job is needed just to get a description) and no shipped defaults, since there's no directory of tenants to sample from. |
+| Recruitee | Company slugs from `<slug>.recruitee.com` | Free public API. Skews European and toward small/mid-size employers rather than funded startups — ships with 7 verified boards (energy, construction, retail, automotive, plus a couple of tech companies), a genuinely different mix than the sources above. |
+| Workable | Free-text search keywords (e.g. your target titles) | Free public API, but shaped differently from the sources above: Workable has no stable per-company board directory to ship defaults from (most individual accounts return zero current postings), so this searches Workable's own public cross-employer job search by keyword instead, same shape as RemoteOK's tags. |
+| USAJOBS | A free API key + the email you registered it with | The official US federal government jobs API (`developer.usajobs.gov`). Unlike every other source above, there's no anonymous access — register a free key, tied to your email, and both are entered in Settings (the key goes to your OS credential store, never config.yaml). Reaches federal/public-sector postings none of the other sources touch at all. |
 
 The default company boards above skew heavily toward VC-funded tech/startup companies — fine
 for a software engineer, but an accounting/payroll/HR/etc. search against all of them gets
@@ -325,7 +328,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (498 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (516 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -347,9 +350,13 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. Currently scoped but unstarted: three more job-board connectors (Workable,
-Recruitee, USAJobs), networking outreach email drafts (you supply the contact, Hanarr drafts the
-message), and a job-search-focused chatbot grounded in your own resume/jobs/skills data. Two
+shipped and why. Currently scoped but unstarted: networking outreach email drafts (you supply the
+contact, Hanarr drafts the message), and a job-search-focused chatbot grounded in your own
+resume/jobs/skills data. Three more job source connectors shipped since: Recruitee (a genuinely
+different mix than the startup-heavy defaults — energy, construction, retail, automotive),
+Workable (its own public cross-employer keyword search, since Workable has no stable per-company
+board directory to ship defaults from the way the others do), and USAJOBS (the official federal
+government jobs API, reaching a candidate pool none of the other sources touch at all). Two
 automation ideas were considered and dropped instead of scoped: reading a connected email account
 for recruiter messages, and automatically clicking through LinkedIn's Easy Apply — the latter runs
 straight into LinkedIn's anti-automation ToS and real account-ban risk, which isn't a trade worth

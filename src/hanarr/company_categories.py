@@ -153,6 +153,17 @@ COMPANY_ROLE_CATEGORIES: dict[str, frozenset[str]] = {
     "column": frozenset({SOFTWARE, FINANCE}),
     "dave": frozenset({SOFTWARE, FINANCE}),
     "zip": frozenset({SOFTWARE, FINANCE, OPERATIONS}),
+
+    # Recruitee -- genuinely different mix than the lists above: mostly
+    # non-tech employers (energy, construction, retail, automotive), the
+    # point of adding this source rather than more of the same startups.
+    "vandebron": frozenset({OPERATIONS, SALES_MARKETING}),
+    "duravermeer": frozenset({OPERATIONS}),
+    "myjewellery": frozenset({OPERATIONS, SALES_MARKETING}),
+    "dckgroup": frozenset({OPERATIONS, SALES_MARKETING}),
+    "bunq": frozenset({SOFTWARE, FINANCE}),
+    "vanmossel": frozenset({OPERATIONS, SALES_MARKETING}),
+    "channable": frozenset({SOFTWARE, SALES_MARKETING}),
 }
 
 # Keyword -> category, checked against the candidate's resume-derived titles/

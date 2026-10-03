@@ -7,7 +7,10 @@ from .ashby import AshbyConnector
 from .base import Connector
 from .greenhouse import GreenhouseConnector
 from .lever import LeverConnector
+from .recruitee import RecruiteeConnector
 from .remoteok import RemoteOKConnector
+from .usajobs import UsajobsConnector
+from .workable import WorkableConnector
 from .workday import WorkdayConnector
 
 
@@ -58,4 +61,18 @@ def build_enabled_connectors(
         # categorizes the shipped default company lists, and Workday ships
         # with none; every entry here was typed in by the user themselves.
         connectors.append(WorkdayConnector(sources.workday.career_site_urls))
+    if sources.recruitee.enabled and sources.recruitee.company_boards:
+        boards = _boards(sources.recruitee.company_boards)
+        if boards:
+            connectors.append(RecruiteeConnector(boards))
+    if sources.workable.enabled and sources.workable.queries:
+        connectors.append(WorkableConnector(sources.workable.queries))
+    if sources.usajobs.enabled and sources.usajobs.queries:
+        connectors.append(
+            UsajobsConnector(
+                sources.usajobs.queries,
+                user_agent_email=sources.usajobs.user_agent_email,
+                api_key=sources.usajobs.api_key or "",
+            )
+        )
     return connectors

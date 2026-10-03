@@ -8,8 +8,11 @@ from hanarr.connectors.ashby import AshbyConnector
 from hanarr.connectors.base import to_naive_utc
 from hanarr.connectors.greenhouse import GreenhouseConnector
 from hanarr.connectors.lever import LeverConnector
+from hanarr.connectors.recruitee import RecruiteeConnector
 from hanarr.connectors.registry import build_enabled_connectors
 from hanarr.connectors.remoteok import RemoteOKConnector
+from hanarr.connectors.usajobs import UsajobsConnector
+from hanarr.connectors.workable import WorkableConnector
 from hanarr.connectors.workday import WorkdayConnector, parse_career_site_url
 from hanarr.config import Settings
 
@@ -691,6 +694,215 @@ def test_build_enabled_connectors_skips_workday_without_career_site_urls():
     connectors = build_enabled_connectors(settings.sources)
 
     assert not any(isinstance(c, WorkdayConnector) for c in connectors)
+
+
+@respx.mock
+def test_recruitee_connector_parses_offers():
+    respx.get("https://acme.recruitee.com/api/offers/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "offers": [
+                    {
+                        "id": 123,
+                        "company_name": "Acme",
+                        "title": "Backend Engineer",
+                        "location": "Amsterdam, Netherlands",
+                        "remote": True,
+                        "careers_url": "https://acme.recruitee.com/o/backend-engineer",
+                        "description": "<p>We build things.</p>",
+                        "published_at": "2026-09-28 07:13:32 UTC",
+                    }
+                ]
+            },
+        )
+    )
+    connector = RecruiteeConnector(company_boards=["acme"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    posting = postings[0]
+    assert posting.external_id == "123"
+    assert posting.company == "Acme"
+    assert posting.remote is True
+    assert posting.description == "We build things."
+    assert posting.posted_at == dt.datetime(2026, 9, 28, 7, 13, 32)
+    assert posting.posted_at.tzinfo is None
+
+
+@respx.mock
+def test_recruitee_connector_skips_failed_board_without_crashing():
+    respx.get("https://broken.recruitee.com/api/offers/").mock(return_value=httpx.Response(404))
+    connector = RecruiteeConnector(company_boards=["broken"])
+    assert connector.fetch() == []
+
+
+def test_build_enabled_connectors_includes_recruitee_when_configured():
+    settings = Settings()
+    settings.sources.recruitee.enabled = True
+    settings.sources.recruitee.company_boards = ["acme"]
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert any(isinstance(c, RecruiteeConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_skips_recruitee_without_company_boards():
+    settings = Settings()
+    settings.sources.recruitee.enabled = True
+    settings.sources.recruitee.company_boards = []
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert not any(isinstance(c, RecruiteeConnector) for c in connectors)
+
+
+@respx.mock
+def test_workable_connector_parses_jobs():
+    respx.get("https://jobs.workable.com/api/v1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": "abc-123",
+                        "title": "Python Developer",
+                        "company": {"title": "Acme"},
+                        "locations": ["Berlin, Germany"],
+                        "workplace": "remote",
+                        "url": "https://jobs.workable.com/view/abc-123",
+                        "description": "<p>Build stuff.</p>",
+                        "requirementsSection": "<p>Python required.</p>",
+                        "created": "2026-10-01T17:26:29.677Z",
+                    }
+                ]
+            },
+        )
+    )
+    connector = WorkableConnector(queries=["python"])
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    posting = postings[0]
+    assert posting.external_id == "abc-123"
+    assert posting.company == "Acme"
+    assert posting.remote is True
+    assert "Build stuff." in posting.description
+    assert "Python required." in posting.description
+    assert posting.posted_at == dt.datetime(2026, 10, 1, 17, 26, 29, 677000)
+    assert posting.posted_at.tzinfo is None
+
+
+@respx.mock
+def test_workable_connector_skips_failed_query_without_crashing():
+    respx.get("https://jobs.workable.com/api/v1/jobs").mock(return_value=httpx.Response(500))
+    connector = WorkableConnector(queries=["python"])
+    assert connector.fetch() == []
+
+
+def test_build_enabled_connectors_includes_workable_when_configured():
+    settings = Settings()
+    settings.sources.workable.enabled = True
+    settings.sources.workable.queries = ["python"]
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert any(isinstance(c, WorkableConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_skips_workable_without_queries():
+    settings = Settings()
+    settings.sources.workable.enabled = True
+    settings.sources.workable.queries = []
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert not any(isinstance(c, WorkableConnector) for c in connectors)
+
+
+@respx.mock
+def test_usajobs_connector_parses_search_results():
+    respx.get("https://data.usajobs.gov/api/search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "SearchResult": {
+                    "SearchResultItems": [
+                        {
+                            "MatchedObjectDescriptor": {
+                                "PositionID": "SW62210-05-1716110PB411413H",
+                                "PositionTitle": "IT SPECIALIST (INFOSEC/NETWORK)",
+                                "PositionURI": "https://www.usajobs.gov/GetJob/ViewDetails/21947200",
+                                "ApplyURI": ["https://www.usajobs.gov/GetJob/ViewDetails/21947200?PostingChannelID=RESTAPI"],
+                                "PositionLocationDisplay": "Point Loma Complex, San Diego, California",
+                                "OrganizationName": "Space and Naval Warfare Systems Command",
+                                "DepartmentName": "Department of the Navy",
+                                "PositionRemuneration": [
+                                    {"MinimumRange": "92108", "MaximumRange": "119746", "RateIntervalCode": "PA"}
+                                ],
+                                "PublicationStartDate": "2026-06-05T00:00:00Z",
+                                "QualificationSummary": "Must know networking.",
+                                "UserArea": {"Details": {"JobSummary": "Secure the network."}},
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    connector = UsajobsConnector(
+        ["IT specialist"], user_agent_email="me@example.com", api_key="real-key"
+    )
+    postings = connector.fetch()
+
+    assert len(postings) == 1
+    posting = postings[0]
+    assert posting.external_id == "SW62210-05-1716110PB411413H"
+    assert posting.company == "Space and Naval Warfare Systems Command"
+    assert posting.url == "https://www.usajobs.gov/GetJob/ViewDetails/21947200?PostingChannelID=RESTAPI"
+    assert posting.salary_min == 92108.0
+    assert posting.salary_max == 119746.0
+    assert "Secure the network." in posting.description
+    assert "Must know networking." in posting.description
+    assert posting.posted_at == dt.datetime(2026, 6, 5, 0, 0, 0)
+
+    request = respx.calls.last.request
+    assert request.headers["Authorization-Key"] == "real-key"
+    assert request.headers["User-Agent"] == "me@example.com"
+
+
+def test_usajobs_connector_returns_nothing_without_credentials():
+    connector = UsajobsConnector(["engineer"], user_agent_email="", api_key="")
+    assert connector.fetch() == []
+
+
+@respx.mock
+def test_usajobs_connector_skips_failed_query_without_crashing():
+    respx.get("https://data.usajobs.gov/api/search").mock(return_value=httpx.Response(401))
+    connector = UsajobsConnector(["engineer"], user_agent_email="me@example.com", api_key="bad")
+    assert connector.fetch() == []
+
+
+def test_build_enabled_connectors_includes_usajobs_when_configured():
+    settings = Settings()
+    settings.sources.usajobs.enabled = True
+    settings.sources.usajobs.queries = ["engineer"]
+    settings.sources.usajobs.user_agent_email = "me@example.com"
+    settings.sources.usajobs.api_key = "real-key"
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert any(isinstance(c, UsajobsConnector) for c in connectors)
+
+
+def test_build_enabled_connectors_skips_usajobs_without_queries():
+    settings = Settings()
+    settings.sources.usajobs.enabled = True
+    settings.sources.usajobs.queries = []
+
+    connectors = build_enabled_connectors(settings.sources)
+
+    assert not any(isinstance(c, UsajobsConnector) for c in connectors)
 
 
 def test_build_enabled_connectors_never_filters_boards_the_user_added_themselves():

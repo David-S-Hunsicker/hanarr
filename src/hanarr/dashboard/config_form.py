@@ -97,6 +97,22 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     sources["arbeitnow"]["enabled"] = "arbeitnow_enabled" in form
     sources["workday"]["enabled"] = "workday_enabled" in form
     sources["workday"]["career_site_urls"] = _list_from_form(form.get("workday_career_site_urls", ""))
+    sources["recruitee"]["enabled"] = "recruitee_enabled" in form
+    sources["recruitee"]["company_boards"] = _list_from_form(form.get("recruitee_company_boards", ""))
+    sources["workable"]["enabled"] = "workable_enabled" in form
+    sources["workable"]["queries"] = _list_from_form(form.get("workable_queries", ""))
+    sources["usajobs"]["enabled"] = "usajobs_enabled" in form
+    sources["usajobs"]["queries"] = _list_from_form(form.get("usajobs_queries", ""))
+    sources["usajobs"]["user_agent_email"] = form.get("usajobs_user_agent_email", "").strip()
+    # The key itself is never stored in config.yaml (see secrets_store.py) --
+    # only reflected here in memory so the rest of Settings validates and
+    # the running app has it immediately. persist_secrets_from_form() is
+    # what actually writes it to the OS credential store once the save
+    # succeeds, same split as the Anthropic API key above.
+    if "usajobs_api_key_clear" in form:
+        sources["usajobs"]["api_key"] = None
+    elif form.get("usajobs_api_key", "").strip():
+        sources["usajobs"]["api_key"] = form["usajobs_api_key"].strip()
     sources["filter_boards_by_profile"] = "filter_boards_by_profile" in form
 
     data["preferences"] = prefs
@@ -215,6 +231,11 @@ def persist_secrets_from_form(form: dict[str, str]) -> None:
         secrets_store.clear_secret(secrets_store.SMTP_PASSWORD)
     elif form.get("smtp_password", "").strip():
         secrets_store.set_secret(secrets_store.SMTP_PASSWORD, form["smtp_password"].strip())
+
+    if "usajobs_api_key_clear" in form:
+        secrets_store.clear_secret(secrets_store.USAJOBS_API_KEY)
+    elif form.get("usajobs_api_key", "").strip():
+        secrets_store.set_secret(secrets_store.USAJOBS_API_KEY, form["usajobs_api_key"].strip())
 
 
 def _int_or_none(raw: str | None) -> int | None:
