@@ -47,6 +47,16 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 - **Persisted, cross-run activity history** — the Jobs page already shows a live scrolling log
   during an active search; this would only add value across restarts/past runs (an audit
   nice-to-have), not something blocking real use today.
+- **A Hanarr MCP server** (`hanarr mcp` subcommand) — read-only tools (`get_resume`,
+  `list_matched_jobs`, `get_skill_gaps`, `get_coaching_projects`, `get_application_pipeline`), each
+  just wrapping the same queries the dashboard already runs, exposed over MCP instead of HTTP+Jinja
+  so an MCP-capable AI client (Claude Desktop, Claude Code, etc.) can answer questions about your
+  job search without switching to the dashboard. Deliberately separate from the in-app chatbot
+  above — that one talks to the already-configured LLM provider in-process and has no process
+  boundary to cross, so MCP would be pure overhead there. This is real value only insofar as
+  *someone* actually has an MCP client open regularly; for a typical Hanarr user who doesn't, it's
+  a power-user feature with no payoff, which is why it sits here rather than in Planned. Revisit if
+  that changes.
 
 ## Log
 
