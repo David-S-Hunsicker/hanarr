@@ -9,9 +9,40 @@ live only in a chat transcript.
 
 ## Planned
 
-Nothing is currently scoped and unstarted. Per-task model sizing shipped — see the Log below. STAR
-story builder, mini-interview skill assessment, and coaching project loop closure shipped before
-it. The "How to use Hanarr" guide page shipped earlier still.
+- **More job source connectors: Workable, Recruitee, USAJobs** — same shape as the existing
+  Greenhouse/Lever/Ashby connectors (`connectors/*.py`): a legitimate public posting API, no
+  scraping. Workable and Recruitee both publish a job-board API structured like Greenhouse's
+  (company slug → list of postings), so they should mostly reuse that connector's parsing/matching
+  pipeline rather than needing new logic. USAJobs (`api.usajobs.gov`) is a different shape — a
+  free-key government API — and reaches a candidate pool (federal/public sector) none of the
+  current sources touch at all, not just more of the same postings.
+
+- **Networking outreach email drafts** — the "hidden job market" angle instead of more postings:
+  draft a short cold outreach / informational-interview email to a specific contact at a target
+  company, in the same "LLM drafts, you send it yourself" shape cover letters already use. The hard
+  part — finding the *right person* to contact — is deliberately out of scope: LinkedIn people
+  search and contact-finder services (Hunter.io, Apollo.io, etc.) either violate LinkedIn's ToS the
+  same way automated Easy Apply would, or are themselves built on scraped data of the same
+  provenance, which doesn't fit this app's no-scraping stance. Instead, the user supplies the
+  contact (a name/email/LinkedIn URL they already found through their own network or a company's
+  team page) and Hanarr only drafts the message, using the resume + target role/company context it
+  already has. If a job posting happens to list a contact email itself, surface it as a free bonus
+  — that's reading data already given in the posting, not a lookup feature.
+
+- **A job-search-focused chatbot** — a conversational assistant grounded in the user's own stored
+  data (resume, matched jobs and their fit rationale, skill gaps, coaching projects) rather than a
+  blank general-purpose chatbot, so it can answer things like "why did this job score low" or "what
+  skills come up across most of my target jobs" without the user re-explaining context every time.
+  Open design questions to resolve before building: (1) how much context to inject per turn —
+  dumping the whole profile/job history into every prompt doesn't scale, so this likely needs a
+  lightweight retrieval step (pull only the rows relevant to the question) rather than full-context
+  stuffing; (2) whether it can ever take actions (start a coaching project, mark a job's status) or
+  stays read-only/advisory in v1 — the latter is the safer default, consistent with the rest of the
+  app never acting without an explicit button click, and tool-calling with confirmation could be a
+  later iteration rather than a v1 requirement; (3) graceful behavior under `provider: none`, since
+  a chatbot has no deterministic-fallback equivalent the way scoring/extraction do — probably just
+  disabled with a clear reason, same pattern as "Run search now" disabling when the model isn't
+  ready.
 
 ## Deferred / low priority
 

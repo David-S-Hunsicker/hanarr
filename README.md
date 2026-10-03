@@ -347,7 +347,13 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. Nothing is currently scoped and unstarted. Fuzzy/synonym skill matching and
+shipped and why. Currently scoped but unstarted: three more job-board connectors (Workable,
+Recruitee, USAJobs), networking outreach email drafts (you supply the contact, Hanarr drafts the
+message), and a job-search-focused chatbot grounded in your own resume/jobs/skills data. Two
+automation ideas were considered and dropped instead of scoped: reading a connected email account
+for recruiter messages, and automatically clicking through LinkedIn's Easy Apply — the latter runs
+straight into LinkedIn's anti-automation ToS and real account-ban risk, which isn't a trade worth
+making. Fuzzy/synonym skill matching and
 persisted cross-run activity history are deliberately shelved — real ideas, but nothing's actually
 blocked by either right now. A Workday connector reaches enterprise/healthcare employers the
 startup-focused boards miss, a passed coaching-project evaluation now closes the loop (bumps
