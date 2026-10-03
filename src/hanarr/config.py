@@ -182,7 +182,7 @@ class LLMConfig(BaseModel):
 
 
 AgentProvider = Literal["ollama", "anthropic", "none"]
-AgentName = Literal["profiler", "market_analysis", "curriculum", "evaluator", "resume_writer"]
+AgentName = Literal["profiler", "market_analysis", "curriculum", "evaluator", "resume_writer", "coach"]
 
 
 class AgentRoute(BaseModel):
@@ -208,6 +208,7 @@ class AgentsConfig(BaseModel):
     curriculum: AgentRoute = Field(default_factory=AgentRoute)
     evaluator: AgentRoute = Field(default_factory=AgentRoute)
     resume_writer: AgentRoute = Field(default_factory=AgentRoute)
+    coach: AgentRoute = Field(default_factory=AgentRoute)
     tasks: dict[str, AgentRoute] = Field(default_factory=dict)
 
 
@@ -360,6 +361,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
         settings.agents.curriculum,
         settings.agents.evaluator,
         settings.agents.resume_writer,
+        settings.agents.coach,
         *settings.agents.tasks.values(),
     ):
         if route.provider == "anthropic" and not route.api_key:
@@ -421,7 +423,7 @@ def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_
     data = settings.model_dump(mode="json", exclude={"data_dir"})
     data["llm"].pop("api_key", None)
     data["agents"]["default"].pop("api_key", None)
-    for name in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer"):
+    for name in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer", "coach"):
         data["agents"][name].pop("api_key", None)
     for route in data["agents"]["tasks"].values():
         route.pop("api_key", None)

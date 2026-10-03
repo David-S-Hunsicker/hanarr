@@ -10,11 +10,12 @@ Hanarr runs entirely on your own machine. Your resume, preferences, and match da
 SQLite file; nothing is sent anywhere except the job-source APIs you enable and (optionally) the
 LLM provider you configure.
 
-The dashboard has seven pages: **Jobs** (discovery and status), **Coaching** (skill-gap projects
+The dashboard has eight pages: **Jobs** (discovery and status), **Coaching** (skill-gap projects
 with review-first evaluation), **Resume** (source content, sectioned display, proposals, version
 history, and a plain-text export), **Skills** (capability evidence, separate from resume claims),
 **Applications** (your pipeline by status), **Prep** (behavioral-question practice and a STAR
-story bank), and **Settings**. Local, unauthenticated profile
+story bank), **Coach** (a chat assistant grounded in your own resume/jobs/projects, not a blank
+general-purpose chatbot), and **Settings**. Local, unauthenticated profile
 switching lets more than one person use the same instance — each profile gets its own resume,
 jobs, applications, and skills, while search preferences stay shared. Hanarr does not add hosted
 accounts/tenancy, scraping, automatic project creation, automatic resume activation, or
@@ -49,7 +50,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (516 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (526 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -267,7 +268,7 @@ scripting or reading `config.example.yaml` directly, not instructions for hand-e
   hosted with a usage cost, or `none` for rule-based keyword scoring only), model selection and
   download, and the Anthropic API key (stored via your OS's credential store, never in
   `config.yaml`). Specialized agent roles (`profiler`, `market_analysis`, `curriculum`,
-  `evaluator`, `resume_writer` — each can independently override the main LLM settings via
+  `evaluator`, `resume_writer`, `coach` — each can independently override the main LLM settings via
   `agents.*` in `config.yaml`) all reuse that one key. A "Tutorials" section here has a master
   "Show tutorials" switch and a "Reset dismissed tutorials" button — each tutorial (currently just
   the onboarding checklist) also has its own "don't show this again" dismiss, tracked per profile
@@ -328,7 +329,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (516 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (526 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -351,8 +352,13 @@ cover the prefilter and the rule-based fallback scorer.
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
 shipped and why. Currently scoped but unstarted: networking outreach email drafts (you supply the
-contact, Hanarr drafts the message), and a job-search-focused chatbot grounded in your own
-resume/jobs/skills data. Three more job source connectors shipped since: Recruitee (a genuinely
+contact, Hanarr drafts the message), and the next phase of **Coach** -- a growable, confirm-before-
+execute action registry so you can ask it to do things ("create a project for Kubernetes on the
+Acme job") through the same reviewed backend functions the UI already uses, never arbitrary writes.
+Coach's first phase shipped: a chat assistant grounded entirely in your own stored resume, matched
+jobs (with their actual fit rationale), and active coaching projects -- the grounding is what makes
+it worth more than opening Claude or Gemini directly, not the chat interface itself. Three more job
+source connectors shipped before that: Recruitee (a genuinely
 different mix than the startup-heavy defaults — energy, construction, retail, automotive),
 Workable (its own public cross-employer keyword search, since Workable has no stable per-company
 board directory to ship defaults from the way the others do), and USAJOBS (the official federal
@@ -370,8 +376,8 @@ bounded Q&A instead of trusting resume wording or a self-reported number, the **
 generates behavioral-interview questions from the resume's actual work history and helps build
 STAR stories for them (marking a job "interviewing" surfaces a one-click link to generate
 questions weighted toward that specific job), Settings → App has a "Per-task model sizing" section
-so the five
-LLM-backed roles can each use a differently-sized model instead of one blanket choice — researched
+so the (now six, including Coach) LLM-backed roles can each use a differently-sized model instead
+of one blanket choice — researched
 from actual call sites rather than assumed: the highest-frequency role (job fit scoring) turned
 out to be the one that wants a *heavier* model, not a lighter one, since frequency and task
 complexity don't move together here — an in-app **Guide** tab (`/guide` in the dashboard) covers

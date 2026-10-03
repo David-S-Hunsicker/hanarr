@@ -19,6 +19,7 @@ TUTORIAL_KEYS = (
     "coaching_intro",
     "skills_intro",
     "prep_intro",
+    "coach_intro",
 )
 
 

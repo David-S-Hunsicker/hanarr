@@ -34,7 +34,7 @@
     <span class="muted">How to get the most out of Hanarr</span>
     {% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
   </div>
-  <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/prep">Prep</a><a href="/config">Settings</a><a class="active" href="/guide">Guide</a></nav>
+  <nav class="nav" aria-label="Main navigation"><a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/prep">Prep</a><a href="/coach">Coach</a><a href="/config">Settings</a><a class="active" href="/guide">Guide</a></nav>
   {% include "_search_activity_badge.html" %}
   {% include "_update_available_banner.html" %}
 
@@ -93,6 +93,11 @@
       write each one up as a STAR (Situation/Task/Action/Result) story — reviewing your wording and
       flagging a vague component or an unmeasured result, never inventing an achievement you didn't
       state.</p></div>
+    <div class="card"><h3>Coach</h3><p>A chat assistant grounded in your actual resume, matched
+      jobs, and active coaching projects — not a blank general-purpose chatbot. It only answers
+      from your real stored data and Hanarr's own documented behavior, and says so when it doesn't
+      know something rather than guessing. Needs a configured LLM provider; there's no
+      keyword-matching fallback for open-ended chat the way job scoring has.</p></div>
     <div class="card"><h3>Settings</h3><p>Preferences and matching criteria, job sources, your LLM
       provider, resume upload, scheduling, and update checks — everything that controls how Hanarr
       behaves. "Per-task model sizing" lets you give a specific task (like fit scoring) a differently

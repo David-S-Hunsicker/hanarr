@@ -21,26 +21,11 @@ live only in a chat transcript.
   already has. If a job posting happens to list a contact email itself, surface it as a free bonus
   — that's reading data already given in the posting, not a lookup feature.
 
-- **A job-search-focused chatbot ("Coach")** — a conversational assistant meant to feel like an
-  active career coach who's actually looking at your resume, jobs, skills, and projects, not a
-  blank general-purpose chatbot. The thing that makes it worth more than opening Claude or Gemini
-  directly is entirely the grounding: every answer comes from the same data the rest of the app
-  already has, not from the model re-guessing. Not an MCP server (see Deferred below) — this runs
-  in-process against the already-configured LLM provider, the same `LLMClient` every other feature
-  uses, so there's no process boundary to justify the protocol overhead. Segmented into phases so
-  each one ships and versions on its own rather than landing as one giant feature:
+- **A job-search-focused chatbot ("Coach") — phases 2-3.** Phase 1 (core chat + grounded read-only
+  Q&A) shipped -- see the Log below. Not an MCP server (see Deferred below) -- Coach runs in-process
+  against the already-configured LLM provider, the same `LLMClient` every other feature uses, so
+  there's no process boundary to justify the protocol overhead. Remaining phases:
 
-  1. **Core chat + grounded Q&A (read-only).** A new `/coach` page and a persisted conversation
-     (new `ChatMessage` table, profile-scoped, so the thread survives a restart the way everything
-     else in this app does). Each turn builds a bounded context bundle -- resume summary, matched
-     jobs with fit rationale, skill gaps, active coaching projects, application pipeline status --
-     and hands it to the configured LLM alongside the question. Given this app's actual scale (one
-     person's job search, dozens not millions of rows), a bounded full-context summary is simpler
-     and sufficient compared to building real retrieval/embeddings -- that's over-engineering for
-     the data size involved. Also grounds "how does X work" questions in the Guide page's own
-     content, so it can explain Hanarr's own features accurately instead of guessing. Disabled with
-     a clear reason under `provider: none`, same pattern as "Run search now" disabling when the
-     model isn't ready -- there's no deterministic-fallback equivalent for a chatbot.
   2. **A growable action registry, confirm-before-execute.** The chatbot can ask Hanarr to do
      things ("create a project for Kubernetes on the Acme job"), but only through a fixed, reviewed
      list of existing backend functions -- never arbitrary writes. The LLM's job is narrowed to:
@@ -86,6 +71,28 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-10-03 — v0.1.24
+
+Shipped: Coach phase 1 -- a new `/coach` page with grounded, read-only chat (see below).
+
+### 2026-10-03 — Coach phase 1: grounded chat, read-only
+
+First phase of the segmented Coach plan: a new `/coach` page and persisted conversation
+(`ChatMessage`, profile-scoped). Every turn builds a bounded plain-text context bundle (resume
+summary or raw text, top fit-scored jobs with their actual stored rationale, active coaching
+projects) plus a short constant summary of how Hanarr's own features work, and hands both to the
+LLM alongside the question (`coach.py`'s `build_context`/`ask_coach`). Deliberately full-context
+rather than real retrieval/embeddings -- at this app's actual scale (one person's job search,
+dozens not millions of rows) everything relevant fits a modern context window, so a vector index
+would solve a scale problem this app doesn't have.
+
+Added a sixth agent role (`coach`) alongside profiler/market_analysis/curriculum/evaluator/
+resume_writer, so Coach gets its own per-task model override in Settings → App config like every
+other LLM-backed role. Disabled with a clear reason under `provider: none` or an unready Ollama
+model -- there's no deterministic-fallback equivalent for open-ended chat the way job scoring has
+a keyword-overlap fallback. No actions yet (phase 2, still in Planned): this phase is read-only
+Q&A only, answering only from the context bundle and refusing to guess at anything not in it.
 
 ### 2026-10-03 — v0.1.23
 

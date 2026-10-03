@@ -46,6 +46,8 @@ from ..cover_letter import generate_and_store_cover_letter
 from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
+    ChatMessage,
+    ChatRole,
     JobPosting,
     JobSkill,
     Profile,
@@ -71,6 +73,7 @@ from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
 from .. import self_update
 from .. import tutorials
+from ..coach import CoachError, ask_coach, recent_messages
 from .. import __version__ as APP_VERSION
 from ..update_state import new_update_state
 from ..resume import (
@@ -270,6 +273,7 @@ def create_app(
     curriculum_llm = orchestrator.client_for("curriculum")
     evaluator_llm = orchestrator.client_for("evaluator")
     resume_writer_llm = orchestrator.client_for("resume_writer")
+    coach_llm = orchestrator.client_for("coach")
 
     # Shared with the background scheduler (see search_state.py) so a
     # scheduled run shows up here identically to a manual one, instead of
@@ -1096,6 +1100,52 @@ def create_app(
                 },
             )
 
+    @app.get("/coach")
+    def coach_page(request: Request):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            messages = recent_messages(session, profile.id)
+            readiness = _model_readiness()
+            llm_ready = settings.llm.provider != "none" and readiness["ready"]
+            return templates.TemplateResponse(
+                request=request,
+                name="coach.html",
+                context={
+                    "messages": [{"role": m.role.value, "content": m.content} for m in messages],
+                    "llm_ready": llm_ready,
+                    "llm_provider": settings.llm.provider,
+                    "model_not_ready_reason": readiness["reason"],
+                    "active_profile": {"id": profile.id, "name": profile.name},
+                },
+            )
+
+    @app.post("/api/coach/messages")
+    async def post_coach_message(request: Request):
+        """Phase 1 only (see DEVELOPMENT_LOG.md): grounded Q&A, no actions
+        yet. There's no deterministic-fallback equivalent for open-ended
+        chat, so this needs a real LLM -- `provider: none` is refused up
+        front rather than attempted and failed."""
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "message must be an object."}, status_code=400)
+        question = str(payload.get("message", "")).strip()
+        if not question:
+            return JSONResponse({"error": "message is required."}, status_code=400)
+        if settings.llm.provider == "none":
+            return JSONResponse(
+                {"error": "Coach needs an LLM provider configured in Settings → App config."},
+                status_code=400,
+            )
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                answer = ask_coach(session, profile, coach_llm, question)
+            except CoachError as exc:
+                session.commit()  # keep the persisted user message even though the answer failed
+                return JSONResponse({"error": str(exc)}, status_code=502)
+            session.commit()
+            return JSONResponse({"answer": answer})
+
     @app.post("/api/coaching-projects")
     async def create_project(request: Request):
         payload = await request.json()
@@ -1845,7 +1895,7 @@ def create_app(
                 "current_override": getattr(settings.agents, role).model,
                 "recommendation": recommend_model_for_role(role, diagnostics.hardware),
             }
-            for role in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer")
+            for role in ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer", "coach")
         }
 
     def _active_profile_summary(request: Request) -> dict:

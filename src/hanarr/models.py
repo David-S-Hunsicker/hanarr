@@ -558,3 +558,26 @@ class ResumeProposal(Base):
     base_version: Mapped["ResumeVersion | None"] = relationship(
         back_populates="proposals", foreign_keys=[base_version_id]
     )
+
+
+class ChatRole(str, enum.Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChatMessage(Base):
+    """One turn in the Coach chat, persisted per profile so the
+    conversation survives a restart like everything else in this app --
+    see coach.py. action_json is non-null only for an assistant message
+    that proposed an action (see coach_actions.py); its own status tracks
+    whether the user confirmed, declined, or never responded to it."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"))
+    role: Mapped[ChatRole] = mapped_column(Enum(ChatRole))
+    content: Mapped[str] = mapped_column(Text)
+    action_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action_status: Mapped[str | None] = mapped_column(String, nullable=True)  # pending|confirmed|declined
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utc_now)

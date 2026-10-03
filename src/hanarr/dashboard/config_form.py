@@ -121,7 +121,7 @@ def apply_preferences_form(current: dict[str, Any], form: dict[str, str]) -> dic
     return data
 
 
-AGENT_ROLES = ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer")
+AGENT_ROLES = ("profiler", "market_analysis", "curriculum", "evaluator", "resume_writer", "coach")
 
 
 def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict[str, Any]:

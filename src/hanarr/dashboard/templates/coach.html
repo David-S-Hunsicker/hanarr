@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coach · Hanarr</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --muted: #5d5b56; --border: rgba(11,11,11,.12); --accent: #2a78d6; --accent-ink: #fff;
+      --good: #1f8a4c; --good-bg: rgba(31,138,76,.12); --warn: #9a6a1f;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #0d0d0d; --surface: #1a1a19; --text: #fff; --muted: #c3c2b7; --border: rgba(255,255,255,.13); --accent: #3987e5; --accent-ink: #fff;
+        --good: #45c17a; --good-bg: rgba(69,193,122,.14); --warn: #d7a54a;
+      }
+    }
+    * { box-sizing: border-box; }
+    @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
+    body { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem 4rem; background: var(--page); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .page-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+    h1, h2, h3 { margin: 0; } h1 { font-size: 1.35rem; font-weight: 650; }
+    .nav { display: flex; gap: .4rem; flex-wrap: wrap; margin: 1rem 0 1.5rem; }
+    .nav a { color: var(--muted); padding: .45rem .9rem; text-decoration: none; font-size: .85rem; font-weight: 600; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); transition: background .12s ease, color .12s ease, border-color .12s ease; }
+    .nav a:hover { border-color: var(--accent); color: var(--accent); }
+    .nav a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .meta { color: var(--muted); font-size: .9rem; }
+    .intro { color: var(--muted); margin: 0 0 1.2rem; max-width: 680px; }
+    .empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 1rem; }
+    .chat-thread { display: flex; flex-direction: column; gap: .7rem; min-height: 20rem; margin-bottom: 1rem; }
+    .chat-message { max-width: 80%; padding: .6rem .9rem; border-radius: 12px; line-height: 1.45; white-space: pre-wrap; }
+    .chat-message.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
+    .chat-message.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+    .chat-message.error { align-self: flex-start; background: var(--surface); border: 1px solid var(--warn); color: var(--warn); }
+    .chat-form { display: flex; gap: .5rem; position: sticky; bottom: 1rem; background: var(--page); padding-top: .5rem; }
+    .chat-form textarea { flex: 1; font: inherit; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); resize: vertical; min-height: 2.6rem; }
+    .btn { font: inherit; font-weight: 600; font-size: .85rem; border-radius: 6px; padding: .42rem .9rem; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .btn-primary:disabled { opacity: .6; cursor: default; }
+    .not-ready { border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: .9rem 1rem; }
+    .not-ready a { color: inherit; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="page-header"><h1>Coach <span style="font-size:.55em;font-weight:normal;color:#888;vertical-align:middle;">v{{ app_version }}</span></h1><span class="meta">An assistant grounded in your own resume, jobs, and projects.</span>{% if active_profile %}<a href="/profiles" style="color:var(--accent);text-decoration:none;font-size:.8rem;font-weight:600;margin-left:.75rem;">{{ active_profile.name }} &middot; switch profile</a>{% endif %}</div>
+  <nav class="nav" aria-label="Main navigation">
+    <a href="/">Jobs</a><a href="/coaching">Coaching</a><a href="/resume">Resume</a><a href="/skills">Skills</a><a href="/applications">Applications</a><a href="/prep">Prep</a><a class="active" href="/coach">Coach</a><a href="/config">Settings</a><a href="/guide">Guide</a>
+  </nav>
+  {% include "_search_activity_badge.html" %}
+  {% include "_update_available_banner.html" %}
+  {% include "_guide_pointer_banner.html" %}
+  {% set tutorial_key = "coach_intro" %}
+  {% set tutorial_message = "Coach answers from your actual resume, matched jobs, and coaching projects — not generic advice. Ask it things like \"why did this job score low\" or \"what should I work on this week.\"" %}
+  {% include "_tutorial_banner.html" %}
+
+  <p class="intro">Coach only answers from your actual stored data (resume, matched jobs, skill gaps, active projects) and Hanarr's own documented behavior -- it says so when it doesn't know something rather than guessing.</p>
+
+  {% if not llm_ready %}
+  <div class="not-ready">
+    {% if llm_provider == "none" %}
+      Coach needs an LLM provider configured -- there's no keyword-matching fallback for open-ended
+      chat the way job scoring has. <a href="/config?tab=app#provider">Set one up in Settings</a>.
+    {% elif model_not_ready_reason == "not_installed" %}
+      Ollama isn't installed yet. <a href="/config?tab=app#provider">Set it up in Settings</a>.
+    {% elif model_not_ready_reason == "not_running" %}
+      Ollama is installed but not currently running.
+    {% else %}
+      The configured model isn't pulled yet. <a href="/config?tab=app#provider">Check Settings</a>.
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="chat-thread" id="chat-thread">
+    {% if not messages %}
+    <div class="empty" id="chat-empty">Ask Coach anything about your job search -- "why did this job score low," "what should I work on this week," or "how does Quick skill check work."</div>
+    {% endif %}
+    {% for message in messages %}
+    <div class="chat-message {{ message.role }}">{{ message.content }}</div>
+    {% endfor %}
+  </div>
+  <form class="chat-form" id="chat-form">
+    <textarea id="chat-input" placeholder="Ask Coach..." required></textarea>
+    <button type="submit" class="btn btn-primary" id="chat-send">Send</button>
+  </form>
+  <script>
+    (function () {
+      const form = document.getElementById("chat-form");
+      const input = document.getElementById("chat-input");
+      const sendBtn = document.getElementById("chat-send");
+      const thread = document.getElementById("chat-thread");
+      const empty = document.getElementById("chat-empty");
+
+      function appendMessage(role, text) {
+        if (empty) empty.remove();
+        const div = document.createElement("div");
+        div.className = "chat-message " + role;
+        div.textContent = text;
+        thread.appendChild(div);
+        div.scrollIntoView({ behavior: "smooth", block: "end" });
+        return div;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const question = input.value.trim();
+        if (!question) return;
+        appendMessage("user", question);
+        input.value = "";
+        input.disabled = true;
+        sendBtn.disabled = true;
+        try {
+          const response = await fetch("/api/coach/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: question }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            appendMessage("error", data.error || "Coach couldn't process that.");
+          } else {
+            appendMessage("assistant", data.answer);
+          }
+        } catch (error) {
+          appendMessage("error", "Lost connection to Hanarr.");
+        } finally {
+          input.disabled = false;
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      });
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>
