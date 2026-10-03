@@ -21,28 +21,6 @@ live only in a chat transcript.
   already has. If a job posting happens to list a contact email itself, surface it as a free bonus
   — that's reading data already given in the posting, not a lookup feature.
 
-- **A job-search-focused chatbot ("Coach") — phases 2-3.** Phase 1 (core chat + grounded read-only
-  Q&A) shipped -- see the Log below. Not an MCP server (see Deferred below) -- Coach runs in-process
-  against the already-configured LLM provider, the same `LLMClient` every other feature uses, so
-  there's no process boundary to justify the protocol overhead. Remaining phases:
-
-  2. **A growable action registry, confirm-before-execute.** The chatbot can ask Hanarr to do
-     things ("create a project for Kubernetes on the Acme job"), but only through a fixed, reviewed
-     list of existing backend functions -- never arbitrary writes. The LLM's job is narrowed to:
-     resolve "Kubernetes"/"the Acme job" against the user's actual stored skills/jobs (asking for
-     clarification rather than guessing if ambiguous), pick which registered action applies, and
-     extract its parameters as structured JSON, the same complete_json-plus-schema shape every
-     other LLM call in this app already uses. Anything that writes real data to the resume or job
-     pipeline shows a confirmation card in the chat first -- no exceptions, no "the user asked
-     nicely" shortcut around the explicit-click principle the rest of the app already holds to
-     everywhere else (approving a resume proposal, cancelling a project). Credentials/API keys are
-     never settable through chat at all, full stop -- that stays in the dedicated masked-password
-     Settings fields. Starting registry, grown one action at a time rather than wired all at once:
-     `create_coaching_project` (reuses the curriculum LLM's existing project-design flow -- "design
-     me a project" is this, not a new engine), `start_skill_interview`, `generate_star_questions`,
-     `update_job_status`.
-  3. **Registry growth over time** -- more actions added as real uses come up, the same incremental
-     way the job source connectors grew one at a time rather than all at once. Not a v1 requirement.
 
 ## Deferred / low priority
 
@@ -71,6 +49,34 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-10-03 — v0.1.25
+
+Shipped: Coach phase 2 -- a confirm-before-execute action registry (see below).
+
+### 2026-10-03 — Coach phase 2: actions, confirm-before-execute
+
+Second and final v1 phase of the Coach plan: Coach can now propose doing something ("create a
+project for Kubernetes on the Acme job") instead of only answering questions, through a fixed,
+reviewed action registry (`coach_actions.py`) -- never an arbitrary write. The LLM's response
+shape grew from `{"type": "answer", ...}` to also allow `{"type": "action", "action": ...,
+"params": ..., "summary": ...}`; it resolves which skill/job a request means against the id lists
+now included in the context bundle (`build_context()` gained TRACKED SKILLS and ALL SAVED JOBS
+sections) rather than inventing one, and is told to ask a clarifying question instead of guessing
+when a request is ambiguous.
+
+An action is only ever a *proposal* until the user clicks Confirm on a card rendered in the chat
+(`POST /api/coach/messages/{id}/confirm`) -- no exception for "the user asked nicely in one
+sentence." `coach.ask_coach()` never executes an action itself; `confirm_action()` is the one and
+only place `coach_actions.run_action()` is ever called from, gated behind that explicit click, the
+same principle the rest of the app already holds to (approving a resume proposal, cancelling a
+project). Declining a proposal (`POST .../decline`) just marks it so without running anything.
+
+Starting registry, each a thin wrapper around an existing backend function -- `create_coaching_project`
+(reuses the curriculum LLM's existing project-design flow), `start_skill_interview`,
+`generate_star_questions`, `update_job_status`. Credentials are not and will never be an action;
+those stay in the dedicated masked-password Settings fields. More actions can be added later with
+zero changes to the confirm/decline plumbing -- just a new `ActionSpec` in the registry.
 
 ### 2026-10-03 — v0.1.24
 

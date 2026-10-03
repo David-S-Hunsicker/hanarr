@@ -41,6 +41,12 @@
     .btn-primary:disabled { opacity: .6; cursor: default; }
     .not-ready { border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: .9rem 1rem; }
     .not-ready a { color: inherit; font-weight: 600; }
+    .action-card { border: 1px solid var(--accent); }
+    .action-card p { margin: 0 0 .5rem; }
+    .action-buttons { display: flex; gap: .5rem; }
+    .pill { border: 1px solid var(--border); border-radius: 999px; padding: .15rem .6rem; font-size: .78rem; }
+    .action-confirmed { border-color: var(--good); color: var(--good); }
+    .action-declined { border-color: var(--muted); color: var(--muted); }
   </style>
 </head>
 <body>
@@ -76,7 +82,21 @@
     <div class="empty" id="chat-empty">Ask Coach anything about your job search -- "why did this job score low," "what should I work on this week," or "how does Quick skill check work."</div>
     {% endif %}
     {% for message in messages %}
+    {% if message.action %}
+    <div class="chat-message assistant action-card" data-message-id="{{ message.id }}">
+      <p>{{ message.action.summary }}</p>
+      {% if message.action_status == "pending" %}
+      <div class="action-buttons">
+        <button type="button" class="btn btn-primary action-confirm" data-message-id="{{ message.id }}">Confirm</button>
+        <button type="button" class="btn action-decline" data-message-id="{{ message.id }}">Decline</button>
+      </div>
+      {% else %}
+      <span class="pill action-{{ message.action_status }}">{{ message.action_status }}</span>
+      {% endif %}
+    </div>
+    {% else %}
     <div class="chat-message {{ message.role }}">{{ message.content }}</div>
+    {% endif %}
     {% endfor %}
   </div>
   <form class="chat-form" id="chat-form">
@@ -101,6 +121,34 @@
         return div;
       }
 
+      function appendActionCard(messageId, summary) {
+        if (empty) empty.remove();
+        const div = document.createElement("div");
+        div.className = "chat-message assistant action-card";
+        div.dataset.messageId = messageId;
+        const p = document.createElement("p");
+        p.textContent = summary;
+        div.appendChild(p);
+        const buttons = document.createElement("div");
+        buttons.className = "action-buttons";
+        buttons.innerHTML =
+          '<button type="button" class="btn btn-primary action-confirm" data-message-id="' + messageId + '">Confirm</button>' +
+          '<button type="button" class="btn action-decline" data-message-id="' + messageId + '">Decline</button>';
+        div.appendChild(buttons);
+        thread.appendChild(div);
+        div.scrollIntoView({ behavior: "smooth", block: "end" });
+        return div;
+      }
+
+      function resolveActionCard(card, status) {
+        const buttons = card.querySelector(".action-buttons");
+        if (buttons) buttons.remove();
+        const pill = document.createElement("span");
+        pill.className = "pill action-" + status;
+        pill.textContent = status;
+        card.appendChild(pill);
+      }
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const question = input.value.trim();
@@ -118,6 +166,8 @@
           const data = await response.json();
           if (!response.ok) {
             appendMessage("error", data.error || "Coach couldn't process that.");
+          } else if (data.type === "action") {
+            appendActionCard(data.message_id, data.summary);
           } else {
             appendMessage("assistant", data.answer);
           }
@@ -127,6 +177,34 @@
           input.disabled = false;
           sendBtn.disabled = false;
           input.focus();
+        }
+      });
+
+      // Delegated so this also handles action cards rendered server-side
+      // from a prior page load, not just ones appended this session.
+      thread.addEventListener("click", async (event) => {
+        const confirmBtn = event.target.closest(".action-confirm");
+        const declineBtn = event.target.closest(".action-decline");
+        const button = confirmBtn || declineBtn;
+        if (!button) return;
+        const messageId = button.dataset.messageId;
+        const card = button.closest(".action-card");
+        const path = confirmBtn
+          ? "/api/coach/messages/" + messageId + "/confirm"
+          : "/api/coach/messages/" + messageId + "/decline";
+        button.closest(".action-buttons").querySelectorAll("button").forEach((b) => { b.disabled = true; });
+        try {
+          const response = await fetch(path, { method: "POST" });
+          const data = await response.json();
+          if (!response.ok) {
+            appendMessage("error", data.error || "Could not process that action.");
+            button.closest(".action-buttons").querySelectorAll("button").forEach((b) => { b.disabled = false; });
+            return;
+          }
+          resolveActionCard(card, confirmBtn ? "confirmed" : "declined");
+        } catch (error) {
+          appendMessage("error", "Lost connection to Hanarr.");
+          button.closest(".action-buttons").querySelectorAll("button").forEach((b) => { b.disabled = false; });
         }
       });
     })();

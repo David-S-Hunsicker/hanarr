@@ -73,7 +73,7 @@ from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
 from .. import self_update
 from .. import tutorials
-from ..coach import CoachError, ask_coach, recent_messages
+from ..coach import CoachError, ask_coach, confirm_action, decline_action, recent_messages
 from .. import __version__ as APP_VERSION
 from ..update_state import new_update_state
 from ..resume import (
@@ -1100,6 +1100,15 @@ def create_app(
                 },
             )
 
+    def _chat_message_dict(m: ChatMessage) -> dict:
+        return {
+            "id": m.id,
+            "role": m.role.value,
+            "content": m.content,
+            "action": json.loads(m.action_json) if m.action_json else None,
+            "action_status": m.action_status,
+        }
+
     @app.get("/coach")
     def coach_page(request: Request):
         with session_factory() as session:
@@ -1111,7 +1120,7 @@ def create_app(
                 request=request,
                 name="coach.html",
                 context={
-                    "messages": [{"role": m.role.value, "content": m.content} for m in messages],
+                    "messages": [_chat_message_dict(m) for m in messages],
                     "llm_ready": llm_ready,
                     "llm_provider": settings.llm.provider,
                     "model_not_ready_reason": readiness["reason"],
@@ -1121,10 +1130,11 @@ def create_app(
 
     @app.post("/api/coach/messages")
     async def post_coach_message(request: Request):
-        """Phase 1 only (see DEVELOPMENT_LOG.md): grounded Q&A, no actions
-        yet. There's no deterministic-fallback equivalent for open-ended
+        """There's no deterministic-fallback equivalent for open-ended
         chat, so this needs a real LLM -- `provider: none` is refused up
-        front rather than attempted and failed."""
+        front rather than attempted and failed. A returned action is only
+        ever a proposal (type="action") -- see the confirm route below for
+        the one place it can actually run."""
         payload = await request.json()
         if not isinstance(payload, dict):
             return JSONResponse({"error": "message must be an object."}, status_code=400)
@@ -1139,12 +1149,38 @@ def create_app(
         with session_factory() as session:
             profile = get_active_profile(session, settings, _active_profile_id(request))
             try:
-                answer = ask_coach(session, profile, coach_llm, question)
+                result = ask_coach(session, profile, coach_llm, question)
             except CoachError as exc:
                 session.commit()  # keep the persisted user message even though the answer failed
                 return JSONResponse({"error": str(exc)}, status_code=502)
             session.commit()
-            return JSONResponse({"answer": answer})
+            return JSONResponse(result)
+
+    @app.post("/api/coach/messages/{message_id}/confirm")
+    def confirm_coach_action(request: Request, message_id: int):
+        """The only place a Coach-proposed action actually executes --
+        reachable only by an explicit button click, never from the LLM's
+        own output. Reuses the exact same backend functions the rest of
+        the dashboard's buttons call (coach_actions.py)."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                result = confirm_action(session, profile, coach_llm, message_id)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            session.commit()
+            return JSONResponse({"result": result})
+
+    @app.post("/api/coach/messages/{message_id}/decline")
+    def decline_coach_action(request: Request, message_id: int):
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            try:
+                decline_action(session, profile, message_id)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            session.commit()
+            return JSONResponse({"status": "declined"})
 
     @app.post("/api/coaching-projects")
     async def create_project(request: Request):

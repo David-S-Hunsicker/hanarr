@@ -3,11 +3,24 @@ import json
 from fastapi.testclient import TestClient
 
 import hanarr.dashboard.app as app_module
-from hanarr.coach import CoachError, add_message, ask_coach, build_context, recent_messages
+from hanarr.coach import CoachError, add_message, ask_coach, build_context, confirm_action, decline_action, recent_messages
+from hanarr.coach_actions import ACTIONS, action_catalog_text, run_action
 from hanarr.config import Settings
 from hanarr.dashboard.app import create_app
 from hanarr.db import get_or_create_profile, make_session_factory
-from hanarr.models import ChatRole, JobPosting, Project, ProjectMode, ProjectStatus
+from hanarr.models import (
+    ApplicationStatus,
+    ChatMessage,
+    ChatRole,
+    JobPosting,
+    JobSkill,
+    JobSkillRequirement,
+    Project,
+    ProjectMode,
+    ProjectStatus,
+    Skill,
+    SkillGapStatus,
+)
 
 
 class FakeLLM:
@@ -80,11 +93,13 @@ def test_ask_coach_persists_user_message_and_answer(tmp_path):
         profile = get_or_create_profile(session, settings)
         session.commit()
 
-        llm = FakeLLM(json.dumps({"answer": "Focus on the Acme posting first."}))
-        answer = ask_coach(session, profile, llm, "What should I prioritize?")
+        llm = FakeLLM(json.dumps({"type": "answer", "answer": "Focus on the Acme posting first."}))
+        result = ask_coach(session, profile, llm, "What should I prioritize?")
         session.commit()
 
-        assert answer == "Focus on the Acme posting first."
+        assert result["type"] == "answer"
+        assert result["answer"] == "Focus on the Acme posting first."
+        assert isinstance(result["message_id"], int)
         messages = recent_messages(session, profile.id)
         assert [m.role for m in messages] == [ChatRole.USER, ChatRole.ASSISTANT]
         assert messages[0].content == "What should I prioritize?"
@@ -141,7 +156,7 @@ def test_coach_page_round_trips_a_message(tmp_path, monkeypatch):
     settings = Settings(data_dir=tmp_path / "data")
     settings.llm.provider = "anthropic"
     settings.llm.api_key = "fake"
-    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: FakeLLM(json.dumps({"answer": "You are a strong match for Acme."})))
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: FakeLLM(json.dumps({"type": "answer", "answer": "You are a strong match for Acme."})))
     client = TestClient(create_app(settings))
 
     empty_page = client.get("/coach").text
@@ -150,7 +165,9 @@ def test_coach_page_round_trips_a_message(tmp_path, monkeypatch):
 
     response = client.post("/api/coach/messages", json={"message": "Who should I follow up with?"})
     assert response.status_code == 200
-    assert response.json() == {"answer": "You are a strong match for Acme."}
+    body = response.json()
+    assert body["type"] == "answer"
+    assert body["answer"] == "You are a strong match for Acme."
 
     page = client.get("/coach").text
     assert "Who should I follow up with?" in page
@@ -184,3 +201,367 @@ def test_coach_nav_link_present_on_every_page(tmp_path):
     for page in ["/", "/config", "/coaching", "/resume", "/skills", "/applications", "/profiles", "/prep", "/guide", "/debug/filtered"]:
         html = client.get(page).text
         assert 'href="/coach"' in html, f"{page} is missing a link to /coach"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: action registry (coach_actions.py)
+# ---------------------------------------------------------------------------
+
+
+def test_action_catalog_text_lists_every_registered_action():
+    text = action_catalog_text()
+    for name in ACTIONS:
+        assert name in text
+
+
+def test_run_action_rejects_an_unknown_action(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        try:
+            run_action(session, profile, FakeLLM("not json"), "delete_everything", {})
+            assert False, "expected a ValueError"
+        except ValueError as exc:
+            assert "Unknown action" in str(exc)
+
+
+def test_run_action_rejects_missing_required_params(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        try:
+            run_action(session, profile, FakeLLM("not json"), "start_skill_interview", {})
+            assert False, "expected a ValueError"
+        except ValueError as exc:
+            assert "skill_id" in str(exc)
+
+
+def test_run_action_create_coaching_project_for_a_reusable_skill(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="Kubernetes", slug="kubernetes")
+        session.add(skill)
+        session.commit()
+        skill_id = skill.id
+
+        result = run_action(session, profile, FakeLLM("not json"), "create_coaching_project", {"skill_id": skill_id})
+        session.commit()
+
+        assert result["mode"] == "reusable_skill"
+        assert result["skills"][0]["name"] == "Kubernetes"
+        projects = session.query(Project).filter_by(profile_id=profile.id).all()
+        assert len(projects) == 1
+
+
+def test_run_action_create_coaching_project_posting_specific(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="Kubernetes", slug="kubernetes")
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Platform Engineer", url="https://example.test/1",
+        )
+        session.add_all([skill, job])
+        session.flush()
+        session.add(JobSkill(
+            job_id=job.id, skill_id=skill.id,
+            requirement=JobSkillRequirement.REQUIRED, gap_status=SkillGapStatus.MISSING,
+        ))
+        session.commit()
+        skill_id, job_id = skill.id, job.id
+
+        result = run_action(
+            session, profile, FakeLLM("not json"), "create_coaching_project",
+            {"skill_id": skill_id, "job_id": job_id},
+        )
+        session.commit()
+
+        assert result["mode"] == "posting_specific"
+        assert result["affected_job_ids"] == [job_id]
+
+
+def test_run_action_start_skill_interview(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        skill = Skill(name="Python", slug="python")
+        session.add(skill)
+        session.commit()
+        skill_id = skill.id
+
+        result = run_action(session, profile, FakeLLM("not json"), "start_skill_interview", {"skill_id": skill_id})
+        session.commit()
+
+        assert result["skill_id"] == skill_id
+        assert len(result["questions"]) >= 1
+
+
+def test_run_action_update_job_status(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        result = run_action(session, profile, FakeLLM("not json"), "update_job_status", {"job_id": job_id, "status": "applied"})
+        session.commit()
+
+        assert result == {"job_id": job_id, "status": "applied"}
+        assert session.get(JobPosting, job_id).status == ApplicationStatus.APPLIED
+
+
+def test_run_action_update_job_status_rejects_an_invalid_status(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        try:
+            run_action(session, profile, FakeLLM("not json"), "update_job_status", {"job_id": job_id, "status": "bogus"})
+            assert False, "expected a ValueError"
+        except ValueError as exc:
+            assert "status must be one of" in str(exc)
+
+
+def test_run_action_update_job_status_rejects_another_profiles_job(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile_a = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile_a.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    with factory() as session:
+        from hanarr.models import Profile
+        other = Profile(name="Someone Else")
+        session.add(other)
+        session.commit()
+        try:
+            run_action(session, other, FakeLLM("not json"), "update_job_status", {"job_id": job_id, "status": "applied"})
+            assert False, "expected a ValueError"
+        except ValueError as exc:
+            assert "not found" in str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: ask_coach proposing an action, and confirm/decline
+# ---------------------------------------------------------------------------
+
+
+def test_ask_coach_proposes_an_action_without_executing_it(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        llm = FakeLLM(json.dumps({
+            "type": "action", "action": "update_job_status",
+            "params": {"job_id": job_id, "status": "applied"},
+            "summary": "Mark the Acme Backend Engineer job as applied.",
+        }))
+        result = ask_coach(session, profile, llm, "I applied to the Acme job")
+        session.commit()
+
+        assert result["type"] == "action"
+        assert result["action"] == "update_job_status"
+        assert result["params"] == {"job_id": job_id, "status": "applied"}
+        # Proposing it must not have run it.
+        assert session.get(JobPosting, job_id).status == ApplicationStatus.NEW
+
+        message = session.get(ChatMessage, result["message_id"])
+        assert message.action_status == "pending"
+
+
+def test_confirm_action_executes_and_marks_confirmed(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        llm = FakeLLM(json.dumps({
+            "type": "action", "action": "update_job_status",
+            "params": {"job_id": job_id, "status": "applied"},
+            "summary": "Mark it applied.",
+        }))
+        proposal = ask_coach(session, profile, llm, "I applied")
+        session.commit()
+
+        result = confirm_action(session, profile, llm, proposal["message_id"])
+        session.commit()
+
+        assert result == {"job_id": job_id, "status": "applied"}
+        assert session.get(JobPosting, job_id).status == ApplicationStatus.APPLIED
+        assert session.get(ChatMessage, proposal["message_id"]).action_status == "confirmed"
+
+
+def test_confirm_action_twice_is_rejected(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        llm = FakeLLM(json.dumps({
+            "type": "action", "action": "update_job_status",
+            "params": {"job_id": job_id, "status": "applied"}, "summary": "Mark it applied.",
+        }))
+        proposal = ask_coach(session, profile, llm, "I applied")
+        session.commit()
+        confirm_action(session, profile, llm, proposal["message_id"])
+        session.commit()
+
+        try:
+            confirm_action(session, profile, llm, proposal["message_id"])
+            assert False, "expected a ValueError"
+        except ValueError as exc:
+            assert "already confirmed" in str(exc)
+
+
+def test_decline_action_marks_declined_without_executing(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        llm = FakeLLM(json.dumps({
+            "type": "action", "action": "update_job_status",
+            "params": {"job_id": job_id, "status": "applied"}, "summary": "Mark it applied.",
+        }))
+        proposal = ask_coach(session, profile, llm, "I applied")
+        session.commit()
+
+        decline_action(session, profile, proposal["message_id"])
+        session.commit()
+
+        assert session.get(JobPosting, job_id).status == ApplicationStatus.NEW
+        assert session.get(ChatMessage, proposal["message_id"]).action_status == "declined"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: confirm/decline routes
+# ---------------------------------------------------------------------------
+
+
+def test_coach_action_round_trips_through_the_confirm_route(tmp_path, monkeypatch):
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.llm.provider = "anthropic"
+    settings.llm.api_key = "fake"
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    llm = FakeLLM(json.dumps({
+        "type": "action", "action": "update_job_status",
+        "params": {"job_id": job_id, "status": "applied"},
+        "summary": "Mark the Acme job applied.",
+    }))
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: llm)
+    client = TestClient(create_app(settings))
+
+    posted = client.post("/api/coach/messages", json={"message": "I applied to the Acme job"})
+    assert posted.status_code == 200
+    body = posted.json()
+    assert body["type"] == "action"
+    message_id = body["message_id"]
+
+    page = client.get("/coach").text
+    assert "Mark the Acme job applied." in page
+    assert "action-confirm" in page
+
+    confirmed = client.post(f"/api/coach/messages/{message_id}/confirm")
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"result": {"job_id": job_id, "status": "applied"}}
+
+    again = client.post(f"/api/coach/messages/{message_id}/confirm")
+    assert again.status_code == 400
+
+
+def test_coach_action_decline_route(tmp_path, monkeypatch):
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.llm.provider = "anthropic"
+    settings.llm.api_key = "fake"
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    llm = FakeLLM(json.dumps({
+        "type": "action", "action": "update_job_status",
+        "params": {"job_id": job_id, "status": "applied"}, "summary": "Mark it applied.",
+    }))
+    monkeypatch.setattr(app_module, "build_llm_client", lambda cfg: llm)
+    client = TestClient(create_app(settings))
+
+    posted = client.post("/api/coach/messages", json={"message": "I applied"})
+    message_id = posted.json()["message_id"]
+
+    declined = client.post(f"/api/coach/messages/{message_id}/decline")
+    assert declined.status_code == 200
+    assert declined.json() == {"status": "declined"}
+
+    with make_session_factory(settings)() as session:
+        job = session.get(JobPosting, job_id)
+        assert job.status == ApplicationStatus.NEW

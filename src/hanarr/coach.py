@@ -1,9 +1,14 @@
 """Coach: an in-app chatbot grounded in the profile's own stored data
 (resume, matched jobs, skill gaps, coaching projects) rather than a blank
-general-purpose chatbot -- see DEVELOPMENT_LOG.md's phased plan. This module
-covers phase 1 only: a persisted conversation and read-only, data-grounded
-Q&A. Phase 2 (action requests -- "create a project for X") lives in
-coach_actions.py, built on top of this.
+general-purpose chatbot -- see DEVELOPMENT_LOG.md's phased plan.
+
+Phase 1: a persisted conversation and read-only, data-grounded Q&A.
+Phase 2 (this file too, now): action requests -- "create a project for
+Kubernetes on the Acme job" -- resolved against coach_actions.py's fixed,
+reviewed registry. An action is only ever a *proposal* until the user
+explicitly confirms it from the chat UI (see dashboard/app.py's
+/api/coach/messages/{id}/confirm); nothing in coach_actions.ACTIONS runs
+from the LLM's output alone.
 
 Deliberately a bounded full-context summary rather than real
 retrieval/embeddings: Hanarr's actual scale (one person's job search,
@@ -14,11 +19,14 @@ this app doesn't have.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from .coach_actions import action_catalog_text, run_action
 from .llm.base import LLMClient
 from .models import ChatMessage, ChatRole, JobPosting, Profile, Project, ProjectStatus
+from .skill_analysis import profile_skill_page
 
 SYSTEM_PROMPT = """You are Coach, a career-coaching assistant built into Hanarr, a local-first
 job-search app. Answer only from the CONTEXT given in the user message and the conversation so
@@ -26,8 +34,20 @@ far -- never invent a fact about the candidate's resume, jobs, skills, or projec
 actually present in CONTEXT. If something isn't in CONTEXT, say plainly that you don't have that
 information rather than guessing. Be direct and specific: reference actual job titles, companies,
 and skill/project names from CONTEXT instead of vague generalities. You can also explain how
-Hanarr's own features work using the HANARR GUIDE section of CONTEXT. Return ONLY JSON in this
-shape: {"answer": "..."}"""
+Hanarr's own features work using the HANARR GUIDE section of CONTEXT.
+
+You can also propose one of a fixed set of actions when the candidate clearly asks for one of
+them (never propose an action for a plain question). Available actions:
+{action_catalog}
+
+To resolve an action's skill_id/job_id, match the candidate's wording against the IDs listed in
+CONTEXT's TRACKED SKILLS / ALL SAVED JOBS sections -- never invent an id. If the candidate's
+request is ambiguous (e.g. more than one skill or job plausibly matches, or none does), do not
+guess: ask a clarifying question as a normal answer instead of proposing an action.
+
+Return ONLY JSON, in exactly one of these two shapes:
+{{"type": "answer", "answer": "..."}}
+{{"type": "action", "action": "<action name>", "params": {{...}}, "summary": "one sentence describing exactly what this will do, for a confirmation prompt"}}"""
 
 # A short, stable summary of how Hanarr works, kept here rather than parsed
 # out of guide.html's markup -- a plain-text constant is simpler to keep in
@@ -41,17 +61,22 @@ skill check" mini-interview to test a claimed skill), Applications (pipeline by 
 (behavioral interview questions and STAR stories built from real work history), and Settings
 (preferences, job sources, LLM provider, updates). Nothing happens automatically in a way that
 could surprise the user: resume changes are proposals requiring approval, project submission is
-explicit, application status changes are explicit."""
+explicit, application status changes are explicit -- Coach follows the same rule: an action is
+only ever proposed, never run, until the candidate explicitly confirms it."""
 
 MAX_JOBS_IN_CONTEXT = 15
+MAX_ALL_JOBS_IN_CONTEXT = 50
+MAX_SKILLS_IN_CONTEXT = 50
 MAX_PROJECTS_IN_CONTEXT = 10
 MAX_HISTORY_MESSAGES = 20
 
 
 def build_context(session: Session, profile: Profile) -> str:
-    """A bounded plain-text summary of this profile's resume, top matched
-    jobs, and active coaching projects -- handed to the LLM alongside every
-    question so it never has to guess at the candidate's actual situation."""
+    """A bounded plain-text summary of this profile's resume, matched
+    jobs, tracked skills, and active coaching projects -- handed to the
+    LLM alongside every question so it never has to guess at the
+    candidate's actual situation, and so action params can be resolved to
+    real ids instead of invented ones."""
     parts: list[str] = [HANARR_GUIDE_SUMMARY]
 
     resume_summary = json.loads(profile.resume_summary_json or "{}")
@@ -78,6 +103,28 @@ def build_context(session: Session, profile: Profile) -> str:
         parts.append("TOP MATCHED JOBS (by fit score):\n" + "\n".join(job_lines))
     else:
         parts.append("MATCHED JOBS: none scored yet.")
+
+    all_jobs = (
+        session.query(JobPosting)
+        .filter(JobPosting.profile_id == profile.id)
+        .order_by(JobPosting.id.desc())
+        .limit(MAX_ALL_JOBS_IN_CONTEXT)
+        .all()
+    )
+    if all_jobs:
+        all_job_lines = [f"- id={j.id}: \"{j.title}\" at {j.company} (status={j.status.value})" for j in all_jobs]
+        parts.append("ALL SAVED JOBS (id, title, company, status -- for resolving which job a request means):\n" + "\n".join(all_job_lines))
+
+    skills = profile_skill_page(session, profile)[:MAX_SKILLS_IN_CONTEXT]
+    if skills:
+        skill_lines = []
+        for s in skills:
+            gap_jobs = [j for j in s["jobs"] if j["status"] in ("missing", "partial")]
+            gap_note = f", gap on {len(gap_jobs)} job(s)" if gap_jobs else ""
+            skill_lines.append(f"- id={s['id']}: \"{s['name']}\"{gap_note}")
+        parts.append("TRACKED SKILLS (id, name -- for resolving which skill a request means):\n" + "\n".join(skill_lines))
+    else:
+        parts.append("TRACKED SKILLS: none yet.")
 
     active_projects = (
         session.query(Project)
@@ -131,12 +178,17 @@ class CoachError(RuntimeError):
     fallback for an open-ended chat the way scoring/extraction have one."""
 
 
-def ask_coach(session: Session, profile: Profile, llm: LLMClient, question: str) -> str:
-    """Answers one turn and persists both the question and the answer.
-    Raises CoachError on any LLM failure -- callers should NOT persist a
-    fabricated answer, unlike the deterministic-fallback pattern used
-    elsewhere in this app, since there's nothing safe to fall back to for
-    free-form advice."""
+def ask_coach(session: Session, profile: Profile, llm: LLMClient, question: str) -> dict[str, Any]:
+    """Answers one turn and persists both the question and the response.
+    Raises CoachError on any LLM failure or malformed output -- callers
+    should NOT persist a fabricated answer, unlike the deterministic-
+    fallback pattern used elsewhere in this app, since there's nothing
+    safe to fall back to for free-form advice or an action proposal.
+
+    Returns {"type": "answer", "answer": ..., "message_id": ...} or
+    {"type": "action", "action": ..., "params": ..., "summary": ...,
+    "message_id": ...} -- the action is NOT executed here; see
+    confirm_action()."""
     history = recent_messages(session, profile.id)
     context = build_context(session, profile)
 
@@ -148,17 +200,64 @@ def ask_coach(session: Session, profile: Profile, llm: LLMClient, question: str)
         + (f"CONVERSATION SO FAR:\n{transcript}\n\n" if transcript else "")
         + f"Candidate's new message: {question}"
     )
+    system_prompt = SYSTEM_PROMPT.format(action_catalog=action_catalog_text())
 
     add_message(session, profile.id, ChatRole.USER, question)
 
     try:
-        raw = llm.complete_json(SYSTEM_PROMPT, user_prompt)
+        raw = llm.complete_json(system_prompt, user_prompt)
         data = json.loads(raw)
-        answer = str(data.get("answer", "")).strip()
-        if not answer:
-            raise ValueError("empty answer")
+        kind = data.get("type")
+        if kind == "action":
+            action_name = str(data["action"])
+            params = data.get("params") or {}
+            summary = str(data.get("summary", "")).strip() or f"Run {action_name}?"
+            if not isinstance(params, dict):
+                raise ValueError("params must be an object")
+        elif kind == "answer":
+            answer = str(data.get("answer", "")).strip()
+            if not answer:
+                raise ValueError("empty answer")
+        else:
+            raise ValueError(f"unknown response type {kind!r}")
     except Exception as exc:
         raise CoachError("Coach couldn't process that -- try again in a moment.") from exc
 
-    add_message(session, profile.id, ChatRole.ASSISTANT, answer)
-    return answer
+    if kind == "action":
+        action_json = json.dumps({"action": action_name, "params": params, "summary": summary})
+        message = add_message(session, profile.id, ChatRole.ASSISTANT, summary, action_json=action_json)
+        return {"type": "action", "action": action_name, "params": params, "summary": summary, "message_id": message.id}
+
+    message = add_message(session, profile.id, ChatRole.ASSISTANT, answer)
+    return {"type": "answer", "answer": answer, "message_id": message.id}
+
+
+def confirm_action(session: Session, profile: Profile, llm: LLMClient, message_id: int) -> dict:
+    """Runs a pending action proposal -- the one place coach_actions.run_action()
+    is ever called from. Only reachable by an explicit user click (see
+    dashboard/app.py); the LLM's own output never reaches here directly."""
+    message = session.get(ChatMessage, message_id)
+    if message is None or message.profile_id != profile.id:
+        raise ValueError("Message not found.")
+    if message.action_json is None:
+        raise ValueError("This message has no pending action.")
+    if message.action_status != "pending":
+        raise ValueError(f"This action is already {message.action_status}.")
+
+    proposal = json.loads(message.action_json)
+    result = run_action(session, profile, llm, proposal["action"], proposal["params"])
+    message.action_status = "confirmed"
+    session.flush()
+    return result
+
+
+def decline_action(session: Session, profile: Profile, message_id: int) -> None:
+    message = session.get(ChatMessage, message_id)
+    if message is None or message.profile_id != profile.id:
+        raise ValueError("Message not found.")
+    if message.action_json is None:
+        raise ValueError("This message has no pending action.")
+    if message.action_status != "pending":
+        raise ValueError(f"This action is already {message.action_status}.")
+    message.action_status = "declined"
+    session.flush()

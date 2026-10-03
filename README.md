@@ -15,7 +15,8 @@ with review-first evaluation), **Resume** (source content, sectioned display, pr
 history, and a plain-text export), **Skills** (capability evidence, separate from resume claims),
 **Applications** (your pipeline by status), **Prep** (behavioral-question practice and a STAR
 story bank), **Coach** (a chat assistant grounded in your own resume/jobs/projects, not a blank
-general-purpose chatbot), and **Settings**. Local, unauthenticated profile
+general-purpose chatbot, that can also propose actions like starting a project -- always behind an
+explicit confirm click), and **Settings**. Local, unauthenticated profile
 switching lets more than one person use the same instance — each profile gets its own resume,
 jobs, applications, and skills, while search preferences stay shared. Hanarr does not add hosted
 accounts/tenancy, scraping, automatic project creation, automatic resume activation, or
@@ -50,7 +51,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (526 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (541 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -329,7 +330,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (526 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (541 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -352,12 +353,13 @@ cover the prefilter and the rule-based fallback scorer.
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
 shipped and why. Currently scoped but unstarted: networking outreach email drafts (you supply the
-contact, Hanarr drafts the message), and the next phase of **Coach** -- a growable, confirm-before-
-execute action registry so you can ask it to do things ("create a project for Kubernetes on the
-Acme job") through the same reviewed backend functions the UI already uses, never arbitrary writes.
-Coach's first phase shipped: a chat assistant grounded entirely in your own stored resume, matched
-jobs (with their actual fit rationale), and active coaching projects -- the grounding is what makes
-it worth more than opening Claude or Gemini directly, not the chat interface itself. Three more job
+contact, Hanarr drafts the message). **Coach** shipped in full (both planned v1 phases): a chat
+assistant grounded entirely in your own stored resume, matched jobs (with their actual fit
+rationale), and active coaching projects -- the grounding is what makes it worth more than opening
+Claude or Gemini directly, not the chat interface itself -- plus a confirm-before-execute action
+registry, so you can ask it to do things ("create a project for Kubernetes on the Acme job")
+through the same reviewed backend functions the UI already uses, never an arbitrary write; nothing
+runs until you click Confirm on the card it shows in the chat. Three more job
 source connectors shipped before that: Recruitee (a genuinely
 different mix than the startup-heavy defaults — energy, construction, retail, automotive),
 Workable (its own public cross-employer keyword search, since Workable has no stable per-company
