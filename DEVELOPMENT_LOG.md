@@ -21,20 +21,43 @@ live only in a chat transcript.
   already has. If a job posting happens to list a contact email itself, surface it as a free bonus
   — that's reading data already given in the posting, not a lookup feature.
 
-- **A job-search-focused chatbot** — a conversational assistant grounded in the user's own stored
-  data (resume, matched jobs and their fit rationale, skill gaps, coaching projects) rather than a
-  blank general-purpose chatbot, so it can answer things like "why did this job score low" or "what
-  skills come up across most of my target jobs" without the user re-explaining context every time.
-  Open design questions to resolve before building: (1) how much context to inject per turn —
-  dumping the whole profile/job history into every prompt doesn't scale, so this likely needs a
-  lightweight retrieval step (pull only the rows relevant to the question) rather than full-context
-  stuffing; (2) whether it can ever take actions (start a coaching project, mark a job's status) or
-  stays read-only/advisory in v1 — the latter is the safer default, consistent with the rest of the
-  app never acting without an explicit button click, and tool-calling with confirmation could be a
-  later iteration rather than a v1 requirement; (3) graceful behavior under `provider: none`, since
-  a chatbot has no deterministic-fallback equivalent the way scoring/extraction do — probably just
-  disabled with a clear reason, same pattern as "Run search now" disabling when the model isn't
-  ready.
+- **A job-search-focused chatbot ("Coach")** — a conversational assistant meant to feel like an
+  active career coach who's actually looking at your resume, jobs, skills, and projects, not a
+  blank general-purpose chatbot. The thing that makes it worth more than opening Claude or Gemini
+  directly is entirely the grounding: every answer comes from the same data the rest of the app
+  already has, not from the model re-guessing. Not an MCP server (see Deferred below) — this runs
+  in-process against the already-configured LLM provider, the same `LLMClient` every other feature
+  uses, so there's no process boundary to justify the protocol overhead. Segmented into phases so
+  each one ships and versions on its own rather than landing as one giant feature:
+
+  1. **Core chat + grounded Q&A (read-only).** A new `/coach` page and a persisted conversation
+     (new `ChatMessage` table, profile-scoped, so the thread survives a restart the way everything
+     else in this app does). Each turn builds a bounded context bundle -- resume summary, matched
+     jobs with fit rationale, skill gaps, active coaching projects, application pipeline status --
+     and hands it to the configured LLM alongside the question. Given this app's actual scale (one
+     person's job search, dozens not millions of rows), a bounded full-context summary is simpler
+     and sufficient compared to building real retrieval/embeddings -- that's over-engineering for
+     the data size involved. Also grounds "how does X work" questions in the Guide page's own
+     content, so it can explain Hanarr's own features accurately instead of guessing. Disabled with
+     a clear reason under `provider: none`, same pattern as "Run search now" disabling when the
+     model isn't ready -- there's no deterministic-fallback equivalent for a chatbot.
+  2. **A growable action registry, confirm-before-execute.** The chatbot can ask Hanarr to do
+     things ("create a project for Kubernetes on the Acme job"), but only through a fixed, reviewed
+     list of existing backend functions -- never arbitrary writes. The LLM's job is narrowed to:
+     resolve "Kubernetes"/"the Acme job" against the user's actual stored skills/jobs (asking for
+     clarification rather than guessing if ambiguous), pick which registered action applies, and
+     extract its parameters as structured JSON, the same complete_json-plus-schema shape every
+     other LLM call in this app already uses. Anything that writes real data to the resume or job
+     pipeline shows a confirmation card in the chat first -- no exceptions, no "the user asked
+     nicely" shortcut around the explicit-click principle the rest of the app already holds to
+     everywhere else (approving a resume proposal, cancelling a project). Credentials/API keys are
+     never settable through chat at all, full stop -- that stays in the dedicated masked-password
+     Settings fields. Starting registry, grown one action at a time rather than wired all at once:
+     `create_coaching_project` (reuses the curriculum LLM's existing project-design flow -- "design
+     me a project" is this, not a new engine), `start_skill_interview`, `generate_star_questions`,
+     `update_job_status`.
+  3. **Registry growth over time** -- more actions added as real uses come up, the same incremental
+     way the job source connectors grew one at a time rather than all at once. Not a v1 requirement.
 
 ## Deferred / low priority
 
