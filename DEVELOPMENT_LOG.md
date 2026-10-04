@@ -9,18 +9,8 @@ live only in a chat transcript.
 
 ## Planned
 
-- **Networking outreach email drafts** — the "hidden job market" angle instead of more postings:
-  draft a short cold outreach / informational-interview email to a specific contact at a target
-  company, in the same "LLM drafts, you send it yourself" shape cover letters already use. The hard
-  part — finding the *right person* to contact — is deliberately out of scope: LinkedIn people
-  search and contact-finder services (Hunter.io, Apollo.io, etc.) either violate LinkedIn's ToS the
-  same way automated Easy Apply would, or are themselves built on scraped data of the same
-  provenance, which doesn't fit this app's no-scraping stance. Instead, the user supplies the
-  contact (a name/email/LinkedIn URL they already found through their own network or a company's
-  team page) and Hanarr only drafts the message, using the resume + target role/company context it
-  already has. If a job posting happens to list a contact email itself, surface it as a free bonus
-  — that's reading data already given in the posting, not a lookup feature.
-
+Nothing is currently scoped and unstarted — networking outreach email drafts shipped, see the Log
+below.
 
 ## Deferred / low priority
 
@@ -49,6 +39,23 @@ sit here instead of Planned. Revisit if a concrete case for one comes up.
 Dated entries go here as work ships, newest first. Not a full history — `git log` is authoritative
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
+
+### 2026-10-04 — v0.1.26
+
+Shipped: networking outreach email drafts on the Jobs page (see below).
+
+### 2026-10-04 — Networking outreach email drafts
+
+The last Planned item: a "Draft outreach email" button on each job card, next to the existing
+"Draft cover letter" one, same "LLM drafts, you send it yourself" shape and same
+no-approval-needed, overwrite-on-regenerate behavior (`outreach.py`, modeled directly on
+`cover_letter.py`). A text field next to the button takes a contact the user already found
+themselves -- a name, email, or LinkedIn URL -- and the draft addresses them by it. Hanarr never
+looks up who to contact: that's the part that would need LinkedIn people search or a scraped-data
+contact-finder service, both ruled out when this was scoped. Four new columns on `job_postings`
+(`outreach_contact`, `outreach_email`, `outreach_email_source`, `outreach_email_generated_at`),
+same deterministic-fallback pattern as the cover letter (never fabricates a fact about the resume
+or the contact beyond their name).
 
 ### 2026-10-03 — v0.1.25
 

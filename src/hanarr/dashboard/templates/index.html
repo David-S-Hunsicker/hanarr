@@ -419,6 +419,30 @@
     }
     .cover-letter-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
     .cover-letter-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .outreach-group { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .outreach-contact-input {
+      font: inherit;
+      font-size: 0.78rem;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      width: 12rem;
+    }
+    .outreach-action {
+      font: inherit;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .outreach-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .outreach-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .outreach-status { margin-left: 0.3rem; font-size: 0.78rem; color: var(--status-serious); }
     .prep-action {
       font: inherit;
       font-size: 0.78rem;
@@ -724,6 +748,42 @@
                 button.disabled = false;
                 button.textContent = original;
                 if (statusEl) statusEl.textContent = "Lost connection while drafting.";
+              });
+          });
+        });
+        document.querySelectorAll(".outreach-action").forEach((button) => {
+          const group = button.closest(".outreach-group");
+          const input = group.querySelector(".outreach-contact-input");
+          const statusEl = group.querySelector(".outreach-status");
+          button.addEventListener("click", function () {
+            const contact = input.value.trim();
+            if (!contact) {
+              statusEl.textContent = "Enter a contact first.";
+              return;
+            }
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = "Drafting…";
+            statusEl.textContent = "";
+            fetch("/api/jobs/" + button.dataset.jobId + "/outreach", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contact: contact }),
+            })
+              .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+              .then(({ ok, data }) => {
+                if (!ok) {
+                  button.disabled = false;
+                  button.textContent = original;
+                  statusEl.textContent = data.error || "Drafting failed.";
+                  return;
+                }
+                window.location.reload();
+              })
+              .catch(() => {
+                button.disabled = false;
+                button.textContent = original;
+                statusEl.textContent = "Lost connection while drafting.";
               });
           });
         });

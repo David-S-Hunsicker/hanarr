@@ -134,6 +134,16 @@ class JobPosting(Base):
     cover_letter_source: Mapped[str] = mapped_column(String, default="")
     cover_letter_generated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Same "LLM drafts, you send it yourself" shape as the cover letter --
+    # never a submission artifact, no approval step. outreach_contact is
+    # whatever the user typed in (a name/email/LinkedIn URL they already
+    # found themselves) -- Hanarr never looks up a contact itself, see
+    # outreach.py's module docstring for why.
+    outreach_contact: Mapped[str] = mapped_column(String, default="")
+    outreach_email: Mapped[str] = mapped_column(Text, default="")
+    outreach_email_source: Mapped[str] = mapped_column(String, default="")
+    outreach_email_generated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     profile: Mapped["Profile"] = relationship(back_populates="jobs")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="job")
     job_skills: Mapped[list["JobSkill"]] = relationship(back_populates="job")

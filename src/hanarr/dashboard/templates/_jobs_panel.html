@@ -102,6 +102,12 @@
         <textarea class="cover-letter-text" readonly rows="8">{{ job.cover_letter }}</textarea>
       </details>
       {% endif %}
+      {% if job.outreach_email %}
+      <details class="cover-letter-box" open>
+        <summary>Outreach email draft to {{ job.outreach_contact }}{% if job.outreach_email_source == "deterministic" %} — template, no AI configured{% endif %}</summary>
+        <textarea class="cover-letter-text" readonly rows="6">{{ job.outreach_email }}</textarea>
+      </details>
+      {% endif %}
     </div>
 
     <div class="job-actions">
@@ -111,6 +117,11 @@
       {% endif %}
       <button type="button" class="cover-letter-action" data-job-id="{{ job.id }}">{{ "Redraft cover letter" if job.cover_letter else "Draft cover letter" }}</button>
       <span class="cover-letter-status"></span>
+      <span class="outreach-group" data-job-id="{{ job.id }}">
+        <input type="text" class="outreach-contact-input" placeholder="Contact name, email, or LinkedIn URL" value="{{ job.outreach_contact }}">
+        <button type="button" class="outreach-action" data-job-id="{{ job.id }}">{{ "Redraft outreach email" if job.outreach_email else "Draft outreach email" }}</button>
+        <span class="outreach-status"></span>
+      </span>
       {% if job.status.value == "interviewing" %}
       <a class="prep-action" href="/prep?job_id={{ job.id }}">Practice for this interview</a>
       {% endif %}

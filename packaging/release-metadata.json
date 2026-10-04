@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "product": "Hanarr",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "platform": "windows",
   "artifact": "Hanarr-Setup-{version}.exe",
   "signing": {

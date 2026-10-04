@@ -51,7 +51,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (541 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (553 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -330,7 +330,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (541 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (553 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
@@ -352,8 +352,12 @@ cover the prefilter and the rule-based fallback scorer.
 ## Roadmap ideas
 
 Tracked in [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md), which also carries the running log of what
-shipped and why. Currently scoped but unstarted: networking outreach email drafts (you supply the
-contact, Hanarr drafts the message). **Coach** shipped in full (both planned v1 phases): a chat
+shipped and why. Nothing is currently scoped and unstarted. Networking outreach email drafts
+shipped last: a "Draft outreach email" button on each job card drafts a short cold-outreach /
+informational-interview email for a contact you already found yourself (a name, email, or
+LinkedIn URL you type in) -- Hanarr never looks up who to contact, since the tools that do that
+well run into the same LinkedIn-ToS/scraped-data problems ruled out earlier. **Coach** shipped in
+full (both planned v1 phases) before that: a chat
 assistant grounded entirely in your own stored resume, matched jobs (with their actual fit
 rationale), and active coaching projects -- the grounding is what makes it worth more than opening
 Claude or Gemini directly, not the chat interface itself -- plus a confirm-before-execute action

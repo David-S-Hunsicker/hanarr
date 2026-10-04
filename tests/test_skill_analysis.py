@@ -205,6 +205,84 @@ def test_draft_cover_letter_route_404s_for_a_missing_job(tmp_path):
     assert response.status_code == 404
 
 
+def test_draft_outreach_email_route_generates_persists_and_renders_it(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    response = client.post(f"/api/jobs/{job_id}/outreach", json={"contact": "Jane Doe"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source"] == "deterministic"  # settings.llm.provider == "none" in _settings
+    assert data["contact"] == "Jane Doe"
+    assert "Acme" in data["outreach_email"]
+    assert data["generated_at"] is not None
+
+    html = client.get("/").text
+    assert "Outreach email draft to Jane Doe" in html
+    assert "Redraft outreach email" in html
+
+
+def test_draft_outreach_email_route_requires_a_contact(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    response = client.post(f"/api/jobs/{job_id}/outreach", json={"contact": "   "})
+
+    assert response.status_code == 400
+
+
+def test_draft_outreach_email_route_404s_for_a_missing_job(tmp_path):
+    settings = _settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/api/jobs/999999/outreach", json={"contact": "Jane Doe"})
+
+    assert response.status_code == 404
+
+
+def test_draft_outreach_email_route_404s_for_another_profiles_job(tmp_path):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile_a = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile_a.id, source="test", external_id="1", company="Acme",
+            title="Backend Engineer", url="https://example.test/1",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    client = TestClient(create_app(settings))
+    created = client.post("/profiles", data={"name": "Profile B"}, follow_redirects=False)
+    client.cookies.set("hanarr_profile_id", created.cookies["hanarr_profile_id"])
+
+    response = client.post(f"/api/jobs/{job_id}/outreach", json={"contact": "Jane Doe"})
+
+    assert response.status_code == 404
+
+
 def test_saved_job_gaps_flags_stale_when_active_resume_is_newer_than_the_analysis(tmp_path):
     """If a coaching project gets completed and its resume proposal
     approved, the active resume version changes -- any skill-gap analysis

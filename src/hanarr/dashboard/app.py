@@ -43,6 +43,7 @@ from ..ollama_setup import (
 from ..calendar_export import reminders_to_ics
 from ..coaching_projects import create_coaching_project, project_status
 from ..cover_letter import generate_and_store_cover_letter
+from ..outreach import generate_and_store_outreach_email
 from ..evaluator import evaluate_submission, resubmit_submission
 from ..models import (
     ApplicationStatus,
@@ -920,6 +921,35 @@ def create_app(
                 "cover_letter": job.cover_letter,
                 "source": job.cover_letter_source,
                 "generated_at": job.cover_letter_generated_at.isoformat() if job.cover_letter_generated_at else None,
+            })
+
+    @app.post("/api/jobs/{job_id}/outreach")
+    async def draft_job_outreach_email(request: Request, job_id: int):
+        """Drafts a networking email to a contact the user already found
+        themselves -- Hanarr never looks up who to contact, see
+        outreach.py's module docstring for why."""
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            return JSONResponse({"error": "contact must be given as an object."}, status_code=400)
+        contact = str(payload.get("contact", "")).strip()
+        if not contact:
+            return JSONResponse({"error": "A contact (name, email, or LinkedIn URL) is required."}, status_code=400)
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            job = session.get(JobPosting, job_id)
+            if job is None or job.profile_id != profile.id:
+                return JSONResponse({"error": "Saved job not found."}, status_code=404)
+            try:
+                generate_and_store_outreach_email(profile, job, contact, resume_writer_llm)
+                session.commit()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Outreach email drafting failed for job %d", job_id)
+                return JSONResponse({"error": f"Drafting failed — {exc}"[:300]}, status_code=500)
+            return JSONResponse({
+                "contact": job.outreach_contact,
+                "outreach_email": job.outreach_email,
+                "source": job.outreach_email_source,
+                "generated_at": job.outreach_email_generated_at.isoformat() if job.outreach_email_generated_at else None,
             })
 
     @app.get("/api/jobs/{job_id}/skill-gaps")
