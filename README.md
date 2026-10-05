@@ -57,7 +57,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (582 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (584 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -72,8 +72,8 @@ Windows build/install/uninstall cycle, real connector APIs) rather than only moc
   degrading to rule-based scoring. If the LLM drops *mid-search* instead, the search pauses and
   polls until it's reachable again rather than quietly scoring the rest of the run with the much
   weaker keyword fallback — each job card shows which method actually scored it, a per-job
-  "Rematch this job" action (tucked, along with cover-letter/outreach drafting, behind a per-card
-  menu button) and a page-wide "Rematch all jobs" button re-score what's already saved, and a
+  "Rescore this job" action (tucked, along with cover-letter/outreach drafting, behind a per-card
+  menu button) and a page-wide "Rescore all jobs" button re-score what's already saved, and a
   status light on the Jobs page (click it to force a fresh check) shows whether a real LLM is
   currently reachable. A "Resume now" button appears wherever a pause is shown, to skip the wait
   instead of relying purely on the automatic retry.
@@ -345,7 +345,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (582 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (584 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.

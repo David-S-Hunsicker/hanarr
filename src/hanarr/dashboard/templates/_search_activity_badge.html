@@ -43,10 +43,23 @@
       emojiTimer = null;
     }
 
+    // Every page that includes this partial defines its own
+    // `.search-activity-badge { display: inline-flex; ... }` CSS rule (no
+    // shared base template to put a single [hidden] override in) -- an
+    // author-level `display` rule beats the `[hidden]` user-agent rule by
+    // cascade ORIGIN, not specificity, so `badge.hidden = true` alone left
+    // this visible on every page at all times. Both are always toggled
+    // together here, the same shape already used for the update banner,
+    // the tutorial banner, and others.
+    function setVisible(visible) {
+      badge.hidden = !visible;
+      badge.style.display = visible ? "inline-flex" : "none";
+    }
+
     function poll() {
       fetch("/search/status").then(function (r) { return r.json(); }).then(function (data) {
         if (data.search_running) {
-          badge.hidden = false;
+          setVisible(true);
           if (data.llm_paused) {
             stopEmojiCycle();
             emojiEl.textContent = pausedEmoji;
@@ -59,7 +72,7 @@
             if (resumeBtn) { resumeBtn.hidden = true; resumeBtn.disabled = false; resumeBtn.textContent = "Resume now"; }
           }
         } else {
-          badge.hidden = true;
+          setVisible(false);
           stopEmojiCycle();
           if (resumeBtn) { resumeBtn.hidden = true; resumeBtn.disabled = false; resumeBtn.textContent = "Resume now"; }
         }

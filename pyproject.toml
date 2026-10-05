@@ -1,6 +1,6 @@
 [project]
 name = "hanarr"
-version = "0.1.32"
+version = "0.1.35"
 description = "A configurable, self-hosted job-search agent: parses your resume, searches ToS-friendly job sources, scores fit against your preferences, tracks applications, and generates reminders."
 readme = "README.md"
 requires-python = ">=3.10"

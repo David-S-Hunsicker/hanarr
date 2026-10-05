@@ -2334,6 +2334,30 @@ def test_other_hidden_elements_dont_have_an_author_display_rule_that_defeats_hid
         "the interview-questions grid's author-level display needs an [hidden] override"
     )
 
+    # A fourth instance of the exact same bug: .job-menu-panel's own
+    # `display: flex` (needed to lay out its contents once open) beat
+    # `[hidden]`'s `display: none`, so every job's action menu showed open
+    # on every page load instead of only after clicking its kebab button.
+    jobs_html = TestClient(create_app(settings)).get("/").text
+    assert ".job-menu-panel[hidden] { display: none; }" in jobs_html, (
+        "the job-card action menu's author-level display needs an [hidden] override"
+    )
+
+    # A fifth instance: every page that includes _search_activity_badge.html
+    # defines its own `.search-activity-badge { display: inline-flex; ... }`
+    # CSS rule (there's no shared base template to put one override in), so
+    # the badge's `badge.hidden = true/false` alone had no visual effect --
+    # the badge (and its 🔍 emoji) showed on every page at all times,
+    # reported as "why is there a magnifying glass button on pages that
+    # are not Jobs page ... it's not even clickable." Fixed in the JS
+    # itself instead (toggle badge.style.display alongside .hidden), since
+    # patching nine separate page-level CSS blocks would be the same fix
+    # repeated nine times.
+    coaching_html = TestClient(create_app(settings)).get("/coaching").text
+    assert "badge.style.display" in coaching_html, (
+        "the search-activity badge must toggle style.display explicitly, not rely on .hidden alone"
+    )
+
 
 def test_app_version_shown_on_main_pages(tmp_path):
     """Regression test: the running app version was never rendered anywhere
@@ -2731,6 +2755,53 @@ def test_app_config_page_shows_per_task_model_sizing_and_saves_an_override(tmp_p
     assert 'value="qwen2.5:14b"' in saved_page
 
 
+def test_llm_model_select_shows_the_actual_current_value_when_not_a_known_option(tmp_path):
+    """User report: "the shown selection for Model should be the current
+    selection." When the configured model isn't in the installed/recommended
+    list, the dropdown falls back to a generic "Custom model name..." option
+    -- technically correct (the real value is in the adjacent text box) but
+    doesn't visibly say what that value actually is. The selected option's
+    own label must show it."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.model = "some-model-not-installed:7b"
+    html = TestClient(create_app(settings)).get("/config?tab=app").text
+
+    assert 'value="__custom__" data-installed="false" selected>Custom: some-model-not-installed:7b<' in html
+
+
+def test_llm_model_select_change_persists_to_config(tmp_path, monkeypatch, fake_keyring):
+    """User report: "changing that setting should change and save." A full
+    round trip -- GET, change just llm_model, POST, confirm the saved value
+    is both in settings and reflected back correctly on the next page load."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    settings.llm.model = "qwen2.5:0.5b"
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": "qwen2.5:14b",
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.llm.model == "qwen2.5:14b"
+
+    config_yaml = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "qwen2.5:14b" in config_yaml
+
+    saved_page = client.get("/config?tab=app").text
+    assert 'value="qwen2.5:14b"' in saved_page
+
+
 def test_unchecking_show_tutorials_persists_to_config(tmp_path, monkeypatch, fake_keyring):
     monkeypatch.chdir(tmp_path)
     settings = _make_isolated_settings(tmp_path)
@@ -2962,7 +3033,7 @@ def test_llm_status_route_reports_not_connected_when_check_raises(tmp_path, monk
     assert "Ollama isn't reachable" in data["detail"]
 
 
-def test_rematch_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
+def test_rescore_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     factory = make_session_factory(settings)
     with factory() as session:
@@ -2973,28 +3044,28 @@ def test_rematch_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
         ))
         session.commit()
 
-    def _fake_rematch(session, settings, profile, llm, on_progress=None, should_stop=None, resume_event=None):
+    def _fake_rescore(session, settings, profile, llm, on_progress=None, should_stop=None, resume_event=None):
         job = session.query(JobPosting).filter_by(profile_id=profile.id).one()
         job.fit_score, job.fit_rationale, job.fit_score_method = 95.0, "Rescored.", "llm"
         session.commit()
         return 1
 
-    monkeypatch.setattr(app_mod, "rematch_all_jobs", _fake_rematch)
+    monkeypatch.setattr(app_mod, "rescore_all_jobs", _fake_rescore)
 
     client = TestClient(create_app(settings))
-    started = client.post("/api/jobs/rematch")
+    started = client.post("/api/jobs/rescore")
     assert started.status_code == 200
     assert started.json()["started"] is True
 
     final = None
     for _ in range(50):
         time.sleep(0.05)
-        s = client.get("/api/jobs/rematch/status").json()
+        s = client.get("/api/jobs/rescore/status").json()
         if not s["running"]:
             final = s
             break
 
-    assert final is not None, "rematch did not finish in time"
+    assert final is not None, "rescore did not finish in time"
     assert final["last_result"] == "1 job(s) rescored."
 
     with factory() as session:
@@ -3003,7 +3074,7 @@ def test_rematch_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
         assert job.fit_score_method == "llm"
 
 
-def test_rematch_all_jobs_route_surfaces_llm_unavailable_error(tmp_path, monkeypatch):
+def test_rescore_all_jobs_route_surfaces_llm_unavailable_error(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     with make_session_factory(settings)() as session:
         profile = get_or_create_profile(session, settings)
@@ -3015,19 +3086,19 @@ def test_rematch_all_jobs_route_surfaces_llm_unavailable_error(tmp_path, monkeyp
     def _raise_unavailable(session, settings, profile, llm, **kwargs):
         raise pipeline_mod.LLMUnavailableError("Ollama isn't reachable — start Ollama and try again.")
 
-    monkeypatch.setattr(app_mod, "rematch_all_jobs", _raise_unavailable)
+    monkeypatch.setattr(app_mod, "rescore_all_jobs", _raise_unavailable)
     client = TestClient(create_app(settings))
 
-    client.post("/api/jobs/rematch")
+    client.post("/api/jobs/rescore")
     final = None
     for _ in range(50):
         time.sleep(0.05)
-        s = client.get("/api/jobs/rematch/status").json()
+        s = client.get("/api/jobs/rescore/status").json()
         if not s["running"]:
             final = s
             break
 
-    assert final is not None, "rematch did not finish in time"
+    assert final is not None, "rescore did not finish in time"
     assert "Ollama isn't reachable" in final["last_result"]
 
 
@@ -3061,7 +3132,7 @@ def test_jobs_panel_shows_scoring_method_badges(tmp_path):
 def test_jobs_panel_moves_secondary_actions_into_a_per_job_menu(tmp_path):
     """"The job entries on dashboard are now feeling cluttered. Let's find
     a way to move the buttons that are on the right ... to a menu" -- fit
-    analysis, cover letter, outreach, and rematch now live behind a single
+    analysis, cover letter, outreach, and rescore now live behind a single
     kebab menu button per job card instead of being always-visible."""
     settings = _make_isolated_settings(tmp_path)
     with make_session_factory(settings)() as session:
@@ -3077,12 +3148,12 @@ def test_jobs_panel_moves_secondary_actions_into_a_per_job_menu(tmp_path):
 
     assert 'class="job-menu-btn"' in html
     assert 'class="job-menu-panel" hidden' in html
-    assert "rematch-job-action" in html
+    assert "rescore-job-action" in html
     assert "cover-letter-action" in html
     assert "outreach-action" in html
 
 
-def test_rematch_single_job_route_rescores_and_updates_the_job(tmp_path, monkeypatch):
+def test_rescore_single_job_route_rescores_and_updates_the_job(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     with make_session_factory(settings)() as session:
         profile = get_or_create_profile(session, settings)
@@ -3100,7 +3171,7 @@ def test_rematch_single_job_route_rescores_and_updates_the_job(tmp_path, monkeyp
     )
 
     client = TestClient(create_app(settings))
-    response = client.post(f"/api/jobs/{job_id}/rematch")
+    response = client.post(f"/api/jobs/{job_id}/rescore")
 
     assert response.status_code == 200
     data = response.json()
@@ -3113,7 +3184,7 @@ def test_rematch_single_job_route_rescores_and_updates_the_job(tmp_path, monkeyp
         assert job.fit_score_method == "llm"
 
 
-def test_rematch_single_job_route_surfaces_llm_scoring_failure(tmp_path, monkeypatch):
+def test_rescore_single_job_route_surfaces_llm_scoring_failure(tmp_path, monkeypatch):
     settings = _make_isolated_settings(tmp_path)
     with make_session_factory(settings)() as session:
         profile = get_or_create_profile(session, settings)
@@ -3132,17 +3203,17 @@ def test_rematch_single_job_route_surfaces_llm_scoring_failure(tmp_path, monkeyp
     monkeypatch.setattr(app_mod, "score_fit", _raise)
     client = TestClient(create_app(settings))
 
-    response = client.post(f"/api/jobs/{job_id}/rematch")
+    response = client.post(f"/api/jobs/{job_id}/rescore")
 
     assert response.status_code == 502
     assert "Ollama isn't reachable" in response.json()["error"]
 
 
-def test_rematch_single_job_route_404s_for_a_job_outside_the_active_profile(tmp_path):
+def test_rescore_single_job_route_404s_for_a_job_outside_the_active_profile(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
-    response = client.post("/api/jobs/999999/rematch")
+    response = client.post("/api/jobs/999999/rescore")
 
     assert response.status_code == 404
 
@@ -3158,11 +3229,11 @@ def test_search_resume_now_route_sets_the_event_only_while_paused(tmp_path):
     assert response.json()["resumed"] is True
 
 
-def test_rematch_resume_now_route_sets_the_event_only_while_paused(tmp_path):
+def test_rescore_resume_now_route_sets_the_event_only_while_paused(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))
 
-    response = client.post("/api/jobs/rematch/resume-now")
+    response = client.post("/api/jobs/rescore/resume-now")
     assert response.status_code == 200
     assert response.json()["resumed"] is True
 

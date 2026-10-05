@@ -60,7 +60,7 @@
         "Hanarr" on the Jobs page shows whether a real LLM is currently reachable, and each job card says
         whether it was scored by the LLM or by keyword matching.</li>
       <li><strong>Jobs</strong> — review what was found, sorted by fit. Mark status as you apply, hear
-        back, or interview; that automatically schedules a follow-up reminder. "Rematch all jobs" re-scores
+        back, or interview; that automatically schedules a follow-up reminder. "Rescore all jobs" re-scores
         everything already saved against your current resume/preferences/LLM — useful after fixing an LLM
         that had been down, or after editing preferences.</li>
       <li><strong>Coaching &amp; Skills</strong> — when a job shows a skill gap, decide whether to close
@@ -114,8 +114,14 @@
 
   <section class="guide-section">
     <h2>Understanding fit scores and skill gaps</h2>
-    <p>A fit score reflects how well a posting matches your stated preferences and resume — it's a
-    starting signal for triage, not a verdict. Click "View fit analysis" on a job to see exactly which
+    <p>"Matched" and "fit score" mean two different things. A posting is <strong>matched</strong> — found
+    by a search, cleared your prefilter (location, salary floor, dealbreakers) and your minimum score —
+    and saved to your Jobs list; that's a one-time pass/fail decision made during a search. A
+    <strong>fit score</strong> is the 0–100 quality number itself, a starting signal for triage, not a
+    verdict. "Rescore this job" / "Rescore all jobs" only recompute that number (and the written
+    explanation behind it) for jobs already on your list — they never re-run the matched/not-matched
+    decision, so a job stays on your list even if a rescore brings its number down.</p>
+    <p>Click "View fit analysis" on a job to see exactly which
     skills it's looking for and how each one is classified: <strong>satisfied</strong> (your profile
     clearly covers it), <strong>partial</strong> (some evidence, but thinner than the posting wants), or
     <strong>missing</strong>. "Improve my fit" turns a missing or partial skill into a coaching project;

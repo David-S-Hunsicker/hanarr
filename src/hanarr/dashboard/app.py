@@ -71,15 +71,15 @@ from ..models import (
     SkillInterview,
     utc_now,
 )
-from ..pipeline import check_llm_available, rematch_all_jobs, run_search_cycle
+from ..pipeline import check_llm_available, rescore_all_jobs, run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
 from ..search_state import (
     log_event as search_log_event,
-    new_rematch_state,
+    new_rescore_state,
     new_search_state,
     on_progress as search_on_progress,
-    rematch_on_progress,
-    reset_for_rematch,
+    rescore_on_progress,
+    reset_for_rescore,
     reset_for_run,
 )
 from .. import self_update
@@ -361,51 +361,51 @@ def create_app(
             state["search_running"] = False
             stop_event.clear()
 
-    # "Rematch all jobs" -- re-scores every saved posting against the
+    # "Rescore all jobs" -- re-scores every saved posting against the
     # current resume/preferences/LLM, same background-thread-plus-polling
     # shape as a search. Its own state/stop-event: independent of a live
     # search (either could be running without blocking the other, though
     # in practice a user is unlikely to kick off both at once).
-    rematch_state = new_rematch_state()
-    rematch_stop_event = threading.Event()
-    rematch_resume_now_event = threading.Event()
+    rescore_state = new_rescore_state()
+    rescore_stop_event = threading.Event()
+    rescore_resume_now_event = threading.Event()
 
-    def _rematch_log_event(entry: dict) -> None:
-        search_log_event(rematch_state, entry)
+    def _rescore_log_event(entry: dict) -> None:
+        search_log_event(rescore_state, entry)
 
-    def _rematch_on_progress(event: dict) -> None:
-        rematch_on_progress(rematch_state, event)
+    def _rescore_on_progress(event: dict) -> None:
+        rescore_on_progress(rescore_state, event)
 
-    def _run_rematch_in_background(run_id: int, profile_id: int | None = None):
-        rematch_stop_event.clear()
-        rematch_resume_now_event.clear()
+    def _run_rescore_in_background(run_id: int, profile_id: int | None = None):
+        rescore_stop_event.clear()
+        rescore_resume_now_event.clear()
         try:
             with session_factory() as session:
                 profile = get_active_profile(session, settings, profile_id)
                 total = session.scalar(
                     select(func.count()).select_from(JobPosting).where(JobPosting.profile_id == profile.id)
                 ) or 0
-                reset_for_rematch(rematch_state, run_id, total)
-                n = rematch_all_jobs(
+                reset_for_rescore(rescore_state, run_id, total)
+                n = rescore_all_jobs(
                     session, settings, profile, market_analysis_llm,
-                    on_progress=_rematch_on_progress,
-                    should_stop=rematch_stop_event.is_set,
-                    resume_event=rematch_resume_now_event,
+                    on_progress=_rescore_on_progress,
+                    should_stop=rescore_stop_event.is_set,
+                    resume_event=rescore_resume_now_event,
                 )
-                if rematch_stop_event.is_set():
-                    rematch_state["last_result"] = f"Rematch stopped — {n} job(s) rescored."
+                if rescore_stop_event.is_set():
+                    rescore_state["last_result"] = f"Rescore stopped — {n} job(s) rescored."
                 else:
-                    rematch_state["last_result"] = f"{n} job(s) rescored."
+                    rescore_state["last_result"] = f"{n} job(s) rescored."
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Rematch-all-jobs cycle failed")
-            message = f"Rematch failed — {exc}"
+            logger.exception("Rescore-all-jobs cycle failed")
+            message = f"Rescore failed — {exc}"
             if len(message) > 300:
                 message = message[:300] + "…"
-            rematch_state["last_result"] = message
-            _rematch_log_event({"kind": "error", "text": message})
+            rescore_state["last_result"] = message
+            _rescore_log_event({"kind": "error", "text": message})
         finally:
-            rematch_state["running"] = False
-            rematch_stop_event.clear()
+            rescore_state["running"] = False
+            rescore_stop_event.clear()
 
     def _task_is_stuck(task_state: dict) -> bool:
         return task_is_stuck(task_state, settings.llm.timeout_seconds)
@@ -761,7 +761,7 @@ def create_app(
         score_impact_by_job = {}
         for impact in resume_page_status(profile, session)["score_impacts"]:
             # Resume status returns newest snapshots first; keep that
-            # explanation when a job has been rematched more than once.
+            # explanation when a job has been rescored more than once.
             score_impact_by_job.setdefault(impact["job_id"], impact)
 
         def job_filter_href(new_status=Ellipsis, new_sort=Ellipsis, new_recent=Ellipsis) -> str:
@@ -970,10 +970,10 @@ def create_app(
                 return JSONResponse({"error": message[:300]}, status_code=500)
             return JSONResponse(result)
 
-    @app.post("/api/jobs/{job_id}/rematch")
-    def rematch_single_job(request: Request, job_id: int):
+    @app.post("/api/jobs/{job_id}/rescore")
+    def rescore_single_job(request: Request, job_id: int):
         """Re-scores one saved job against the current resume/preferences/LLM
-        -- the single-job counterpart to "Rematch all jobs". Synchronous
+        -- the single-job counterpart to "Rescore all jobs". Synchronous
         (one LLM call, same as the other per-job action buttons) rather than
         the background-thread-plus-polling shape the bulk version needs."""
         with session_factory() as session:
@@ -993,13 +993,13 @@ def create_app(
                     effective_preferences(profile, settings), market_analysis_llm,
                 )
             except LLMScoringFailedError as exc:
-                return JSONResponse({"error": f"Could not rematch this job — {exc}"[:300]}, status_code=502)
+                return JSONResponse({"error": f"Could not rescore this job — {exc}"[:300]}, status_code=502)
 
             before = job.fit_score
             job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
             session.add(ScoreSnapshot(
                 profile_id=profile.id, job_id=job.id, fit_score=score, fit_rationale=rationale,
-                trigger="rematch_single",
+                trigger="rescore_single",
                 scorer_metadata_json=json.dumps({"before_score": before, "after_score": score, "method": method}),
             ))
             session.commit()
@@ -2027,42 +2027,42 @@ def create_app(
             resume_now_event.set()
         return JSONResponse({"resumed": True})
 
-    @app.post("/api/jobs/rematch")
-    def trigger_rematch(request: Request):
-        if not rematch_state["running"]:
-            rematch_state["running"] = True  # claimed immediately so a double-click can't start two
-            next_run_id = rematch_state["run_id"] + 1
+    @app.post("/api/jobs/rescore")
+    def trigger_rescore(request: Request):
+        if not rescore_state["running"]:
+            rescore_state["running"] = True  # claimed immediately so a double-click can't start two
+            next_run_id = rescore_state["run_id"] + 1
             profile_id = _active_profile_id(request)
             threading.Thread(
-                target=_run_rematch_in_background, args=(next_run_id, profile_id), daemon=True
+                target=_run_rescore_in_background, args=(next_run_id, profile_id), daemon=True
             ).start()
         return JSONResponse({"started": True})
 
-    @app.get("/api/jobs/rematch/status")
-    def rematch_status():
+    @app.get("/api/jobs/rescore/status")
+    def rescore_status():
         return JSONResponse({
-            "running": rematch_state["running"],
-            "run_id": rematch_state["run_id"],
-            "total": rematch_state["total"],
-            "rescored": rematch_state["rescored"],
-            "log": rematch_state["log"],
-            "last_result": rematch_state["last_result"],
-            "llm_paused": rematch_state["llm_paused"],
-            "llm_paused_message": rematch_state["llm_paused_message"],
-            "stop_requested": rematch_stop_event.is_set(),
+            "running": rescore_state["running"],
+            "run_id": rescore_state["run_id"],
+            "total": rescore_state["total"],
+            "rescored": rescore_state["rescored"],
+            "log": rescore_state["log"],
+            "last_result": rescore_state["last_result"],
+            "llm_paused": rescore_state["llm_paused"],
+            "llm_paused_message": rescore_state["llm_paused_message"],
+            "stop_requested": rescore_stop_event.is_set(),
         })
 
-    @app.post("/api/jobs/rematch/stop")
-    def stop_rematch():
-        if rematch_state["running"]:
-            rematch_stop_event.set()
-            _rematch_log_event({"kind": "info", "text": "Stop requested — finishing the current job…"})
+    @app.post("/api/jobs/rescore/stop")
+    def stop_rescore():
+        if rescore_state["running"]:
+            rescore_stop_event.set()
+            _rescore_log_event({"kind": "info", "text": "Stop requested — finishing the current job…"})
         return JSONResponse({"stopped": True})
 
-    @app.post("/api/jobs/rematch/resume-now")
-    def resume_rematch_now():
-        if rematch_state["running"] and rematch_state["llm_paused"]:
-            rematch_resume_now_event.set()
+    @app.post("/api/jobs/rescore/resume-now")
+    def resume_rescore_now():
+        if rescore_state["running"] and rescore_state["llm_paused"]:
+            rescore_resume_now_event.set()
         return JSONResponse({"resumed": True})
 
     # Backs the dashboard's LLM status light -- a configured LLM

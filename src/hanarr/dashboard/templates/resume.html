@@ -117,7 +117,7 @@
         <div class="diff-lines">{% for line in proposal.diff.split("\n") %}<div class="diff-line {{ "diff-add" if line.startswith("+") and not line.startswith("+++") else "diff-del" if line.startswith("-") and not line.startswith("---") else "diff-hunk" if line.startswith("@@") else "diff-ctx" }}">{{ line }}</div>{% endfor %}</div>
         {% endif %}
       </details>
-      {% if proposal.status == "pending" %}<div class="actions"><button class="primary" onclick="decide({{ proposal.id }}, 'approve')">Approve and re-parse/rematch</button><button onclick="decide({{ proposal.id }}, 'reject')">Reject proposal</button></div>{% endif %}
+      {% if proposal.status == "pending" %}<div class="actions"><button class="primary" onclick="decide({{ proposal.id }}, 'approve')">Approve and re-parse/rescore</button><button onclick="decide({{ proposal.id }}, 'reject')">Reject proposal</button></div>{% endif %}
     </article>
     {% else %}<div class="empty">No resume proposals yet. A passed project creates one for review.</div>{% endfor %}
   </section>
@@ -126,7 +126,7 @@
     <h2>Score impact after approved resume</h2>
     {% for impact in resume.score_impacts %}
     <div class="card impact"><span><strong>{{ impact.title }}</strong>{% if impact.company %} · {{ impact.company }}{% endif %}<br><span class="muted">{{ impact.explanation }}</span></span><span>{{ "%.0f"|format(impact.before_score) if impact.before_score is not none else "—" }} → {{ "%.0f"|format(impact.after_score) }} {% if impact.delta is not none %}<strong class="{{ 'up' if impact.delta >= 0 else 'down' }}">({{ "%+.0f"|format(impact.delta) }})</strong>{% endif %}</span></div>
-    {% else %}<div class="empty">No approved resume has been rematched yet.</div>{% endfor %}
+    {% else %}<div class="empty">No approved resume has been rescored yet.</div>{% endfor %}
   </section>
 
   <section class="section">

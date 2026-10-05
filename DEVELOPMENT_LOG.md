@@ -40,6 +40,72 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-05 — v0.1.35
+
+Shipped: renamed "Rematch" to "Rescore" everywhere (buttons, routes, code, docs) and explained the
+match-vs-fit distinction in the Guide (see below).
+
+### 2026-10-05 — "Rematch" renamed to "Rescore"; match vs. fit explained in the Guide
+
+User feedback: "we need to choose either 'fit' or 'match' and be consistent in the language... it
+will confuse the user." On inspection these are genuinely two different concepts, not two words for
+the same thing -- "matched" is the search pipeline's one-time pass/fail outcome (cleared the
+prefilter and minimum score, got saved to the Jobs list), while "fit score" is the 0-100 quality
+number itself. The real problem was narrower: "Rematch all/this job" used match-language for an
+action that's actually about the fit side -- it only recomputes the score, and never re-runs the
+matched/not-matched decision (a job stays on the list even if a rescore brings its number down).
+
+Renamed throughout: buttons ("Rescore this job" / "Rescore all jobs"), routes
+(`/api/jobs/rescore*`), `pipeline.rescore_all_jobs`, `search_state.py`'s rescore state helpers, CSS/JS
+identifiers, and the same fix applied to the resume-approval flow's own identical case (resume.html's
+"Approve and re-parse/rematch" -> "re-parse/rescore"). Also added a short explanation of the
+match/fit distinction to the Guide's "Understanding fit scores" section, since it wasn't written down
+anywhere -- the Guide's own old wording even blurred the two together ("a fit score reflects how
+well a posting matches...").
+
+### 2026-10-05 — v0.1.34
+
+Shipped: a fifth instance of the hidden/display bug (the search-activity badge showing on every
+page at all times), a clearer Model dropdown, and a renamed Settings section (see below).
+
+### 2026-10-05 — Search-activity-badge hidden/display bug (fifth instance), clearer Model dropdown
+
+User report: "why is there a magnifying glass button on pages that are not Jobs page? ... it's not
+even clickable, what is it supposed to do?" A fifth instance of the recurring hidden/display bug
+(v0.1.17, v0.1.18, and twice already this week): every page that includes
+`_search_activity_badge.html` defines its own `.search-activity-badge { display: inline-flex; ... }`
+CSS rule (no shared base template to put a single override in), which beat the `[hidden]` user-agent
+rule by cascade origin -- so the badge's `badge.hidden = true/false` toggle alone had no visual
+effect, and it showed (with its static, non-animating 🔍) on every page at all times instead of only
+during an active search. Fixed in the badge's own JS this time (`badge.style.display` toggled
+alongside `.hidden`, the same shape as the tutorial banner and update banner) rather than patching
+nine separate page-level CSS blocks with the same override nine times.
+
+Also, two Settings -> App config fixes from a user report ("the shown selection for Model should be
+the current selection. changing that setting should change and save"):
+
+- Saving already worked correctly (confirmed with a new round-trip regression test) -- but when the
+  configured model isn't in the installed/recommended list, the dropdown fell back to a generic
+  "Custom model name..." label with no indication of what the actual value was (it was only visible
+  in the adjacent text box). The selected option's own label now shows it directly ("Custom:
+  qwen2.5:7b").
+- Renamed the "Optional local setup" sub-heading to "LLM setup" per direct request.
+
+### 2026-10-05 — v0.1.33
+
+Shipped: fixed the new per-job action menu showing open on every page load instead of staying
+closed until clicked (see below).
+
+### 2026-10-05 — job-menu-panel hidden/display bug (fourth instance)
+
+User report: "the menu we just added should not always show." Same bug class as the v0.1.17/v0.1.18
+update-banner fix, a fourth instance: `.job-menu-panel`'s own `display: flex` rule (needed to lay
+out its contents once open) beat the `[hidden]` user-agent rule by cascade *origin*, not
+specificity, so every job card's action menu rendered open by default regardless of the `hidden`
+attribute on its markup. Fixed the same way as the other three instances: an explicit
+`.job-menu-panel[hidden] { display: none; }` override, pinned by a test extending the existing
+hidden/display audit.
+
 ### 2026-10-05 — v0.1.32
 
 Shipped: per-job rematch, a tidied-up job card (secondary actions moved into a menu), a "Resume

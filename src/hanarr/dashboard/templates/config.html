@@ -702,7 +702,7 @@
           </div>
         </div>
         <div class="field">
-          <strong>Optional local setup</strong>
+          <strong>LLM setup</strong>
           <div class="hint">Hanarr checks first. It will not install software, start Ollama, or change providers automatically.</div>
           <button type="button" class="suggest-btn" data-setup-action="ollama_installer">Check for Ollama / stage installer</button>
           <div class="suggest-status" id="ollama-setup-status" hidden><span class="spinner" id="ollama-setup-spinner" hidden></span><span id="ollama-setup-status-text"></span></div>
@@ -728,7 +728,7 @@
               {% if provider_diagnostics.recommendation.model not in installed_names %}
               <option value="{{ provider_diagnostics.recommendation.model }}" data-installed="false" {% if provider_diagnostics.recommendation.model == settings.llm.model %}selected{% endif %}>{{ provider_diagnostics.recommendation.model }} — recommended, not downloaded</option>
               {% endif %}
-              <option value="__custom__" data-installed="false" {% if is_custom %}selected{% endif %}>Custom model name…</option>
+              <option value="__custom__" data-installed="false" {% if is_custom %}selected{% endif %}>{% if is_custom and settings.llm.model %}Custom: {{ settings.llm.model }}{% else %}Custom model name…{% endif %}</option>
             </select>
             <input type="text" id="llm_model" name="llm_model" value="{{ settings.llm.model }}" placeholder="e.g. qwen2.5:7b" {% if not is_custom %}hidden{% endif %}>
           </div>

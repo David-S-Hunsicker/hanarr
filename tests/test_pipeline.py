@@ -14,7 +14,7 @@ from hanarr.llm.ollama_client import OllamaClient
 from hanarr.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, InstalledModel, ModelRecommendation, OllamaDiagnostics
 import hanarr.pipeline as pipeline_mod
-from hanarr.pipeline import LLMUnavailableError, check_llm_available, rematch_all_jobs, run_search_cycle
+from hanarr.pipeline import LLMUnavailableError, check_llm_available, rescore_all_jobs, run_search_cycle
 
 
 def _make_session():
@@ -395,7 +395,7 @@ def test_run_search_cycle_can_be_stopped_while_paused_for_the_llm(monkeypatch):
     assert session.query(JobPosting).count() == 0
 
 
-def test_rematch_all_jobs_rescores_every_saved_posting(monkeypatch):
+def test_rescore_all_jobs_rescores_every_saved_posting(monkeypatch):
     session = _make_session()
     profile = Profile(name="Test")
     session.add(profile)
@@ -413,7 +413,7 @@ def test_rematch_all_jobs_rescores_every_saved_posting(monkeypatch):
     session.commit()
 
     llm = _CountingLLM(score=90, rationale="fresh")
-    count = rematch_all_jobs(session, Settings(), profile, llm)
+    count = rescore_all_jobs(session, Settings(), profile, llm)
 
     assert count == 2
     assert llm.call_count == 2
@@ -421,10 +421,10 @@ def test_rematch_all_jobs_rescores_every_saved_posting(monkeypatch):
     session.refresh(job2)
     assert job1.fit_score == 90 and job1.fit_score_method == "llm" and job1.fit_rationale == "fresh"
     assert job2.fit_score == 90 and job2.fit_score_method == "llm"
-    assert session.query(ScoreSnapshot).filter_by(trigger="rematch_all").count() == 2
+    assert session.query(ScoreSnapshot).filter_by(trigger="rescore_all").count() == 2
 
 
-def test_rematch_all_jobs_raises_before_touching_anything_when_llm_unavailable(monkeypatch):
+def test_rescore_all_jobs_raises_before_touching_anything_when_llm_unavailable(monkeypatch):
     session = _make_session()
     profile = Profile(name="Test")
     session.add(profile)
@@ -441,7 +441,7 @@ def test_rematch_all_jobs_raises_before_touching_anything_when_llm_unavailable(m
     )
 
     with pytest.raises(LLMUnavailableError):
-        rematch_all_jobs(session, Settings(), profile, _CountingLLM(score=50))
+        rescore_all_jobs(session, Settings(), profile, _CountingLLM(score=50))
 
     session.refresh(job)
     assert job.fit_score == 10, "nothing should be touched once the upfront LLM check has failed"

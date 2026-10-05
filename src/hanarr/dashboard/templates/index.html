@@ -451,8 +451,14 @@
       padding: 0.6rem;
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
     }
+    /* An author-level `display` rule beats the `[hidden]` user-agent rule
+       by cascade ORIGIN, not specificity -- the same shape of bug already
+       hit (and fixed) for the update banner and others. Without this
+       override, .job-menu-panel's own `display: flex` above keeps it
+       visible even with the `hidden` attribute set. */
+    .job-menu-panel[hidden] { display: none; }
     .job-menu-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
-    .fit-action, .rematch-job-action {
+    .fit-action, .rescore-job-action {
       font: inherit;
       font-size: 0.78rem;
       padding: 0.35rem 0.55rem;
@@ -462,9 +468,9 @@
       color: var(--accent);
       cursor: pointer;
     }
-    .fit-action:hover:not(:disabled), .rematch-job-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
-    .fit-action:disabled, .rematch-job-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
-    .fit-action-status, .rematch-job-status { font-size: 0.78rem; color: var(--status-serious); }
+    .fit-action:hover:not(:disabled), .rescore-job-action:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .fit-action:disabled, .rescore-job-action:disabled { color: var(--text-muted); border-color: var(--border); cursor: wait; }
+    .fit-action-status, .rescore-job-status { font-size: 0.78rem; color: var(--status-serious); }
     .cover-letter-action {
       font: inherit;
       font-size: 0.78rem;
@@ -610,9 +616,9 @@
     <form method="post" action="/remind">
       <button type="submit">Check reminders now</button>
     </form>
-    <button type="button" id="rematch-btn" {% if not model_ready %}disabled{% endif %}>Rematch all jobs</button>
-    <button type="button" id="rematch-stop-btn" class="stop-btn" hidden>Stop rematch</button>
-    <button type="button" id="rematch-resume-now-btn" class="resume-now-btn" hidden>Resume now</button>
+    <button type="button" id="rescore-btn" {% if not model_ready %}disabled{% endif %}>Rescore all jobs</button>
+    <button type="button" id="rescore-stop-btn" class="stop-btn" hidden>Stop rescore</button>
+    <button type="button" id="rescore-resume-now-btn" class="resume-now-btn" hidden>Resume now</button>
     <form method="post" action="/jobs/clear" id="clear-jobs-form">
       <button type="submit" class="stop-btn" id="clear-jobs-btn">Clear all jobs</button>
     </form>
@@ -780,27 +786,27 @@
             button.setAttribute("aria-expanded", String(!wasOpen));
           });
         });
-        document.querySelectorAll(".rematch-job-action").forEach((button) => {
-          const statusEl = button.parentElement.querySelector(".rematch-job-status");
+        document.querySelectorAll(".rescore-job-action").forEach((button) => {
+          const statusEl = button.parentElement.querySelector(".rescore-job-status");
           button.addEventListener("click", function () {
             button.disabled = true;
-            button.textContent = "Rematching…";
+            button.textContent = "Rescoring…";
             if (statusEl) statusEl.textContent = "";
-            fetch("/api/jobs/" + button.dataset.jobId + "/rematch", { method: "POST" })
+            fetch("/api/jobs/" + button.dataset.jobId + "/rescore", { method: "POST" })
               .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
               .then(({ ok, data }) => {
                 if (!ok) {
                   button.disabled = false;
-                  button.textContent = "Rematch this job";
-                  if (statusEl) statusEl.textContent = data.error || "Rematch failed.";
+                  button.textContent = "Rescore this job";
+                  if (statusEl) statusEl.textContent = data.error || "Rescore failed.";
                   return;
                 }
                 window.location.reload();
               })
               .catch(() => {
                 button.disabled = false;
-                button.textContent = "Rematch this job";
-                if (statusEl) statusEl.textContent = "Lost connection while rematching.";
+                button.textContent = "Rescore this job";
+                if (statusEl) statusEl.textContent = "Lost connection while rescoring.";
               });
           });
         });
@@ -1145,56 +1151,56 @@
 
   <script>
     (function () {
-      const rematchBtn = document.getElementById("rematch-btn");
-      const rematchStopBtn = document.getElementById("rematch-stop-btn");
-      const rematchResumeNowBtn = document.getElementById("rematch-resume-now-btn");
-      if (!rematchBtn) return;
+      const rescoreBtn = document.getElementById("rescore-btn");
+      const rescoreStopBtn = document.getElementById("rescore-stop-btn");
+      const rescoreResumeNowBtn = document.getElementById("rescore-resume-now-btn");
+      if (!rescoreBtn) return;
 
       let wasRunning = false;
 
-      rematchBtn.addEventListener("click", function () {
+      rescoreBtn.addEventListener("click", function () {
         if (!window.confirm("Re-score every saved job against your current resume and preferences? This may take a while and will overwrite each job's current fit score.")) {
           return;
         }
-        fetch("/api/jobs/rematch", { method: "POST" }).then(poll).catch(() => {});
+        fetch("/api/jobs/rescore", { method: "POST" }).then(poll).catch(() => {});
       });
 
-      rematchStopBtn.addEventListener("click", function () {
-        rematchStopBtn.disabled = true;
-        rematchStopBtn.textContent = "Stopping…";
-        fetch("/api/jobs/rematch/stop", { method: "POST" }).catch(() => {});
+      rescoreStopBtn.addEventListener("click", function () {
+        rescoreStopBtn.disabled = true;
+        rescoreStopBtn.textContent = "Stopping…";
+        fetch("/api/jobs/rescore/stop", { method: "POST" }).catch(() => {});
       });
 
-      if (rematchResumeNowBtn) {
-        rematchResumeNowBtn.addEventListener("click", function () {
-          rematchResumeNowBtn.disabled = true;
-          rematchResumeNowBtn.textContent = "Checking…";
-          fetch("/api/jobs/rematch/resume-now", { method: "POST" }).catch(() => {});
+      if (rescoreResumeNowBtn) {
+        rescoreResumeNowBtn.addEventListener("click", function () {
+          rescoreResumeNowBtn.disabled = true;
+          rescoreResumeNowBtn.textContent = "Checking…";
+          fetch("/api/jobs/rescore/resume-now", { method: "POST" }).catch(() => {});
         });
       }
 
       function poll() {
-        fetch("/api/jobs/rematch/status")
+        fetch("/api/jobs/rescore/status")
           .then((r) => r.json())
           .then((data) => {
             if (data.running) {
-              rematchBtn.disabled = true;
-              rematchBtn.textContent = data.llm_paused
+              rescoreBtn.disabled = true;
+              rescoreBtn.textContent = data.llm_paused
                 ? "Paused — fix the LLM to resume…"
-                : "Rematching " + data.rescored + " / " + data.total + "…";
-              rematchStopBtn.hidden = false;
-              if (rematchResumeNowBtn) rematchResumeNowBtn.hidden = !data.llm_paused;
+                : "Rescoring " + data.rescored + " / " + data.total + "…";
+              rescoreStopBtn.hidden = false;
+              if (rescoreResumeNowBtn) rescoreResumeNowBtn.hidden = !data.llm_paused;
               wasRunning = true;
             } else {
-              rematchBtn.disabled = false;
-              rematchBtn.textContent = "Rematch all jobs";
-              rematchStopBtn.hidden = true;
-              rematchStopBtn.disabled = false;
-              rematchStopBtn.textContent = "Stop rematch";
-              if (rematchResumeNowBtn) {
-                rematchResumeNowBtn.hidden = true;
-                rematchResumeNowBtn.disabled = false;
-                rematchResumeNowBtn.textContent = "Resume now";
+              rescoreBtn.disabled = false;
+              rescoreBtn.textContent = "Rescore all jobs";
+              rescoreStopBtn.hidden = true;
+              rescoreStopBtn.disabled = false;
+              rescoreStopBtn.textContent = "Stop rescore";
+              if (rescoreResumeNowBtn) {
+                rescoreResumeNowBtn.hidden = true;
+                rescoreResumeNowBtn.disabled = false;
+                rescoreResumeNowBtn.textContent = "Resume now";
               }
               if (wasRunning) {
                 wasRunning = false;

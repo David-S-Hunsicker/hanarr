@@ -140,9 +140,9 @@ def on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
         log_event(state, {"kind": "info", "text": "LLM reconnected — resuming."})
 
 
-def new_rematch_state() -> dict[str, Any]:
-    """Separate, smaller sibling of new_search_state() for "Rematch all
-    jobs" (pipeline.rematch_all_jobs) -- same shape of problem (a
+def new_rescore_state() -> dict[str, Any]:
+    """Separate, smaller sibling of new_search_state() for "Rescore all
+    jobs" (pipeline.rescore_all_jobs) -- same shape of problem (a
     long-running background LLM loop the dashboard needs to show progress
     for and must be able to stop), but no sources/connectors, so its own
     state rather than overloading search_state's fields with a second,
@@ -159,7 +159,7 @@ def new_rematch_state() -> dict[str, Any]:
     }
 
 
-def reset_for_rematch(state: dict[str, Any], run_id: int, total: int) -> None:
+def reset_for_rescore(state: dict[str, Any], run_id: int, total: int) -> None:
     state["running"] = True
     state["run_id"] = run_id
     state["total"] = total
@@ -169,7 +169,7 @@ def reset_for_rematch(state: dict[str, Any], run_id: int, total: int) -> None:
     state["llm_paused_message"] = None
 
 
-def rematch_on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
+def rescore_on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
     kind = event["event"]
     if kind == "scoring":
         log_event(state, {"kind": "scoring", "text": f"Scoring: {event['title']} at {event['company']}"})
@@ -178,9 +178,9 @@ def rematch_on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
         score = event["fit_score"]
         log_event(state, {"kind": "matched", "text": f"Rescored ({score:.0f}): {event['title']} at {event['company']}"})
     elif kind == "complete":
-        log_event(state, {"kind": "done", "text": f"Rematch complete — {event['rescored_count']} job(s) rescored."})
+        log_event(state, {"kind": "done", "text": f"Rescore complete — {event['rescored_count']} job(s) rescored."})
     elif kind == "stopped":
-        log_event(state, {"kind": "error", "text": f"Rematch stopped — {event['rescored_count']} job(s) rescored."})
+        log_event(state, {"kind": "error", "text": f"Rescore stopped — {event['rescored_count']} job(s) rescored."})
     elif kind == "llm_paused":
         state["llm_paused"] = True
         state["llm_paused_message"] = event["message"]

@@ -288,7 +288,7 @@ def run_search_cycle(
     return new_count
 
 
-def rematch_all_jobs(
+def rescore_all_jobs(
     session: Session,
     settings: Settings,
     profile: Profile,
@@ -346,7 +346,7 @@ def rematch_all_jobs(
         job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
         session.add(ScoreSnapshot(
             profile_id=profile.id, job_id=job.id, fit_score=score, fit_rationale=rationale,
-            trigger="rematch_all",
+            trigger="rescore_all",
             scorer_metadata_json=json.dumps({"before_score": before, "after_score": score, "method": method}),
         ))
         session.commit()

@@ -156,7 +156,7 @@ def test_resume_page_explains_matcher_source_profile_and_score_impact(tmp_path):
     assert "feeds new job matching and rescoring" in response.text
     assert "Backend Engineer" in response.text
     assert "Builds reliable services." in response.text
-    assert "No approved resume has been rematched yet." in response.text
+    assert "No approved resume has been rescored yet." in response.text
     # Titles/skills/industries render as individual pills, not one long
     # comma-joined line -- important once a real resume yields dozens of
     # skills (see resume.html's .pill-list).
