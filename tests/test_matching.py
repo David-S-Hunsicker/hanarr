@@ -461,3 +461,43 @@ def test_score_fit_raises_instead_of_silently_falling_back_when_a_configured_llm
         score_fit(job, {}, "resume text", prefs, _GarbageLLM())
 
     assert job.title in str(exc_info.value)
+
+
+def test_score_fit_raises_on_a_blank_rationale_instead_of_trusting_a_degenerate_score():
+    """Regression test for a real incident: Ollama's forced JSON-mode
+    ("format": "json") can make a model give up on the actual reasoning
+    task and emit minimal-but-valid JSON like {"score": 0, "rationale": ""}
+    for most of a long batch -- a real "Rescore all jobs" run wiped ~95%
+    of a job list's scores to 0 with blank rationale this way, silently
+    overwriting previously-good scores. SYSTEM_PROMPT requires a 1-3
+    sentence rationale on every response; one with none is a malformed
+    response, not a genuine "this scores 0" judgment, and must raise so
+    the caller retries instead of trusting it."""
+    job = make_job()
+    prefs = Preferences()
+    llm = _FakeLLM({"score": 0, "dealbreaker_hit": False, "fails_minimum_requirements": False, "rationale": ""})
+
+    with pytest.raises(LLMScoringFailedError) as exc_info:
+        score_fit(job, {}, "resume text", prefs, llm)
+
+    assert job.title in str(exc_info.value)
+
+
+def test_score_fit_does_not_require_a_rationale_for_a_dealbreaker_or_minimum_requirements_disqualification():
+    """The blank-rationale guard must not reject the two paths that already
+    supply their own fallback text -- those are legitimate score-0 verdicts
+    with a real reason, not a degenerate response."""
+    job = make_job()
+    prefs = Preferences()
+
+    score, rationale, method = score_fit(
+        job, {}, "resume text", prefs,
+        _FakeLLM({"score": 10, "dealbreaker_hit": True, "rationale": ""}),
+    )
+    assert score == 0.0 and rationale and method == "llm"
+
+    score, rationale, method = score_fit(
+        job, {}, "resume text", prefs,
+        _FakeLLM({"score": 40, "dealbreaker_hit": False, "fails_minimum_requirements": True, "rationale": ""}),
+    )
+    assert score == 0.0 and rationale and method == "llm"

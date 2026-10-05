@@ -392,6 +392,18 @@ def score_fit(
         score = float(data.get("score", 0))
         if unmet and not rationale:
             rationale = "Unmet requirement(s): " + "; ".join(unmet)
+        if not rationale:
+            # SYSTEM_PROMPT requires a 1-3 sentence rationale on every
+            # response; a valid-JSON reply with none (seen in practice as
+            # score 0 with "rationale": "") is the model giving up under
+            # Ollama's forced JSON-mode grammar, not a genuine "this is a
+            # 0" judgment -- a real incident wiped ~95% of a job list's
+            # scores to 0 with blank rationale this way, overwriting
+            # previously-good scores with no indication anything was
+            # wrong. Treated as a failed call (raises below) so the
+            # caller's pause-and-retry gets a real answer instead of
+            # silently trusting a degenerate one.
+            raise ValueError(f"LLM returned no rationale alongside a score of {score}")
         return max(0.0, min(100.0, score)), rationale, "llm"
     except Exception as exc:  # noqa: BLE001 - normalized into one error type for callers to pause on
         raise LLMScoringFailedError(

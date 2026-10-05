@@ -40,6 +40,29 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-05 — v0.1.36
+
+Shipped: a malformed-but-valid LLM response (score 0, no rationale) is now rejected and retried
+instead of silently trusted (see below).
+
+### 2026-10-05 — Degenerate LLM responses silently zeroed out real scores
+
+User report: "why did almost all my job scores go to zero?" after running "Rescore all jobs" --
+121 of 128 saved jobs, including clearly strong-fit postings (Software Engineer roles at OpenAI,
+Toast, Samsara, Airbnb), came back with `fit_score: 0.0` and a **blank** rationale. SYSTEM_PROMPT
+requires a 1-3 sentence rationale on every response; a blank one is the model (qwen2.5:14b, freshly
+switched to) giving up under Ollama's forced `"format": "json"` grammar on a long, detailed prompt
+-- valid JSON, but not a genuine judgment. `score_fit()` had no check for this: it trusted
+`{"score": 0, "rationale": ""}` exactly the same as a real, reasoned 0, overwriting whatever
+(often-correct) score was there before with no indication anything was wrong.
+
+Fixed: a response reaching the plain-score path (not the dealbreaker/fails-minimum-requirements
+paths, which already supply their own fallback rationale) with an empty rationale now raises
+`LLMScoringFailedError` instead of being accepted -- the same path a real LLM failure already takes,
+so the caller's pause-and-retry (`pipeline._score_with_pause`) gets a shot at a real answer instead
+of silently keeping a degenerate one. Does not retroactively fix scores already corrupted by this --
+running "Rescore all jobs" again, now with this guard in place, will.
+
 ### 2026-10-05 — v0.1.35
 
 Shipped: renamed "Rematch" to "Rescore" everywhere (buttons, routes, code, docs) and explained the
