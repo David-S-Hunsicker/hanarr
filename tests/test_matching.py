@@ -34,6 +34,18 @@ def make_job(**overrides) -> RawJobPosting:
     return RawJobPosting(**defaults)
 
 
+def test_prefilter_rejects_a_stated_dealbreaker():
+    """Dealbreakers are handled entirely here now, not by the LLM -- see
+    score_fit's docstring for why (a real incident: the LLM hallucinated a
+    dealbreaker hit, with a plausible rationale, on postings that never
+    mentioned it)."""
+    job = make_job(description="Great role, no visa sponsorship available for this position.")
+    prefs = Preferences(dealbreakers=["no visa sponsorship"])
+    reason = prefilter_rejection_reason(job, prefs)
+    assert reason is not None
+    assert "dealbreaker" in reason.lower()
+
+
 def test_prefilter_rejects_excluded_keyword():
     job = make_job(description="This is an unpaid internship.")
     prefs = Preferences(keywords_exclude=["unpaid"])
@@ -309,38 +321,12 @@ def test_rule_based_score_baseline_when_no_overlap():
     assert score == 40
 
 
-def test_rule_based_score_disqualifies_on_dealbreaker():
-    job = make_job(description="Great role, no visa sponsorship available for this position.")
-    prefs = Preferences(
-        target_titles=["Backend Engineer"],
-        dealbreakers=["no visa sponsorship"],
-    )
-    resume_summary = {"skills": ["python", "distributed systems"]}
-
-    score, rationale = _rule_based_score(job, resume_summary, prefs)
-
-    assert score == 0
-    assert "dealbreaker" in rationale.lower()
-
-
 class _FakeLLM(LLMClient):
     def __init__(self, response: dict):
         self.response = response
 
     def complete_json(self, system: str, user: str) -> str:
         return json.dumps(self.response)
-
-
-def test_score_fit_disqualifies_on_llm_dealbreaker_hit():
-    job = make_job(description="We use python and distributed systems every day. No visa sponsorship.")
-    prefs = Preferences(dealbreakers=["no visa sponsorship available"])
-    llm = _FakeLLM({"score": 90, "dealbreaker_hit": True, "rationale": "No visa sponsorship offered."})
-
-    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
-
-    assert score == 0
-    assert "visa" in rationale.lower()
-    assert method == "llm"
 
 
 def test_score_fit_keeps_llm_score_when_no_dealbreaker_hit():
@@ -483,18 +469,13 @@ def test_score_fit_raises_on_a_blank_rationale_instead_of_trusting_a_degenerate_
     assert job.title in str(exc_info.value)
 
 
-def test_score_fit_does_not_require_a_rationale_for_a_dealbreaker_or_minimum_requirements_disqualification():
-    """The blank-rationale guard must not reject the two paths that already
-    supply their own fallback text -- those are legitimate score-0 verdicts
-    with a real reason, not a degenerate response."""
-    job = make_job(description="Requires an active government security clearance.")
-    prefs = Preferences(dealbreakers=["Requires a security clearance"])
-
-    score, rationale, method = score_fit(
-        job, {}, "resume text", prefs,
-        _FakeLLM({"score": 10, "dealbreaker_hit": True, "rationale": ""}),
-    )
-    assert score == 0.0 and rationale and method == "llm"
+def test_score_fit_does_not_require_a_rationale_for_a_minimum_requirements_disqualification():
+    """The blank-rationale guard must not reject the fails_minimum_requirements
+    path, which already supplies its own fallback text -- that's a
+    legitimate score-0 verdict with a real reason, not a degenerate
+    response."""
+    job = make_job()
+    prefs = Preferences()
 
     score, rationale, method = score_fit(
         job, {}, "resume text", prefs,
@@ -503,38 +484,21 @@ def test_score_fit_does_not_require_a_rationale_for_a_dealbreaker_or_minimum_req
     assert score == 0.0 and rationale and method == "llm"
 
 
-def test_score_fit_raises_on_a_hallucinated_dealbreaker_hit_with_no_textual_basis():
-    """Regression test for a real incident: a model claimed "requires a
-    security clearance" as the dealbreaker hit (with a plausible-sounding
-    rationale) on 50+ completely unrelated software engineering postings --
-    the word "clearance" didn't appear in a single one of those job
-    descriptions. dealbreaker_hit is a hard, score-zeroing disqualifier, so
-    a hallucinated one must be rejected and retried instead of trusted."""
-    job = make_job(description="We use python and distributed systems every day.")
-    prefs = Preferences(dealbreakers=["Requires a security clearance"])
-    llm = _FakeLLM({
-        "score": 10, "dealbreaker_hit": True,
-        "rationale": "This role requires a security clearance, which you don't have.",
-    })
-
-    with pytest.raises(LLMScoringFailedError) as exc_info:
-        score_fit(job, {}, "resume text", prefs, llm)
-
-    assert job.title in str(exc_info.value)
-
-
-def test_score_fit_accepts_a_dealbreaker_hit_phrased_differently_than_the_users_own_wording():
-    """The plausibility check is loose keyword overlap, not a requirement
-    that the posting echo the dealbreaker's exact phrasing -- the LLM must
-    still be trusted to recognize the same dealbreaker worded differently."""
-    job = make_job(description="Must be eligible to obtain a government security clearance.")
-    prefs = Preferences(dealbreakers=["Requires a security clearance"])
-    llm = _FakeLLM({
-        "score": 10, "dealbreaker_hit": True,
-        "rationale": "This role requires eligibility for a government clearance, which disqualifies you.",
-    })
+def test_score_fit_ignores_a_dealbreaker_hit_claim_from_the_llm():
+    """Dealbreakers are handled entirely by prefilter_rejection_reason() now
+    -- see score_fit's own docstring for why (a real incident: the LLM
+    hallucinated a dealbreaker hit, with a plausible-sounding rationale, on
+    50+ postings that never mentioned it). A posting only reaches score_fit
+    at all once it's already cleared that deterministic check, so even if
+    an LLM response still includes a "dealbreaker_hit" field (an older
+    prompt version, a model ignoring the current instructions), it must be
+    ignored rather than zeroing the score."""
+    job = make_job()
+    prefs = Preferences()
+    llm = _FakeLLM({"score": 85, "dealbreaker_hit": True, "rationale": "Strong match."})
 
     score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
-    assert score == 0.0
+    assert score == 85
+    assert rationale == "Strong match."
     assert method == "llm"

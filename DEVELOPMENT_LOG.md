@@ -40,6 +40,39 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-05 — v0.1.38
+
+Shipped: dealbreakers moved out of the LLM's job entirely, into a fully deterministic prefilter
+check (see below).
+
+### 2026-10-05 — Dealbreakers are now a deterministic prefilter check, not an LLM judgment
+
+Follow-up to v0.1.37's hallucinated-dealbreaker fix. User's framing: "if we're doing it
+deterministically, then the LLM should not need to consider dealbreakers. we just need robust
+checks." Rather than keep validating the LLM's dealbreaker claims after the fact,
+`prefilter_rejection_reason()` now rejects a posting outright if a stated dealbreaker
+keyword-matches its title/description -- the exact same substring check `_rule_based_score()`
+already did for the no-LLM case, just run earlier, for everyone, before a posting is ever scored.
+
+- `SYSTEM_PROMPT` no longer asks for (or mentions) `dealbreaker_hit` at all; `score_fit()` simply
+  ignores the field if an older-prompt-trained model still includes one. The LLM's job is now only
+  the required-qualifications check (`fails_minimum_requirements`) and the 0-100 fit score --
+  dealbreakers are never its concern.
+- `_dealbreaker_plausible()` (v0.1.37's post-hoc hallucination guard) and `_rule_based_score()`'s
+  own now-redundant dealbreaker check are both removed -- dead code once dealbreakers are caught
+  before either path is ever reached.
+- A posting rejected for a dealbreaker no longer appears on the Jobs list at all (same as any
+  other prefilter rejection -- excluded keyword, wrong location, below salary floor): it shows up
+  in "Why were jobs filtered out?" with the specific dealbreaker named, not as a saved 0-scored
+  card with a written rationale the way an LLM-flagged dealbreaker used to appear.
+- Location remains handled by its own, already-deterministic, more sophisticated mechanism
+  (`_detected_other_country_restriction`'s regex patterns, plus remote_ok/onsite_ok/locations) --
+  it was never part of the freeform `preferences.dealbreakers` list this change touches, so there
+  was no location-specific LLM carve-out to add.
+- Guide updated: the match/fit-score explanation already listed dealbreakers as part of the
+  prefilter (written in v0.1.35, now actually true), plus a new note that dealbreaker matching is
+  keyword-based, not semantic -- phrasing close to how postings actually word something matters.
+
 ### 2026-10-05 — v0.1.37
 
 Shipped: a hallucinated dealbreaker-hit claim is now rejected the same way a blank rationale is

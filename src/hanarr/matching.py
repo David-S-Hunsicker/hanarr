@@ -1,7 +1,9 @@
 """Two-stage matching:
 
-1. `passes_prefilter` — cheap, deterministic rules (keywords, location,
-   remote, salary floor) that cut volume before anything touches the LLM.
+1. `passes_prefilter` — cheap, deterministic rules (keywords, dealbreakers,
+   location, remote, salary floor) that cut volume before anything touches
+   the LLM. Dealbreakers are deliberately handled here and ONLY here, not
+   by the LLM -- see score_fit's docstring for why.
 2. `score_fit` — LLM-based fit scoring against the resume + preferences,
    with a keyword-overlap fallback when llm.provider = 'none'.
 """
@@ -79,30 +81,32 @@ qualifications, or is missing ONE major one (e.g. years of experience far short 
 asked, a required credential/clearance/degree they don't hold, required hands-on experience \
 with something core to the role that's absent from their history) — false if they're missing \
 at most one minor required qualification or none at all>,
-  "dealbreaker_hit": <true if the posting appears to violate ANY of the candidate's stated \
-dealbreakers, false otherwise>,
   "rationale": "1-3 sentences explaining the score. Only mention what's actually relevant to \
-THIS score — if a dealbreaker was hit or a requirement is unmet, say so specifically; if there \
-were no dealbreakers or unmet requirements, don't mention dealbreakers/requirements at all, \
-just explain the fit. Never state the absence of a problem (no 'no dealbreakers found', no \
-'meets all requirements' filler) — only state what's actually noteworthy. Address the \
-candidate directly as 'you' (e.g. 'You have strong Python experience but lack the required \
-security clearance'), never as 'the candidate' or by name — this text is shown directly to \
-them."
+THIS score — if a requirement is unmet, say so specifically; if there were no unmet \
+requirements, don't mention requirements at all, just explain the fit. Never state the \
+absence of a problem (no 'meets all requirements' filler) — only state what's actually \
+noteworthy. Address the candidate directly as 'you' (e.g. 'You have strong Python experience \
+but lack the required 5+ years of backend experience'), never as 'the candidate' or by name — \
+this text is shown directly to them."
 }
+
+The candidate's stated dealbreakers are NOT your concern — a separate deterministic check \
+(a keyword match against the posting's own text) already rejects anything matching one before \
+it ever reaches you, so every posting you see has already cleared that check. Do not mention \
+dealbreakers in the rationale, and do not infer or re-derive one from the preferences you're \
+given.
 
 Scoring guide (before the fails_minimum_requirements override below): 80-100 only if the
 candidate clearly meets essentially all required qualifications; 50-79 if they meet most
 required qualifications but are missing one or two minor ones, or are missing several
 preferred ones.
 
-Both fails_minimum_requirements and the candidate's stated dealbreakers are hard
-disqualifiers, not preferences to weigh in with everything else — if either applies, set the
-corresponding field to true regardless of how well anything else matches; the caller will
-zero out the score and disqualify the posting outright, so don't try to reflect that in the
-"score" field yourself. Be honest and specific — this score is used to filter what the
-candidate spends time reviewing, so don't inflate it, and don't guess a requirement is met
-just because a related keyword appears somewhere in the posting."""
+fails_minimum_requirements is a hard disqualifier, not a preference to weigh in with
+everything else — if it applies, set it to true regardless of how well anything else
+matches; the caller will zero out the score and disqualify the posting outright, so don't try
+to reflect that in the "score" field yourself. Be honest and specific — this score is used to
+filter what the candidate spends time reviewing, so don't inflate it, and don't guess a
+requirement is met just because a related keyword appears somewhere in the posting."""
 
 
 # Ordered low to high. Used to reject postings whose title explicitly
@@ -163,10 +167,10 @@ EMPLOYMENT_TYPES = ["full_time", "part_time", "contract", "internship"]
 # everyone type them out as free text -- (key, label) so the key is a stable
 # form-field/storage suffix independent of the label's exact wording. The
 # label itself is what's actually stored in Preferences.dealbreakers (same
-# substring-match and LLM-prompt handling as any custom, freely-typed
-# dealbreaker), so picking a different label here is a wording change, not a
-# schema change. Chosen to apply broadly across job types, not just tech
-# roles -- "requires relocation" is deliberately excluded since
+# substring-match handling in prefilter_rejection_reason as any custom,
+# freely-typed dealbreaker), so picking a different label here is a wording
+# change, not a schema change. Chosen to apply broadly across job types, not
+# just tech roles -- "requires relocation" is deliberately excluded since
 # willing_to_relocate already covers that.
 COMMON_DEALBREAKERS = [
     ("on_call", "Requires on-call rotation"),
@@ -253,6 +257,19 @@ def prefilter_rejection_reason(job: RawJobPosting, prefs: Preferences) -> str | 
     posting was rejected instead of a bare bool -- feeds the dashboard's
     "why was this filtered out" debug view. None means it passes."""
     text = f"{job.title} {job.description}".lower()
+
+    # Dealbreakers are fully deterministic now, not an LLM judgment call --
+    # see score_fit's own docstring for why (a real incident: the LLM
+    # hallucinated a dealbreaker hit, with a plausible-sounding rationale,
+    # on 50+ postings that never mentioned it). A blunt substring check
+    # misses a dealbreaker worded differently in the posting than in the
+    # user's own phrasing, but that's the same tradeoff every other
+    # keyword-based prefilter rule here already makes, and it's not
+    # fixable without reintroducing the exact hallucination risk this is
+    # meant to avoid.
+    hit = next((d for d in prefs.dealbreakers if d.lower() in text), None)
+    if hit:
+        return f"Matches a stated dealbreaker: {hit!r}"
 
     hit = next((kw for kw in prefs.keywords_exclude if kw.lower() in text), None)
     if hit:
@@ -344,10 +361,19 @@ def score_fit(
     """Returns (score 0-100, rationale, method) where method is "llm" or
     "rule_based". The LLM checks the posting's required qualifications
     against the candidate's actual resume text (not just the compressed
-    skills/titles summary). Two things force the score to 0 outright rather
-    than just lowering it: a hit on one of the candidate's stated
-    dealbreakers, or failing minimum/required qualifications (missing
-    multiple required items, or one major one) — see SYSTEM_PROMPT.
+    skills/titles summary); failing minimum/required qualifications
+    (missing multiple required items, or one major one) forces the score
+    to 0 outright rather than just lowering it — see SYSTEM_PROMPT.
+
+    Dealbreakers are NOT the LLM's job: prefilter_rejection_reason() already
+    rejects anything keyword-matching a stated dealbreaker before a posting
+    is ever scored (see matching.py's module docstring) -- a real incident
+    found the LLM would occasionally hallucinate a dealbreaker hit with no
+    textual basis at all (e.g. "requires a security clearance" on 50+
+    postings that never mentioned clearance), a hard, score-zeroing claim
+    asked to carry too much trust. Fully deterministic is also simply more
+    robust than asking a model to re-derive the same keyword check it was
+    already given structured preferences to do.
 
     Rule-based (keyword-overlap) scoring is used ONLY for the deliberate
     llm.provider = "none" configuration. A *configured* LLM (Ollama,
@@ -380,27 +406,6 @@ def score_fit(
         rationale = data.get("rationale", "")
         unmet = data.get("unmet_requirements") or []
 
-        if data.get("dealbreaker_hit"):
-            if not _dealbreaker_plausible(job, prefs.dealbreakers):
-                # A real incident: a model hallucinated "requires a security
-                # clearance" as the dealbreaker hit on 50+ completely
-                # unrelated software engineering postings -- a plausible-
-                # sounding rationale every time, but the word "clearance"
-                # didn't appear in a single one of those job descriptions.
-                # dealbreaker_hit is a hard, score-zeroing disqualifier, so
-                # trusting an ungrounded one is exactly as costly as
-                # trusting a blank rationale. This is deliberately a loose
-                # keyword-overlap check, not a requirement that the posting
-                # use the dealbreaker's exact wording -- the LLM is still
-                # trusted to recognize a dealbreaker phrased differently,
-                # just not one with literally zero textual basis.
-                raise ValueError(
-                    f"LLM claimed a dealbreaker hit for {job.title!r} at {job.company!r} but none "
-                    "of the candidate's stated dealbreakers have any keyword overlap with the "
-                    "posting text -- treating as a hallucinated disqualification."
-                )
-            return 0.0, rationale or "Disqualified: posting appears to violate a stated dealbreaker.", "llm"
-
         if data.get("fails_minimum_requirements"):
             fallback = "Disqualified: missing minimum/required qualifications."
             if unmet:
@@ -429,28 +434,6 @@ def score_fit(
         ) from exc
 
 
-_DEALBREAKER_STOPWORDS = {
-    "a", "an", "the", "of", "to", "in", "on", "for", "with", "is", "are", "or", "and", "not",
-    "that", "this", "any", "all", "has", "have", "will", "must", "require", "requires", "required",
-}
-
-
-def _dealbreaker_plausible(job: RawJobPosting, dealbreakers: list[str]) -> bool:
-    """Loose keyword-overlap sanity check on an LLM's dealbreaker_hit claim
-    -- not a requirement that the posting use the dealbreaker's exact
-    wording (the LLM is still trusted to recognize one phrased
-    differently), just that at least one substantive word from some
-    stated dealbreaker appears anywhere in the posting's own text. Catches
-    a hallucinated dealbreaker with zero textual basis without rejecting a
-    real one worded differently than the user's own phrasing."""
-    text = f"{job.title} {job.description}".lower()
-    for dealbreaker in dealbreakers:
-        words = [w for w in re.findall(r"[a-z]+", dealbreaker.lower()) if len(w) > 3 and w not in _DEALBREAKER_STOPWORDS]
-        if any(w in text for w in words):
-            return True
-    return False
-
-
 def _rule_based_score(
     job: RawJobPosting, resume_summary: dict, prefs: Preferences
 ) -> tuple[float, str]:
@@ -459,13 +442,9 @@ def _rule_based_score(
     titles = [t.lower() for t in prefs.target_titles]
     boosts = [k.lower() for k in prefs.keywords_boost]
 
-    # No LLM available to reason about phrasing, so this is a blunt substring
-    # check — it will miss dealbreakers worded differently in the posting
-    # than in the user's config, but it's the best a keyword fallback can do.
-    hit = next((d for d in prefs.dealbreakers if d.lower() in text), None)
-    if hit:
-        return 0.0, f"Disqualified: posting text matches stated dealbreaker \"{hit}\"."
-
+    # Dealbreakers are no longer checked here -- prefilter_rejection_reason()
+    # already rejects anything keyword-matching a stated dealbreaker before
+    # scoring of any kind (LLM or rule-based) is ever reached.
     score = 40.0  # baseline once it's survived the prefilter
     if any(t in job.title.lower() for t in titles):
         score += 25

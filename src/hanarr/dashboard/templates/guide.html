@@ -120,7 +120,10 @@
     <strong>fit score</strong> is the 0–100 quality number itself, a starting signal for triage, not a
     verdict. "Rescore this job" / "Rescore all jobs" only recompute that number (and the written
     explanation behind it) for jobs already on your list — they never re-run the matched/not-matched
-    decision, so a job stays on your list even if a rescore brings its number down.</p>
+    decision, so a job stays on your list even if a rescore brings its number down. Dealbreakers
+    are matched by keyword, not by the LLM — a posting that describes the same dealbreaker in
+    different words than you used won't be caught, so phrase a dealbreaker close to how postings
+    actually word it where you can.</p>
     <p>Click "View fit analysis" on a job to see exactly which
     skills it's looking for and how each one is classified: <strong>satisfied</strong> (your profile
     clearly covers it), <strong>partial</strong> (some evidence, but thinner than the posting wants), or
