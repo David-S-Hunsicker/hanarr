@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 
 import pytest
 from sqlalchemy import create_engine
@@ -443,3 +445,39 @@ def test_rematch_all_jobs_raises_before_touching_anything_when_llm_unavailable(m
 
     session.refresh(job)
     assert job.fit_score == 10, "nothing should be touched once the upfront LLM check has failed"
+
+
+def test_run_search_cycle_resume_event_cuts_the_pause_short(monkeypatch):
+    """"Add a resume button when we know search is paused" -- the button
+    sets this event; the pause loop must wake on it instead of waiting out
+    the full retry interval."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+    settings = Settings()
+    settings.matching.min_fit_score = 0
+
+    connector = _FakeConnector("arbeitnow", [_make_job("1")])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [connector])
+    monkeypatch.setattr(pipeline_mod, "check_llm_available", lambda llm, data_dir: None)
+    # A real (not monkeypatched) long interval -- if the resume_event isn't
+    # actually what woke the pause loop, this test would hang for 300s and
+    # fail on timeout instead of passing fast.
+    monkeypatch.setattr(pipeline_mod, "LLM_RETRY_INTERVAL_SECONDS", 300)
+
+    resume_event = threading.Event()
+    llm = _FlakyLLM(fail_times=1)
+
+    def _set_resume_event_shortly():
+        time.sleep(0.05)
+        resume_event.set()
+
+    threading.Thread(target=_set_resume_event_shortly, daemon=True).start()
+
+    started = time.monotonic()
+    count = run_search_cycle(session, settings, profile, llm, resume_event=resume_event)
+    elapsed = time.monotonic() - started
+
+    assert count == 1
+    assert elapsed < 5, "resume_event.set() should wake the pause loop almost immediately, not after 300s"

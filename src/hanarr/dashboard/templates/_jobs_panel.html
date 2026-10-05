@@ -116,17 +116,30 @@
     </div>
 
     <div class="job-actions">
-      {% if not gap or gap.stale %}
-      <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
-      <span class="fit-action-status"></span>
-      {% endif %}
-      <button type="button" class="cover-letter-action" data-job-id="{{ job.id }}">{{ "Redraft cover letter" if job.cover_letter else "Draft cover letter" }}</button>
-      <span class="cover-letter-status"></span>
-      <span class="outreach-group" data-job-id="{{ job.id }}">
-        <input type="text" class="outreach-contact-input" placeholder="Contact name, email, or LinkedIn URL" value="{{ job.outreach_contact }}">
-        <button type="button" class="outreach-action" data-job-id="{{ job.id }}">{{ "Redraft outreach email" if job.outreach_email else "Draft outreach email" }}</button>
-        <span class="outreach-status"></span>
-      </span>
+      <div class="job-menu">
+        <button type="button" class="job-menu-btn" aria-haspopup="true" aria-expanded="false" title="More actions for this job">&#8942;</button>
+        <div class="job-menu-panel" hidden>
+          {% if not gap or gap.stale %}
+          <div class="job-menu-item">
+            <button type="button" class="fit-action" data-job-id="{{ job.id }}">Improve my fit</button>
+            <span class="fit-action-status"></span>
+          </div>
+          {% endif %}
+          <div class="job-menu-item">
+            <button type="button" class="rematch-job-action" data-job-id="{{ job.id }}">Rematch this job</button>
+            <span class="rematch-job-status"></span>
+          </div>
+          <div class="job-menu-item">
+            <button type="button" class="cover-letter-action" data-job-id="{{ job.id }}">{{ "Redraft cover letter" if job.cover_letter else "Draft cover letter" }}</button>
+            <span class="cover-letter-status"></span>
+          </div>
+          <div class="job-menu-item outreach-group" data-job-id="{{ job.id }}">
+            <input type="text" class="outreach-contact-input" placeholder="Contact name, email, or LinkedIn URL" value="{{ job.outreach_contact }}">
+            <button type="button" class="outreach-action" data-job-id="{{ job.id }}">{{ "Redraft outreach email" if job.outreach_email else "Draft outreach email" }}</button>
+            <span class="outreach-status"></span>
+          </div>
+        </div>
+      </div>
       {% if job.status.value == "interviewing" %}
       <a class="prep-action" href="/prep?job_id={{ job.id }}">Practice for this interview</a>
       {% endif %}

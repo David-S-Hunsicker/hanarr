@@ -1,6 +1,8 @@
 <div id="search-activity-badge" class="search-activity-badge" hidden style="align-items:center; gap:.4rem;">
   <span id="search-activity-emoji" aria-hidden="true" style="display:inline-block;">🔍</span>
   <span id="search-activity-text"></span>
+  <button type="button" id="search-activity-resume-btn" hidden
+          style="font:inherit; font-size:.78rem; padding:.1rem .5rem; border-radius:6px; border:1px solid var(--accent); color:var(--accent); background:transparent; cursor:pointer;">Resume now</button>
 </div>
 <script>
   (function () {
@@ -13,7 +15,16 @@
     var badge = document.getElementById("search-activity-badge");
     var text = document.getElementById("search-activity-text");
     var emojiEl = document.getElementById("search-activity-emoji");
+    var resumeBtn = document.getElementById("search-activity-resume-btn");
     if (!badge) return;
+
+    if (resumeBtn) {
+      resumeBtn.addEventListener("click", function () {
+        resumeBtn.disabled = true;
+        resumeBtn.textContent = "Checking…";
+        fetch("/search/resume-now", { method: "POST" }).catch(function () {});
+      });
+    }
 
     var runningEmojis = ["🔍", "🔎", "🛰️", "📡"];
     var pausedEmoji = "⏸️";
@@ -40,14 +51,17 @@
             stopEmojiCycle();
             emojiEl.textContent = pausedEmoji;
             text.textContent = "Paused — " + (data.llm_paused_message || "the LLM isn't reachable");
+            if (resumeBtn) resumeBtn.hidden = false;
           } else {
             startEmojiCycle();
             var label = data.trigger === "scheduled" ? "Automatic search running" : "Search running";
             text.textContent = label + " — " + (data.scoring_count || 0) + " scored by LLM so far";
+            if (resumeBtn) { resumeBtn.hidden = true; resumeBtn.disabled = false; resumeBtn.textContent = "Resume now"; }
           }
         } else {
           badge.hidden = true;
           stopEmojiCycle();
+          if (resumeBtn) { resumeBtn.hidden = true; resumeBtn.disabled = false; resumeBtn.textContent = "Resume now"; }
         }
       }).catch(function () {});
     }

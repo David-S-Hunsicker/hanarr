@@ -64,6 +64,7 @@ from ..models import (
     ResumeProposal,
     ResumeVersion,
     ProvenSkill,
+    ScoreSnapshot,
     SeenPosting,
     Skill,
     SkillGapStatus,
@@ -292,6 +293,10 @@ def create_app(
     state = search_state if search_state is not None else new_search_state()
     upd_state = update_state if update_state is not None else new_update_state()
     stop_event = threading.Event()
+    # Lets the "Resume now" button cut a mid-search LLM-unavailable pause
+    # short instead of waiting out the full retry interval -- see
+    # pipeline._score_with_pause.
+    resume_now_event = threading.Event()
 
     # Incremented on every successful config.yaml save. A page's rendered
     # config_version travels with any save it makes (a hidden field, or the
@@ -314,6 +319,7 @@ def create_app(
     def _run_search_in_background(run_id: int, profile_id: int | None = None):
         reset_for_run(state, run_id, "manual")
         stop_event.clear()
+        resume_now_event.clear()
         try:
             from ..connectors import build_enabled_connectors
 
@@ -328,6 +334,7 @@ def create_app(
                     session, settings, profile, market_analysis_llm,
                     on_progress=_on_progress,
                     should_stop=stop_event.is_set,
+                    resume_event=resume_now_event,
                 )
                 profile.last_search_at = utc_now()
                 profile.last_search_new_count = n
@@ -361,6 +368,7 @@ def create_app(
     # in practice a user is unlikely to kick off both at once).
     rematch_state = new_rematch_state()
     rematch_stop_event = threading.Event()
+    rematch_resume_now_event = threading.Event()
 
     def _rematch_log_event(entry: dict) -> None:
         search_log_event(rematch_state, entry)
@@ -370,6 +378,7 @@ def create_app(
 
     def _run_rematch_in_background(run_id: int, profile_id: int | None = None):
         rematch_stop_event.clear()
+        rematch_resume_now_event.clear()
         try:
             with session_factory() as session:
                 profile = get_active_profile(session, settings, profile_id)
@@ -381,6 +390,7 @@ def create_app(
                     session, settings, profile, market_analysis_llm,
                     on_progress=_rematch_on_progress,
                     should_stop=rematch_stop_event.is_set,
+                    resume_event=rematch_resume_now_event,
                 )
                 if rematch_stop_event.is_set():
                     rematch_state["last_result"] = f"Rematch stopped — {n} job(s) rescored."
@@ -959,6 +969,41 @@ def create_app(
                 message = f"Analysis failed — {exc}"
                 return JSONResponse({"error": message[:300]}, status_code=500)
             return JSONResponse(result)
+
+    @app.post("/api/jobs/{job_id}/rematch")
+    def rematch_single_job(request: Request, job_id: int):
+        """Re-scores one saved job against the current resume/preferences/LLM
+        -- the single-job counterpart to "Rematch all jobs". Synchronous
+        (one LLM call, same as the other per-job action buttons) rather than
+        the background-thread-plus-polling shape the bulk version needs."""
+        with session_factory() as session:
+            profile = get_active_profile(session, settings, _active_profile_id(request))
+            job = session.get(JobPosting, job_id)
+            if job is None or job.profile_id != profile.id:
+                return JSONResponse({"error": "Saved job not found."}, status_code=404)
+
+            raw = RawJobPosting(
+                source=job.source, external_id=job.external_id, company=job.company, title=job.title,
+                location=job.location, remote=job.remote, url=job.url, description=job.description,
+                salary_min=job.salary_min, salary_max=job.salary_max, posted_at=job.posted_at,
+            )
+            try:
+                score, rationale, method = score_fit(
+                    raw, json.loads(profile.resume_summary_json or "{}"), profile.resume_text or "",
+                    effective_preferences(profile, settings), market_analysis_llm,
+                )
+            except LLMScoringFailedError as exc:
+                return JSONResponse({"error": f"Could not rematch this job — {exc}"[:300]}, status_code=502)
+
+            before = job.fit_score
+            job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
+            session.add(ScoreSnapshot(
+                profile_id=profile.id, job_id=job.id, fit_score=score, fit_rationale=rationale,
+                trigger="rematch_single",
+                scorer_metadata_json=json.dumps({"before_score": before, "after_score": score, "method": method}),
+            ))
+            session.commit()
+            return JSONResponse({"fit_score": score, "fit_rationale": rationale, "fit_score_method": method})
 
     @app.post("/api/jobs/{job_id}/cover-letter")
     def draft_job_cover_letter(request: Request, job_id: int):
@@ -1971,6 +2016,17 @@ def create_app(
             _log_event({"kind": "info", "text": "Stop requested — finishing the current posting…"})
         return RedirectResponse("/", status_code=303)
 
+    @app.post("/search/resume-now")
+    def resume_search_now():
+        # Only meaningful while actually paused -- harmless no-op otherwise
+        # (the pause loop clears the event right after waking, so setting it
+        # with nothing waiting just leaves it set until the next pause, at
+        # which point it'd wrongly skip that wait too; guarding here avoids
+        # that).
+        if state["search_running"] and state["llm_paused"]:
+            resume_now_event.set()
+        return JSONResponse({"resumed": True})
+
     @app.post("/api/jobs/rematch")
     def trigger_rematch(request: Request):
         if not rematch_state["running"]:
@@ -2003,6 +2059,12 @@ def create_app(
             _rematch_log_event({"kind": "info", "text": "Stop requested — finishing the current job…"})
         return JSONResponse({"stopped": True})
 
+    @app.post("/api/jobs/rematch/resume-now")
+    def resume_rematch_now():
+        if rematch_state["running"] and rematch_state["llm_paused"]:
+            rematch_resume_now_event.set()
+        return JSONResponse({"resumed": True})
+
     # Backs the dashboard's LLM status light -- a configured LLM
     # (llm.provider != "none") that's reachable shows green; anything else
     # (not configured, unreachable, a bad model/key) shows red rather than
@@ -2012,10 +2074,14 @@ def create_app(
     _llm_status_cache: dict[str, Any] = {"checked_at": 0.0, "connected": None, "detail": ""}
     LLM_STATUS_CACHE_SECONDS = 30
 
-    @app.get("/api/llm/status")
-    def llm_status():
+    @app.api_route("/api/llm/status", methods=["GET", "POST"])
+    def llm_status(request: Request):
+        # GET polls and respects the cache; POST is the status light being
+        # clicked -- an explicit request for a fresh answer right now, so it
+        # always bypasses the cache and makes a real check/call.
         now = time.time()
-        if now - _llm_status_cache["checked_at"] < LLM_STATUS_CACHE_SECONDS and _llm_status_cache["connected"] is not None:
+        force = request.method == "POST"
+        if not force and now - _llm_status_cache["checked_at"] < LLM_STATUS_CACHE_SECONDS and _llm_status_cache["connected"] is not None:
             return JSONResponse({"connected": _llm_status_cache["connected"], "detail": _llm_status_cache["detail"]})
         if isinstance(market_analysis_llm, NullLLMClient):
             # check_llm_available() treats llm.provider = "none" as a

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Callable, Optional
 
@@ -101,6 +102,7 @@ def _score_with_pause(
     data_dir,
     on_progress: Optional[ProgressCallback],
     should_stop: Optional[StopCheck],
+    resume_event: Optional[threading.Event] = None,
 ) -> tuple[float, str, str] | None:
     """Scores one posting. A configured LLM (not llm.provider = "none")
     that fails no longer silently falls back to rule-based scoring one job
@@ -109,7 +111,13 @@ def _score_with_pause(
     retrying the SAME job, so nothing already scored this cycle is lost or
     silently downgraded over what's often a transient outage (Ollama not
     started yet, a momentary network blip). Returns None if the pause was
-    interrupted by should_stop()."""
+    interrupted by should_stop().
+
+    resume_event, if given, lets a caller (the dashboard's "Resume now"
+    button) cut the wait short instead of waiting out the full retry
+    interval -- Event.wait(timeout) returns as soon as either happens.
+    Cleared right after waking so it doesn't short-circuit every
+    subsequent wait if the LLM is still down after this one click."""
     while True:
         try:
             return score_fit(job, resume_summary, resume_text, prefs, llm)
@@ -119,7 +127,11 @@ def _score_with_pause(
             while True:
                 if should_stop and should_stop():
                     return None
-                time.sleep(LLM_RETRY_INTERVAL_SECONDS)
+                if resume_event is not None:
+                    resume_event.wait(timeout=LLM_RETRY_INTERVAL_SECONDS)
+                    resume_event.clear()
+                else:
+                    time.sleep(LLM_RETRY_INTERVAL_SECONDS)
                 try:
                     check_llm_available(llm, data_dir)
                     break
@@ -137,11 +149,13 @@ def run_search_cycle(
     llm: LLMClient,
     on_progress: Optional[ProgressCallback] = None,
     should_stop: Optional[StopCheck] = None,
+    resume_event: Optional[threading.Event] = None,
 ) -> int:
     """Returns the number of new postings that were scored and stored.
     Raises LLMUnavailableError up front if llm.provider is configured but
     not actually reachable/usable, before any connector or scoring work
-    happens."""
+    happens. resume_event lets a "Resume now" button cut a mid-search pause
+    short -- see _score_with_pause."""
     check_llm_available(llm, settings.data_dir)
     prefs = effective_preferences(profile, settings)
     resume_summary = json.loads(profile.resume_summary_json or "{}")
@@ -201,6 +215,7 @@ def run_search_cycle(
 
             result = _score_with_pause(
                 job, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+                resume_event,
             )
             if result is None:
                 stopped = True
@@ -280,6 +295,7 @@ def rematch_all_jobs(
     llm: LLMClient,
     on_progress: Optional[ProgressCallback] = None,
     should_stop: Optional[StopCheck] = None,
+    resume_event: Optional[threading.Event] = None,
 ) -> int:
     """Re-scores every saved JobPosting for this profile against the
     current resume/preferences/LLM, in place (fit_score, fit_rationale,
@@ -319,6 +335,7 @@ def rematch_all_jobs(
         )
         result = _score_with_pause(
             raw, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+            resume_event,
         )
         if result is None:
             stopped = True

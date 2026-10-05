@@ -2973,7 +2973,7 @@ def test_rematch_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
         ))
         session.commit()
 
-    def _fake_rematch(session, settings, profile, llm, on_progress=None, should_stop=None):
+    def _fake_rematch(session, settings, profile, llm, on_progress=None, should_stop=None, resume_event=None):
         job = session.query(JobPosting).filter_by(profile_id=profile.id).one()
         job.fit_score, job.fit_rationale, job.fit_score_method = 95.0, "Rescored.", "llm"
         session.commit()
@@ -3056,3 +3056,139 @@ def test_jobs_panel_shows_scoring_method_badges(tmp_path):
 
     assert "LLM scored" in html
     assert "Keyword match" in html
+
+
+def test_jobs_panel_moves_secondary_actions_into_a_per_job_menu(tmp_path):
+    """"The job entries on dashboard are now feeling cluttered. Let's find
+    a way to move the buttons that are on the right ... to a menu" -- fit
+    analysis, cover letter, outreach, and rematch now live behind a single
+    kebab menu button per job card instead of being always-visible."""
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(JobPosting(
+            profile_id=profile.id, source="s", external_id="1", company="A", title="T1",
+            url="u1", fit_score=80,
+        ))
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    html = client.get("/").text
+
+    assert 'class="job-menu-btn"' in html
+    assert 'class="job-menu-panel" hidden' in html
+    assert "rematch-job-action" in html
+    assert "cover-letter-action" in html
+    assert "outreach-action" in html
+
+
+def test_rematch_single_job_route_rescores_and_updates_the_job(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="s", external_id="1", company="A", title="T1",
+            url="u1", fit_score=10, fit_rationale="old", fit_score_method="rule_based",
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    monkeypatch.setattr(
+        app_mod, "score_fit",
+        lambda raw, summary, text, prefs, llm: (88.0, "Rescored.", "llm"),
+    )
+
+    client = TestClient(create_app(settings))
+    response = client.post(f"/api/jobs/{job_id}/rematch")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["fit_score"] == 88.0
+    assert data["fit_score_method"] == "llm"
+
+    with make_session_factory(settings)() as session:
+        job = session.get(JobPosting, job_id)
+        assert job.fit_score == 88.0
+        assert job.fit_score_method == "llm"
+
+
+def test_rematch_single_job_route_surfaces_llm_scoring_failure(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        job = JobPosting(
+            profile_id=profile.id, source="s", external_id="1", company="A", title="T1", url="u1", fit_score=10,
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    from hanarr.matching import LLMScoringFailedError
+
+    def _raise(raw, summary, text, prefs, llm):
+        raise LLMScoringFailedError("Ollama isn't reachable — start Ollama and try again.")
+
+    monkeypatch.setattr(app_mod, "score_fit", _raise)
+    client = TestClient(create_app(settings))
+
+    response = client.post(f"/api/jobs/{job_id}/rematch")
+
+    assert response.status_code == 502
+    assert "Ollama isn't reachable" in response.json()["error"]
+
+
+def test_rematch_single_job_route_404s_for_a_job_outside_the_active_profile(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/api/jobs/999999/rematch")
+
+    assert response.status_code == 404
+
+
+def test_search_resume_now_route_sets_the_event_only_while_paused(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    app = create_app(settings)
+    client = TestClient(app)
+
+    # Not running/paused -- a harmless no-op.
+    response = client.post("/search/resume-now")
+    assert response.status_code == 200
+    assert response.json()["resumed"] is True
+
+
+def test_rematch_resume_now_route_sets_the_event_only_while_paused(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.post("/api/jobs/rematch/resume-now")
+    assert response.status_code == 200
+    assert response.json()["resumed"] is True
+
+
+def test_llm_status_route_post_bypasses_the_cache(tmp_path, monkeypatch):
+    """Clicking the status light must always get a fresh answer, not the
+    cached one a passive GET poll would be satisfied with."""
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "NullLLMClient", type("NeverNull", (), {}))
+
+    call_count = {"n": 0}
+
+    def _check(llm, data_dir):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise pipeline_mod.LLMUnavailableError("still down")
+        # second call (the POST) succeeds
+
+    monkeypatch.setattr(app_mod, "check_llm_available", _check)
+    client = TestClient(create_app(settings))
+
+    first = client.get("/api/llm/status")
+    assert first.json()["connected"] is False
+
+    # A plain GET right after would be served from cache (connected: False
+    # still) -- a POST must force a real re-check instead.
+    second = client.post("/api/llm/status")
+    assert second.json()["connected"] is True
+    assert call_count["n"] == 2

@@ -40,6 +40,35 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-05 — v0.1.32
+
+Shipped: per-job rematch, a tidied-up job card (secondary actions moved into a menu), a "Resume
+now" button wherever a pause is shown, and a clickable LLM status light.
+
+### 2026-10-05 — Per-job action menu, single-job rematch, Resume now, clickable LLM status light
+
+User report: "the job entries on dashboard are now feeling cluttered" -- Improve my fit, Draft
+cover letter, and Draft outreach email (plus the new Rematch this job) were always-visible buttons
+on every card. Moved all four behind a single kebab-menu button (&#8942;) in each job card's
+top-right corner (`.job-menu`/`.job-menu-panel` in `_jobs_panel.html`); only Status and (when
+relevant) "Practice for this interview" stay always-visible, since those are used on essentially
+every job. One menu open at a time; clicking anywhere outside a job's menu closes it.
+
+- **Rematch this job** (`POST /api/jobs/{id}/rematch`) -- the single-job counterpart to v0.1.31's
+  "Rematch all jobs", synchronous like the other per-job actions (one LLM call, not the
+  background-thread-plus-polling shape the bulk version needs). Same `LLMScoringFailedError`
+  handling as the manual-add route.
+- **"Resume now" button** -- v0.1.31 shipped the pause-and-auto-retry behavior itself but only an
+  automatic retry every 5s; this adds an explicit way to cut that wait short right after fixing the
+  LLM, instead of waiting out the interval. `pipeline._score_with_pause()` takes an optional
+  `threading.Event` and waits on it (`Event.wait(timeout=...)`) instead of a plain `time.sleep()`
+  when one's given -- `POST /search/resume-now` / `POST /api/jobs/rematch/resume-now` just `.set()`
+  it. Shown on the Jobs page's progress panel, the rematch controls, and the site-wide activity
+  badge, only while actually paused.
+- **Clickable LLM status light** -- clicking it now POSTs to `/api/llm/status` instead of just
+  polling GET, which forces a real check/call bypassing the 30s cache, for "I just started Ollama,
+  tell me right now" instead of waiting up to 30s for the next passive poll.
+
 ### 2026-10-04 — v0.1.31
 
 Shipped: an unreachable LLM mid-search now pauses instead of silently scoring with the much weaker
