@@ -155,8 +155,8 @@ def approve_resume_proposal(
             location=job.location, remote=job.remote, url=job.url, description=job.description,
             salary_min=job.salary_min, salary_max=job.salary_max, posted_at=job.posted_at,
         )
-        score, rationale = score_fit(raw, summary, proposal.proposed_content, prefs, llm)
-        job.fit_score, job.fit_rationale = score, rationale
+        score, rationale, method = score_fit(raw, summary, proposal.proposed_content, prefs, llm)
+        job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
         session.add(ScoreSnapshot(
             profile_id=profile.id, job_id=job.id, fit_score=score, fit_rationale=rationale,
             trigger="resume_approved",

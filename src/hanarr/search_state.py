@@ -58,6 +58,13 @@ def new_search_state() -> dict[str, Any]:
         # out" debug view.
         "filtered_log": [],
         "last_search_result": None,
+        # Set while a configured LLM has failed mid-search -- the pipeline
+        # is blocked polling for it to come back (see pipeline.py's
+        # _score_with_pause) rather than silently falling back to
+        # rule-based scoring, so the dashboard must say so plainly instead
+        # of just looking stalled.
+        "llm_paused": False,
+        "llm_paused_message": None,
     }
 
 
@@ -75,6 +82,8 @@ def reset_for_run(state: dict[str, Any], run_id: int, trigger: str) -> None:
     state["scoring_count"] = 0
     state["log"] = []
     state["filtered_log"] = []
+    state["llm_paused"] = False
+    state["llm_paused_message"] = None
 
 
 def log_event(state: dict[str, Any], entry: dict[str, Any]) -> None:
@@ -121,3 +130,62 @@ def on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
         log_event(state, {"kind": "done", "text": f"Search complete — {event['new_count']} new posting(s)."})
     elif kind == "stopped":
         log_event(state, {"kind": "error", "text": f"Search stopped — {event['new_count']} new posting(s) kept."})
+    elif kind == "llm_paused":
+        state["llm_paused"] = True
+        state["llm_paused_message"] = event["message"]
+        log_event(state, {"kind": "error", "text": f"Paused — {event['message']}"})
+    elif kind == "llm_resumed":
+        state["llm_paused"] = False
+        state["llm_paused_message"] = None
+        log_event(state, {"kind": "info", "text": "LLM reconnected — resuming."})
+
+
+def new_rematch_state() -> dict[str, Any]:
+    """Separate, smaller sibling of new_search_state() for "Rematch all
+    jobs" (pipeline.rematch_all_jobs) -- same shape of problem (a
+    long-running background LLM loop the dashboard needs to show progress
+    for and must be able to stop), but no sources/connectors, so its own
+    state rather than overloading search_state's fields with a second,
+    different meaning."""
+    return {
+        "running": False,
+        "run_id": 0,
+        "total": 0,
+        "rescored": 0,
+        "log": [],
+        "last_result": None,
+        "llm_paused": False,
+        "llm_paused_message": None,
+    }
+
+
+def reset_for_rematch(state: dict[str, Any], run_id: int, total: int) -> None:
+    state["running"] = True
+    state["run_id"] = run_id
+    state["total"] = total
+    state["rescored"] = 0
+    state["log"] = []
+    state["llm_paused"] = False
+    state["llm_paused_message"] = None
+
+
+def rematch_on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
+    kind = event["event"]
+    if kind == "scoring":
+        log_event(state, {"kind": "scoring", "text": f"Scoring: {event['title']} at {event['company']}"})
+    elif kind == "rescored":
+        state["rescored"] += 1
+        score = event["fit_score"]
+        log_event(state, {"kind": "matched", "text": f"Rescored ({score:.0f}): {event['title']} at {event['company']}"})
+    elif kind == "complete":
+        log_event(state, {"kind": "done", "text": f"Rematch complete — {event['rescored_count']} job(s) rescored."})
+    elif kind == "stopped":
+        log_event(state, {"kind": "error", "text": f"Rematch stopped — {event['rescored_count']} job(s) rescored."})
+    elif kind == "llm_paused":
+        state["llm_paused"] = True
+        state["llm_paused_message"] = event["message"]
+        log_event(state, {"kind": "error", "text": f"Paused — {event['message']}"})
+    elif kind == "llm_resumed":
+        state["llm_paused"] = False
+        state["llm_paused_message"] = None
+        log_event(state, {"kind": "info", "text": "LLM reconnected — resuming."})

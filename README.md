@@ -57,7 +57,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (563 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (574 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -69,7 +69,11 @@ Windows build/install/uninstall cycle, real connector APIs) rather than only moc
   model is genuinely loaded into GPU VRAM during scoring, not silently falling back.
 - A configured-but-unreachable LLM (Ollama down, model not pulled) is caught before a search
   touches any connector, with a specific, actionable error instead of every posting silently
-  degrading to rule-based scoring.
+  degrading to rule-based scoring. If the LLM drops *mid-search* instead, the search pauses and
+  polls until it's reachable again rather than quietly scoring the rest of the run with the much
+  weaker keyword fallback — each job card shows which method actually scored it, a "Rematch all
+  jobs" button re-scores everything already saved, and a status light on the Jobs page shows
+  whether a real LLM is currently reachable.
 - Greenhouse and Lever connectors were confirmed fetching and correctly cleaning real postings
   from live company boards.
 - The Windows packaging path was built, installed silently, launched (the installed executable
@@ -338,7 +342,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (563 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (574 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.

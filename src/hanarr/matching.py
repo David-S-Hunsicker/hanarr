@@ -35,9 +35,19 @@ if TYPE_CHECKING:
 # since a config that still says "Software Engineer" wasn't a deliberate
 # choice and shouldn't be read as one.
 EXAMPLE_TARGET_TITLES = ["Software Engineer", "Backend Engineer"]
-from .llm.base import LLMClient
+from .llm.base import LLMClient, NullLLMClient
 
 logger = logging.getLogger(__name__)
+
+
+class LLMScoringFailedError(RuntimeError):
+    """Raised by score_fit when a configured (not llm.provider = "none")
+    LLM call fails. The rule-based keyword fallback is only correct for the
+    deliberate "no LLM configured" case -- silently substituting it for a
+    *configured* LLM that's unreachable (Ollama not running, a bad API key,
+    etc.) produces much weaker scores with no indication anything went
+    wrong, one job at a time. Callers (run_search_cycle) catch this to
+    pause the search and prompt the user to fix the LLM instead."""
 
 SYSTEM_PROMPT = """You are scoring how well a job posting fits a candidate, for a personal \
 job-search tool. You will be given the candidate's full resume text, a structured summary of \
@@ -330,15 +340,26 @@ def score_fit(
     resume_text: str,
     prefs: Preferences,
     llm: LLMClient,
-) -> tuple[float, str]:
-    """Returns (score 0-100, rationale). The LLM checks the posting's
-    required qualifications against the candidate's actual resume text (not
-    just the compressed skills/titles summary). Two things force the score
-    to 0 outright rather than just lowering it: a hit on one of the
-    candidate's stated dealbreakers, or failing minimum/required
-    qualifications (missing multiple required items, or one major one) —
-    see SYSTEM_PROMPT. Falls back to a keyword-overlap heuristic if the LLM
-    call fails or isn't configured."""
+) -> tuple[float, str, str]:
+    """Returns (score 0-100, rationale, method) where method is "llm" or
+    "rule_based". The LLM checks the posting's required qualifications
+    against the candidate's actual resume text (not just the compressed
+    skills/titles summary). Two things force the score to 0 outright rather
+    than just lowering it: a hit on one of the candidate's stated
+    dealbreakers, or failing minimum/required qualifications (missing
+    multiple required items, or one major one) — see SYSTEM_PROMPT.
+
+    Rule-based (keyword-overlap) scoring is used ONLY for the deliberate
+    llm.provider = "none" configuration. A *configured* LLM (Ollama,
+    Anthropic) that fails raises LLMScoringFailedError instead of silently
+    substituting the much weaker heuristic -- "it fell back to word-match
+    scoring" with no indication anything was wrong was a real user report.
+    Callers are expected to pause and let the user fix the LLM rather than
+    catch this and fall back themselves."""
+    if isinstance(llm, NullLLMClient):
+        score, rationale = _rule_based_score(job, resume_summary, prefs)
+        return score, rationale, "rule_based"
+
     try:
         user_prompt = json.dumps(
             {
@@ -360,29 +381,22 @@ def score_fit(
         unmet = data.get("unmet_requirements") or []
 
         if data.get("dealbreaker_hit"):
-            return 0.0, rationale or "Disqualified: posting appears to violate a stated dealbreaker."
+            return 0.0, rationale or "Disqualified: posting appears to violate a stated dealbreaker.", "llm"
 
         if data.get("fails_minimum_requirements"):
             fallback = "Disqualified: missing minimum/required qualifications."
             if unmet:
                 fallback = "Disqualified: missing required qualification(s): " + "; ".join(unmet)
-            return 0.0, rationale or fallback
+            return 0.0, rationale or fallback, "llm"
 
         score = float(data.get("score", 0))
         if unmet and not rationale:
             rationale = "Unmet requirement(s): " + "; ".join(unmet)
-        return max(0.0, min(100.0, score)), rationale
-    except Exception as exc:  # noqa: BLE001 - fall back rather than block the pipeline
-        # This used to be silent, which made every rule-based fallback
-        # indistinguishable from llm.provider="none" -- there was no way to
-        # tell "not configured" apart from "configured but every call is
-        # failing" short of re-running score_fit by hand. Bounded so a huge
-        # malformed-JSON dump doesn't flood the log.
-        logger.warning(
-            "LLM fit scoring failed for %r at %r, falling back to rule-based scoring: %s",
-            job.title, job.company, str(exc)[:300],
-        )
-        return _rule_based_score(job, resume_summary, prefs)
+        return max(0.0, min(100.0, score)), rationale, "llm"
+    except Exception as exc:  # noqa: BLE001 - normalized into one error type for callers to pause on
+        raise LLMScoringFailedError(
+            f"LLM fit scoring failed for {job.title!r} at {job.company!r}: {str(exc)[:300]}"
+        ) from exc
 
 
 def _rule_based_score(
@@ -410,6 +424,6 @@ def _rule_based_score(
 
     score = max(0.0, min(100.0, score))
     return score, (
-        "Rule-based fallback score (no LLM configured or LLM call failed): "
+        "Rule-based score (no LLM configured): "
         f"{skill_hits} skill keyword(s) and {boost_hits} boost keyword(s) matched."
     )

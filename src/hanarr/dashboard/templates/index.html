@@ -89,6 +89,18 @@
     @media (max-width: 480px) { body { padding: 1.25rem .75rem 3rem; } }
     h1 { font-size: 1.35rem; font-weight: 650; margin: 0; }
     .app-version { font-size: 0.55em; font-weight: normal; color: #888; vertical-align: middle; }
+    .llm-status-light {
+      display: inline-block;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+      background: var(--text-muted);
+      cursor: default;
+    }
+    .llm-status-light.connected { background: var(--status-good); }
+    .llm-status-light.disconnected { background: var(--status-bad, #c0392b); }
 
     .page-header {
       display: flex;
@@ -360,6 +372,11 @@
       color: var(--status-good);
       border-color: var(--status-good);
     }
+    .pill.scoring-method.rule-based {
+      color: var(--status-warning);
+      border-color: var(--status-warning);
+      font-weight: 550;
+    }
     .job-rationale {
       margin-top: 0.55rem;
       font-size: 0.82rem;
@@ -507,7 +524,7 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Hanarr <span class="app-version">v{{ app_version }}</span></h1>
+    <h1>Hanarr <span class="app-version">v{{ app_version }}</span><span id="llm-status-light" class="llm-status-light" title="Checking LLM connection…"></span></h1>
     <span>
       {% if active_profile %}<a class="nav-link" href="/profiles">{{ active_profile.name }} &middot; switch profile</a>{% endif %}
     </span>
@@ -552,6 +569,8 @@
     <form method="post" action="/remind">
       <button type="submit">Check reminders now</button>
     </form>
+    <button type="button" id="rematch-btn" {% if not model_ready %}disabled{% endif %}>Rematch all jobs</button>
+    <button type="button" id="rematch-stop-btn" class="stop-btn" hidden>Stop rematch</button>
     <form method="post" action="/jobs/clear" id="clear-jobs-form">
       <button type="submit" class="stop-btn" id="clear-jobs-btn">Clear all jobs</button>
     </form>
@@ -911,9 +930,9 @@
               // anything -- say so plainly, since that's exactly the case
               // where GPU/CPU load could otherwise catch someone off guard.
               const triggerLabel = data.trigger === "scheduled" ? " (automatic background search)" : "";
-              headline.textContent = (data.current_source
-                ? "Searching " + data.current_source + "…"
-                : "Working…") + triggerLabel;
+              headline.textContent = data.llm_paused
+                ? "Paused — " + (data.llm_paused_message || "the LLM isn't reachable") + ". Fix it and the search will resume on its own."
+                : (data.current_source ? "Searching " + data.current_source + "…" : "Working…") + triggerLabel;
               // already_seen_count is visible evidence that a search
               // resumed after an interruption instead of redoing
               // already-scored work -- only worth showing once it's
@@ -977,6 +996,79 @@
         pollModelReadiness();
         setInterval(pollModelReadiness, 2000);
       }
+    })();
+  </script>
+
+  <script>
+    (function () {
+      const light = document.getElementById("llm-status-light");
+      if (!light) return;
+      function poll() {
+        fetch("/api/llm/status")
+          .then((r) => r.json())
+          .then((data) => {
+            light.className = "llm-status-light " + (data.connected ? "connected" : "disconnected");
+            light.title = (data.connected ? "LLM connected — " : "LLM not connected — ") + (data.detail || "");
+          })
+          .catch(() => {
+            light.className = "llm-status-light disconnected";
+            light.title = "LLM not connected — could not reach the dashboard's own status check.";
+          });
+      }
+      poll();
+      setInterval(poll, 45000);
+    })();
+  </script>
+
+  <script>
+    (function () {
+      const rematchBtn = document.getElementById("rematch-btn");
+      const rematchStopBtn = document.getElementById("rematch-stop-btn");
+      if (!rematchBtn) return;
+
+      let wasRunning = false;
+
+      rematchBtn.addEventListener("click", function () {
+        if (!window.confirm("Re-score every saved job against your current resume and preferences? This may take a while and will overwrite each job's current fit score.")) {
+          return;
+        }
+        fetch("/api/jobs/rematch", { method: "POST" }).then(poll).catch(() => {});
+      });
+
+      rematchStopBtn.addEventListener("click", function () {
+        rematchStopBtn.disabled = true;
+        rematchStopBtn.textContent = "Stopping…";
+        fetch("/api/jobs/rematch/stop", { method: "POST" }).catch(() => {});
+      });
+
+      function poll() {
+        fetch("/api/jobs/rematch/status")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.running) {
+              rematchBtn.disabled = true;
+              rematchBtn.textContent = data.llm_paused
+                ? "Paused — fix the LLM to resume…"
+                : "Rematching " + data.rescored + " / " + data.total + "…";
+              rematchStopBtn.hidden = false;
+              wasRunning = true;
+            } else {
+              rematchBtn.disabled = false;
+              rematchBtn.textContent = "Rematch all jobs";
+              rematchStopBtn.hidden = true;
+              rematchStopBtn.disabled = false;
+              rematchStopBtn.textContent = "Stop rematch";
+              if (wasRunning) {
+                wasRunning = false;
+                // Reload so updated scores/scoring-method badges show.
+                window.location.reload();
+              }
+            }
+          })
+          .catch(() => {});
+      }
+      poll();
+      setInterval(poll, 2000);
     })();
   </script>
 </body>

@@ -119,6 +119,10 @@ class JobPosting(Base):
 
     fit_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-100
     fit_rationale: Mapped[str] = mapped_column(Text, default="")
+    # "llm" or "rule_based" -- see matching.score_fit. Nullable because
+    # postings scored before this column existed have no recorded method;
+    # the dashboard shows those as "unknown" rather than guessing.
+    fit_score_method: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[ApplicationStatus] = mapped_column(
         Enum(ApplicationStatus), default=ApplicationStatus.NEW
     )

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Callable, Optional
 
 from sqlalchemy import select
@@ -13,8 +14,9 @@ from sqlalchemy.orm import Session
 
 from .config import Settings, effective_preferences
 from .connectors import build_enabled_connectors
+from .connectors.base import RawJobPosting
 from .llm.base import LLMClient, NullLLMClient
-from .matching import prefilter_rejection_reason, score_fit
+from .matching import LLMScoringFailedError, prefilter_rejection_reason, score_fit
 from .models import JobPosting, Profile, ScoreSnapshot, SeenPosting
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,52 @@ ProgressCallback = Callable[[dict], None]
 # an HTTP request to Ollama mid-response). Optional; defaults to "never stop"
 # so CLI/scheduler callers are unaffected.
 StopCheck = Callable[[], bool]
+
+# How often to re-check whether a configured LLM has come back after a
+# mid-search failure. Deliberately not instant -- a tight loop would hammer
+# Ollama's /api/tags endpoint (or, for Anthropic, nothing further since
+# check_llm_available only re-probes Ollama cheaply; Anthropic failures are
+# re-tried at this same cadence via one real call each time, so this also
+# bounds that cost).
+LLM_RETRY_INTERVAL_SECONDS = 5
+
+
+def _score_with_pause(
+    job: RawJobPosting,
+    resume_summary: dict,
+    resume_text: str,
+    prefs,
+    llm: LLMClient,
+    data_dir,
+    on_progress: Optional[ProgressCallback],
+    should_stop: Optional[StopCheck],
+) -> tuple[float, str, str] | None:
+    """Scores one posting. A configured LLM (not llm.provider = "none")
+    that fails no longer silently falls back to rule-based scoring one job
+    at a time -- see LLMScoringFailedError -- it pauses here instead,
+    polling until the LLM is reachable again (or the user cancels) and then
+    retrying the SAME job, so nothing already scored this cycle is lost or
+    silently downgraded over what's often a transient outage (Ollama not
+    started yet, a momentary network blip). Returns None if the pause was
+    interrupted by should_stop()."""
+    while True:
+        try:
+            return score_fit(job, resume_summary, resume_text, prefs, llm)
+        except LLMScoringFailedError as exc:
+            if on_progress:
+                on_progress({"event": "llm_paused", "message": str(exc)})
+            while True:
+                if should_stop and should_stop():
+                    return None
+                time.sleep(LLM_RETRY_INTERVAL_SECONDS)
+                try:
+                    check_llm_available(llm, data_dir)
+                    break
+                except LLMUnavailableError:
+                    continue
+            if on_progress:
+                on_progress({"event": "llm_resumed"})
+            # Loop back around and retry score_fit on this same job.
 
 
 def run_search_cycle(
@@ -151,7 +199,13 @@ def run_search_cycle(
             if on_progress:
                 on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
 
-            score, rationale = score_fit(job, resume_summary, resume_text, prefs, llm)
+            result = _score_with_pause(
+                job, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+            )
+            if result is None:
+                stopped = True
+                break
+            score, rationale, method = result
             session.add(SeenPosting(profile_id=profile.id, source=job.source, external_id=job.external_id))
 
             if score < settings.matching.min_fit_score:
@@ -179,6 +233,7 @@ def run_search_cycle(
                 posted_at=job.posted_at,
                 fit_score=score,
                 fit_rationale=rationale,
+                fit_score_method=method,
             )
             session.add(posting)
             session.commit()
@@ -216,3 +271,76 @@ def run_search_cycle(
         on_progress({"event": "stopped" if stopped else "complete", "new_count": new_count})
 
     return new_count
+
+
+def rematch_all_jobs(
+    session: Session,
+    settings: Settings,
+    profile: Profile,
+    llm: LLMClient,
+    on_progress: Optional[ProgressCallback] = None,
+    should_stop: Optional[StopCheck] = None,
+) -> int:
+    """Re-scores every saved JobPosting for this profile against the
+    current resume/preferences/LLM, in place (fit_score, fit_rationale,
+    fit_score_method all overwritten, with a ScoreSnapshot kept for
+    history). For after fixing an LLM that had been unreachable (postings
+    scored while it was down say so via fit_score_method="rule_based" --
+    see matching.score_fit), or just to re-score everything after changing
+    preferences without waiting for a fresh search to surface new postings.
+
+    Raises LLMUnavailableError up front, same as run_search_cycle. Pauses
+    (via the same _score_with_pause used there) rather than silently
+    falling back if the LLM drops mid-run. Returns the number of jobs
+    actually rescored (fewer than the total if stopped partway through)."""
+    check_llm_available(llm, settings.data_dir)
+    prefs = effective_preferences(profile, settings)
+    resume_summary = json.loads(profile.resume_summary_json or "{}")
+    resume_text = profile.resume_text or ""
+
+    jobs = session.execute(
+        select(JobPosting).where(JobPosting.profile_id == profile.id)
+    ).scalars().all()
+
+    rescored = 0
+    stopped = False
+    for job in jobs:
+        if should_stop and should_stop():
+            stopped = True
+            break
+
+        if on_progress:
+            on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
+
+        raw = RawJobPosting(
+            source=job.source, external_id=job.external_id, company=job.company, title=job.title,
+            location=job.location, remote=job.remote, url=job.url, description=job.description,
+            salary_min=job.salary_min, salary_max=job.salary_max, posted_at=job.posted_at,
+        )
+        result = _score_with_pause(
+            raw, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+        )
+        if result is None:
+            stopped = True
+            break
+
+        score, rationale, method = result
+        before = job.fit_score
+        job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
+        session.add(ScoreSnapshot(
+            profile_id=profile.id, job_id=job.id, fit_score=score, fit_rationale=rationale,
+            trigger="rematch_all",
+            scorer_metadata_json=json.dumps({"before_score": before, "after_score": score, "method": method}),
+        ))
+        session.commit()
+        rescored += 1
+        if on_progress:
+            on_progress({
+                "event": "rescored", "source": job.source, "title": job.title,
+                "company": job.company, "fit_score": score,
+            })
+
+    if on_progress:
+        on_progress({"event": "stopped" if stopped else "complete", "rescored_count": rescored})
+
+    return rescored

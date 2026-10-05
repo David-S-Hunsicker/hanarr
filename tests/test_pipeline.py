@@ -12,7 +12,7 @@ from hanarr.llm.ollama_client import OllamaClient
 from hanarr.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, InstalledModel, ModelRecommendation, OllamaDiagnostics
 import hanarr.pipeline as pipeline_mod
-from hanarr.pipeline import LLMUnavailableError, check_llm_available, run_search_cycle
+from hanarr.pipeline import LLMUnavailableError, check_llm_available, rematch_all_jobs, run_search_cycle
 
 
 def _make_session():
@@ -306,3 +306,140 @@ def test_run_search_cycle_raises_before_touching_connectors_when_llm_unavailable
         run_search_cycle(session, settings, profile, _CountingLLM(score=50))
 
     assert fetch_called == [], "no connector should be hit once the LLM check has already failed"
+
+
+class _FlakyLLM(LLMClient):
+    """Fails the first N calls (simulating Ollama being briefly down), then
+    succeeds -- for exercising the pause-and-retry path in
+    pipeline._score_with_pause rather than matching.py's own fallback."""
+
+    def __init__(self, fail_times: int, score: float = 80.0):
+        self.fail_times = fail_times
+        self.score = score
+        self.attempts = 0
+
+    def complete_json(self, system: str, user: str) -> str:
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise RuntimeError("connection refused")
+        return json.dumps({"score": self.score, "dealbreaker_hit": False, "rationale": "Recovered."})
+
+
+def test_run_search_cycle_pauses_and_resumes_instead_of_falling_back_when_llm_fails_mid_search(monkeypatch):
+    """Regression test: a configured LLM failing mid-search used to score
+    that one posting (and every one after it) with the rule-based fallback,
+    completely silently. It must now pause -- not silently downgrade -- and
+    pick back up once the LLM is reachable again, without losing/re-fetching
+    anything already done this cycle."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+    settings = Settings()
+    settings.matching.min_fit_score = 0
+
+    connector = _FakeConnector("arbeitnow", [_make_job("1")])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [connector])
+    monkeypatch.setattr(pipeline_mod.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline_mod, "check_llm_available", lambda llm, data_dir: None)
+
+    llm = _FlakyLLM(fail_times=1)
+    events = []
+
+    count = run_search_cycle(session, settings, profile, llm, on_progress=events.append)
+
+    assert count == 1
+    assert llm.attempts == 2, "the same posting should be retried, not skipped"
+    kinds = [e["event"] for e in events]
+    assert "llm_paused" in kinds
+    assert "llm_resumed" in kinds
+    posting = session.query(JobPosting).one()
+    assert posting.fit_score_method == "llm"
+    assert posting.fit_score == 80.0
+
+
+def test_run_search_cycle_can_be_stopped_while_paused_for_the_llm(monkeypatch):
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+    settings = Settings()
+
+    connector = _FakeConnector("arbeitnow", [_make_job("1")])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [connector])
+    monkeypatch.setattr(pipeline_mod.time, "sleep", lambda *a, **k: None)
+    check_calls = {"n": 0}
+
+    def _fake_check(llm, data_dir):
+        check_calls["n"] += 1
+        if check_calls["n"] > 1:  # upfront check (before any job) passes; later ones (the pause loop) don't
+            raise LLMUnavailableError("still down")
+
+    monkeypatch.setattr(pipeline_mod, "check_llm_available", _fake_check)
+
+    class _AlwaysFailsLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            raise RuntimeError("connection refused")
+
+    calls = {"n": 0}
+
+    def should_stop():
+        calls["n"] += 1
+        return calls["n"] > 1  # let the pause loop poll once, then cancel
+
+    count = run_search_cycle(session, settings, profile, _AlwaysFailsLLM(), should_stop=should_stop)
+
+    assert count == 0
+    assert session.query(JobPosting).count() == 0
+
+
+def test_rematch_all_jobs_rescores_every_saved_posting(monkeypatch):
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+
+    job1 = JobPosting(
+        profile_id=profile.id, source="s", external_id="1", company="A", title="T1", url="u1",
+        fit_score=10, fit_rationale="old", fit_score_method="rule_based",
+    )
+    job2 = JobPosting(
+        profile_id=profile.id, source="s", external_id="2", company="B", title="T2", url="u2",
+        fit_score=20, fit_rationale="old", fit_score_method="rule_based",
+    )
+    session.add_all([job1, job2])
+    session.commit()
+
+    llm = _CountingLLM(score=90, rationale="fresh")
+    count = rematch_all_jobs(session, Settings(), profile, llm)
+
+    assert count == 2
+    assert llm.call_count == 2
+    session.refresh(job1)
+    session.refresh(job2)
+    assert job1.fit_score == 90 and job1.fit_score_method == "llm" and job1.fit_rationale == "fresh"
+    assert job2.fit_score == 90 and job2.fit_score_method == "llm"
+    assert session.query(ScoreSnapshot).filter_by(trigger="rematch_all").count() == 2
+
+
+def test_rematch_all_jobs_raises_before_touching_anything_when_llm_unavailable(monkeypatch):
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+    job = JobPosting(
+        profile_id=profile.id, source="s", external_id="1", company="A", title="T1", url="u1", fit_score=10,
+    )
+    session.add(job)
+    session.commit()
+
+    monkeypatch.setattr(
+        pipeline_mod, "check_llm_available",
+        lambda llm, data_dir: (_ for _ in ()).throw(LLMUnavailableError("Ollama isn't reachable")),
+    )
+
+    with pytest.raises(LLMUnavailableError):
+        rematch_all_jobs(session, Settings(), profile, _CountingLLM(score=50))
+
+    session.refresh(job)
+    assert job.fit_score == 10, "nothing should be touched once the upfront LLM check has failed"

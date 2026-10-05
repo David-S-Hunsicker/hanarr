@@ -2915,3 +2915,144 @@ def test_saving_smtp_password_stores_it_in_keyring_not_config_yaml(tmp_path, mon
 
     config_yaml = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     assert "hunter2" not in config_yaml
+
+
+def test_llm_status_route_reports_not_connected_when_no_llm_configured(tmp_path):
+    """llm.provider = "none" is a deliberate state, but the dashboard's
+    status light must still show red for it -- there IS no LLM, so "green"
+    would be misleading even though it's not an error state for search
+    purposes (see pipeline.check_llm_available)."""
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    response = client.get("/api/llm/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["connected"] is False
+    assert "none" in data["detail"]
+
+
+def test_llm_status_route_reports_connected_when_check_succeeds(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "check_llm_available", lambda llm, data_dir: None)
+    monkeypatch.setattr(app_mod, "NullLLMClient", type("NeverNull", (), {}))  # bypass the "none" special-case
+    client = TestClient(create_app(settings))
+
+    response = client.get("/api/llm/status")
+
+    assert response.status_code == 200
+    assert response.json()["connected"] is True
+
+
+def test_llm_status_route_reports_not_connected_when_check_raises(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    monkeypatch.setattr(app_mod, "NullLLMClient", type("NeverNull", (), {}))
+
+    def _raise(llm, data_dir):
+        raise pipeline_mod.LLMUnavailableError("Ollama isn't reachable — start Ollama and try again.")
+
+    monkeypatch.setattr(app_mod, "check_llm_available", _raise)
+    client = TestClient(create_app(settings))
+
+    response = client.get("/api/llm/status")
+
+    data = response.json()
+    assert data["connected"] is False
+    assert "Ollama isn't reachable" in data["detail"]
+
+
+def test_rematch_all_jobs_route_rescores_every_saved_job(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(JobPosting(
+            profile_id=profile.id, source="s", external_id="1", company="A", title="T1",
+            url="u1", fit_score=10, fit_rationale="old", fit_score_method="rule_based",
+        ))
+        session.commit()
+
+    def _fake_rematch(session, settings, profile, llm, on_progress=None, should_stop=None):
+        job = session.query(JobPosting).filter_by(profile_id=profile.id).one()
+        job.fit_score, job.fit_rationale, job.fit_score_method = 95.0, "Rescored.", "llm"
+        session.commit()
+        return 1
+
+    monkeypatch.setattr(app_mod, "rematch_all_jobs", _fake_rematch)
+
+    client = TestClient(create_app(settings))
+    started = client.post("/api/jobs/rematch")
+    assert started.status_code == 200
+    assert started.json()["started"] is True
+
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/api/jobs/rematch/status").json()
+        if not s["running"]:
+            final = s
+            break
+
+    assert final is not None, "rematch did not finish in time"
+    assert final["last_result"] == "1 job(s) rescored."
+
+    with factory() as session:
+        job = session.query(JobPosting).one()
+        assert job.fit_score == 95.0
+        assert job.fit_score_method == "llm"
+
+
+def test_rematch_all_jobs_route_surfaces_llm_unavailable_error(tmp_path, monkeypatch):
+    settings = _make_isolated_settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add(JobPosting(
+            profile_id=profile.id, source="s", external_id="1", company="A", title="T1", url="u1", fit_score=10,
+        ))
+        session.commit()
+
+    def _raise_unavailable(session, settings, profile, llm, **kwargs):
+        raise pipeline_mod.LLMUnavailableError("Ollama isn't reachable — start Ollama and try again.")
+
+    monkeypatch.setattr(app_mod, "rematch_all_jobs", _raise_unavailable)
+    client = TestClient(create_app(settings))
+
+    client.post("/api/jobs/rematch")
+    final = None
+    for _ in range(50):
+        time.sleep(0.05)
+        s = client.get("/api/jobs/rematch/status").json()
+        if not s["running"]:
+            final = s
+            break
+
+    assert final is not None, "rematch did not finish in time"
+    assert "Ollama isn't reachable" in final["last_result"]
+
+
+def test_jobs_panel_shows_scoring_method_badges(tmp_path):
+    """"We also want to know if a job on dashboard was scored by llm or
+    word match" -- a visible, distinct badge per job, not just something
+    buried in the rationale text."""
+    settings = _make_isolated_settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        profile = get_or_create_profile(session, settings)
+        session.add_all([
+            JobPosting(
+                profile_id=profile.id, source="s", external_id="1", company="A", title="LLM Scored Job",
+                url="u1", fit_score=80, fit_score_method="llm",
+            ),
+            JobPosting(
+                profile_id=profile.id, source="s", external_id="2", company="B", title="Keyword Scored Job",
+                url="u2", fit_score=50, fit_score_method="rule_based",
+            ),
+        ])
+        session.commit()
+
+    client = TestClient(create_app(settings))
+    html = client.get("/").text
+
+    assert "LLM scored" in html
+    assert "Keyword match" in html

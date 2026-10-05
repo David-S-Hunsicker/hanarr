@@ -33,6 +33,13 @@ class PassingLLM:
                 "strengths": ["Evidence"], "improvements": [], "actionable_feedback": [],
                 "feedback": "Passed.",
             })
+        if "scoring how well a job posting fits" in system:
+            # A configured LLM that fails is no longer silently caught by
+            # score_fit's own rule-based fallback (see matching.py's
+            # LLMScoringFailedError) -- this test isn't exercising that
+            # path, so it needs a real answer here instead of relying on
+            # the old blanket catch.
+            return json.dumps({"score": 75, "dealbreaker_hit": False, "rationale": "Rescored."})
         raise RuntimeError("deterministic proposal fallback")
 
 

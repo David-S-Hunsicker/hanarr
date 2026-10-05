@@ -40,6 +40,47 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-04 — v0.1.31
+
+Shipped: an unreachable LLM mid-search now pauses instead of silently scoring with the much weaker
+keyword fallback, plus a way to see and fix it (see below).
+
+### 2026-10-04 — Pause on LLM failure, scoring-method visibility, rematch-all, LLM status light
+
+User report: "I think ollama wasn't running and it fell back to word match scoring. I don't want
+word match scoring." `check_llm_available()` (v0.1.x) already aborted a search *up front* if a
+configured LLM was unreachable before touching any connector -- but if the LLM dropped mid-search
+(Ollama crashed, closed, network blip), `matching.score_fit()`'s own blanket `except Exception` still
+silently substituted the rule-based keyword-overlap heuristic for every remaining posting, one job at
+a time, with nothing but a log line. That silent substitution is now gone: `score_fit()` only uses
+rule-based scoring for the deliberate `llm.provider = "none"` case (tagged `method="rule_based"`); a
+*configured* LLM that fails raises `LLMScoringFailedError` instead.
+
+`run_search_cycle()` (and the new `rematch_all_jobs()`, see below) catch that via a shared
+`_score_with_pause()` helper: pause, poll `check_llm_available()` every 5s, and retry the *same*
+posting once it's reachable again -- nothing already scored this run is lost or silently downgraded
+over what's often a transient outage. `should_stop()` still works while paused, so Stop Search cancels
+cleanly instead of hanging. The Jobs page's search-progress panel and every page's activity badge show
+"Paused — <reason>" instead of looking stalled.
+
+Also shipped, since the root complaint was really "I can't tell which jobs were scored how" and "now
+that I noticed one wasn't, I want to fix it without a full re-search":
+
+- `JobPosting.fit_score_method` ("llm" or "rule_based", nullable for postings scored before this
+  column existed) -- each job card on the Jobs page now shows an "LLM scored" or "Keyword match"
+  badge (the latter visually flagged, since it means a materially weaker score).
+- **Rematch all jobs** button (Jobs page) -- `pipeline.rematch_all_jobs()` re-scores every saved
+  posting in place against the current resume/preferences/LLM, with the same pause-on-failure
+  behavior, for after fixing an LLM that had been down (or just after editing preferences).
+- A small status light next to "Hanarr" on the Jobs page: green when a configured LLM is actually
+  reachable, red for anything else (not configured, unreachable, a bad model/key) -- hover for why.
+  Cached 30s server-side so polling it doesn't rack up real Anthropic API calls.
+
+Separately: the search-activity badge shown on every other page (Coaching, Settings, etc.) was a
+link back to "/" labeled "view progress" -- a pointless detour, since there's nothing to interact
+with there besides the same running/paused state the badge itself already shows. Replaced with a
+plain, non-clickable badge with a small cycling-emoji "still searching" animation.
+
 ### 2026-10-04 — v0.1.30
 
 Shipped: clicking "Install" on an update now actually tells you what happened once it's done,

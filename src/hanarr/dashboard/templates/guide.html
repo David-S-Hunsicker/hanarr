@@ -54,9 +54,15 @@
         salary floor, dealbreakers, which job sources to enable). This is the only step you have to do
         before anything else is useful. Without a model from step 1, resume parsing and job scoring both
         fall back to plain keyword matching — a much blunter signal than an LLM actually reading the
-        text, and the degraded mode, not the intended one.</li>
+        text, and the degraded mode, not the intended one. If a model you'd set up stops responding mid-search
+        (Ollama not running, a bad API key), Hanarr pauses the search and waits rather than silently
+        switching to keyword matching — fix the LLM and it resumes on its own. The little light next to
+        "Hanarr" on the Jobs page shows whether a real LLM is currently reachable, and each job card says
+        whether it was scored by the LLM or by keyword matching.</li>
       <li><strong>Jobs</strong> — review what was found, sorted by fit. Mark status as you apply, hear
-        back, or interview; that automatically schedules a follow-up reminder.</li>
+        back, or interview; that automatically schedules a follow-up reminder. "Rematch all jobs" re-scores
+        everything already saved against your current resume/preferences/LLM — useful after fixing an LLM
+        that had been down, or after editing preferences.</li>
       <li><strong>Coaching &amp; Skills</strong> — when a job shows a skill gap, decide whether to close
         it with a quick refresher or a small project, and track your real capability evidence separately
         from what your resume happens to say.</li>

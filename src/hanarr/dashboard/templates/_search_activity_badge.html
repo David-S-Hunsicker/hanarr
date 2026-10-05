@@ -1,19 +1,53 @@
-<div id="search-activity-badge" class="search-activity-badge" hidden>
-  <a href="/"><span id="search-activity-text"></span> &middot; view progress</a>
+<div id="search-activity-badge" class="search-activity-badge" hidden style="align-items:center; gap:.4rem;">
+  <span id="search-activity-emoji" aria-hidden="true" style="display:inline-block;">🔍</span>
+  <span id="search-activity-text"></span>
 </div>
 <script>
   (function () {
+    // Just a status indicator now -- it used to be a link back to "/" to
+    // "view progress", but on every page other than Jobs itself that's a
+    // pointless detour: there's nothing to interact with there besides the
+    // same running/stopped state this badge already shows. A plain,
+    // non-clickable badge with a small cycling-emoji "still working"
+    // animation instead.
     var badge = document.getElementById("search-activity-badge");
     var text = document.getElementById("search-activity-text");
+    var emojiEl = document.getElementById("search-activity-emoji");
     if (!badge) return;
+
+    var runningEmojis = ["🔍", "🔎", "🛰️", "📡"];
+    var pausedEmoji = "⏸️";
+    var emojiIndex = 0;
+    var emojiTimer = null;
+
+    function startEmojiCycle() {
+      if (emojiTimer) return;
+      emojiTimer = setInterval(function () {
+        emojiIndex = (emojiIndex + 1) % runningEmojis.length;
+        emojiEl.textContent = runningEmojis[emojiIndex];
+      }, 700);
+    }
+    function stopEmojiCycle() {
+      clearInterval(emojiTimer);
+      emojiTimer = null;
+    }
+
     function poll() {
       fetch("/search/status").then(function (r) { return r.json(); }).then(function (data) {
         if (data.search_running) {
           badge.hidden = false;
-          var label = data.trigger === "scheduled" ? "Automatic search running" : "Search running";
-          text.textContent = label + " — " + (data.scoring_count || 0) + " scored by LLM so far";
+          if (data.llm_paused) {
+            stopEmojiCycle();
+            emojiEl.textContent = pausedEmoji;
+            text.textContent = "Paused — " + (data.llm_paused_message || "the LLM isn't reachable");
+          } else {
+            startEmojiCycle();
+            var label = data.trigger === "scheduled" ? "Automatic search running" : "Search running";
+            text.textContent = label + " — " + (data.scoring_count || 0) + " scored by LLM so far";
+          }
         } else {
           badge.hidden = true;
+          stopEmojiCycle();
         }
       }).catch(function () {});
     }

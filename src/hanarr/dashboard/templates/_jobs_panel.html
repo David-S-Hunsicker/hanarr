@@ -60,6 +60,11 @@
         {% set age = job.posted_at|posting_age %}
         {% if age %}<span class="pill" title="{{ job.posted_at.strftime('%Y-%m-%d') }}">{{ age }}</span>{% endif %}
         <span class="pill">{{ job.source }}</span>
+        {% if job.fit_score_method == "llm" %}
+        <span class="pill scoring-method llm" title="Scored by your configured LLM.">LLM scored</span>
+        {% elif job.fit_score_method == "rule_based" %}
+        <span class="pill scoring-method rule-based" title="No LLM configured for scoring -- scored by a plain keyword-overlap match instead, which is far less accurate.">Keyword match</span>
+        {% endif %}
         {% set gap = gap_by_job.get(job.id) %}
         {% if gap %}
           {% set missing = gap.gap_counts.get('missing', 0) %}

@@ -23,14 +23,15 @@ import tzlocal
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from ..config import DEFAULT_CONFIG_PATH, Preferences, Settings, backup_profile_preferences, effective_preferences
 from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import RawJobPosting, to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
 from ..llm import build_llm_client
-from ..matching import COMMON_DEALBREAKERS, score_fit
+from ..llm.base import NullLLMClient
+from ..matching import COMMON_DEALBREAKERS, LLMScoringFailedError, score_fit
 from ..ollama_setup import (
     SetupCancelled,
     SetupError,
@@ -69,9 +70,17 @@ from ..models import (
     SkillInterview,
     utc_now,
 )
-from ..pipeline import run_search_cycle
+from ..pipeline import check_llm_available, rematch_all_jobs, run_search_cycle
 from ..reminders import deliver_reminders, get_due_reminders, mark_completed
-from ..search_state import log_event as search_log_event, new_search_state, on_progress as search_on_progress, reset_for_run
+from ..search_state import (
+    log_event as search_log_event,
+    new_rematch_state,
+    new_search_state,
+    on_progress as search_on_progress,
+    rematch_on_progress,
+    reset_for_rematch,
+    reset_for_run,
+)
 from .. import self_update
 from .. import tutorials
 from ..coach import CoachError, ask_coach, confirm_action, decline_action, recent_messages
@@ -344,6 +353,49 @@ def create_app(
         finally:
             state["search_running"] = False
             stop_event.clear()
+
+    # "Rematch all jobs" -- re-scores every saved posting against the
+    # current resume/preferences/LLM, same background-thread-plus-polling
+    # shape as a search. Its own state/stop-event: independent of a live
+    # search (either could be running without blocking the other, though
+    # in practice a user is unlikely to kick off both at once).
+    rematch_state = new_rematch_state()
+    rematch_stop_event = threading.Event()
+
+    def _rematch_log_event(entry: dict) -> None:
+        search_log_event(rematch_state, entry)
+
+    def _rematch_on_progress(event: dict) -> None:
+        rematch_on_progress(rematch_state, event)
+
+    def _run_rematch_in_background(run_id: int, profile_id: int | None = None):
+        rematch_stop_event.clear()
+        try:
+            with session_factory() as session:
+                profile = get_active_profile(session, settings, profile_id)
+                total = session.scalar(
+                    select(func.count()).select_from(JobPosting).where(JobPosting.profile_id == profile.id)
+                ) or 0
+                reset_for_rematch(rematch_state, run_id, total)
+                n = rematch_all_jobs(
+                    session, settings, profile, market_analysis_llm,
+                    on_progress=_rematch_on_progress,
+                    should_stop=rematch_stop_event.is_set,
+                )
+                if rematch_stop_event.is_set():
+                    rematch_state["last_result"] = f"Rematch stopped — {n} job(s) rescored."
+                else:
+                    rematch_state["last_result"] = f"{n} job(s) rescored."
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Rematch-all-jobs cycle failed")
+            message = f"Rematch failed — {exc}"
+            if len(message) > 300:
+                message = message[:300] + "…"
+            rematch_state["last_result"] = message
+            _rematch_log_event({"kind": "error", "text": message})
+        finally:
+            rematch_state["running"] = False
+            rematch_stop_event.clear()
 
     def _task_is_stuck(task_state: dict) -> bool:
         return task_is_stuck(task_state, settings.llm.timeout_seconds)
@@ -859,10 +911,13 @@ def create_app(
                 salary_min=_parse_salary(salary_min),
                 salary_max=_parse_salary(salary_max),
             )
-            score, rationale = score_fit(
-                raw_job, resume_summary, profile.resume_text or "",
-                effective_preferences(profile, settings), market_analysis_llm
-            )
+            try:
+                score, rationale, method = score_fit(
+                    raw_job, resume_summary, profile.resume_text or "",
+                    effective_preferences(profile, settings), market_analysis_llm
+                )
+            except LLMScoringFailedError as exc:
+                return JSONResponse({"error": f"Could not score this job — {exc}"[:300]}, status_code=502)
             job = JobPosting(
                 profile_id=profile.id,
                 source=raw_job.source,
@@ -877,6 +932,7 @@ def create_app(
                 salary_max=raw_job.salary_max,
                 fit_score=score,
                 fit_rationale=rationale,
+                fit_score_method=method,
             )
             session.add(job)
             session.commit()
@@ -1569,6 +1625,8 @@ def create_app(
                 session.commit()
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
+            except LLMScoringFailedError as exc:
+                return JSONResponse({"error": f"Resume approved, but rescoring affected jobs failed — {exc}"[:300]}, status_code=502)
             return JSONResponse(result)
 
     @app.post("/api/resume/proposals/{proposal_id}/reject")
@@ -1883,6 +1941,8 @@ def create_app(
                 "log": state["log"],
                 "last_search_result": state["last_search_result"],
                 "stop_requested": stop_event.is_set(),
+                "llm_paused": state["llm_paused"],
+                "llm_paused_message": state["llm_paused_message"],
                 **_scheduler_status(_active_profile_id(request)),
             }
         )
@@ -1910,6 +1970,68 @@ def create_app(
             stop_event.set()
             _log_event({"kind": "info", "text": "Stop requested — finishing the current posting…"})
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/api/jobs/rematch")
+    def trigger_rematch(request: Request):
+        if not rematch_state["running"]:
+            rematch_state["running"] = True  # claimed immediately so a double-click can't start two
+            next_run_id = rematch_state["run_id"] + 1
+            profile_id = _active_profile_id(request)
+            threading.Thread(
+                target=_run_rematch_in_background, args=(next_run_id, profile_id), daemon=True
+            ).start()
+        return JSONResponse({"started": True})
+
+    @app.get("/api/jobs/rematch/status")
+    def rematch_status():
+        return JSONResponse({
+            "running": rematch_state["running"],
+            "run_id": rematch_state["run_id"],
+            "total": rematch_state["total"],
+            "rescored": rematch_state["rescored"],
+            "log": rematch_state["log"],
+            "last_result": rematch_state["last_result"],
+            "llm_paused": rematch_state["llm_paused"],
+            "llm_paused_message": rematch_state["llm_paused_message"],
+            "stop_requested": rematch_stop_event.is_set(),
+        })
+
+    @app.post("/api/jobs/rematch/stop")
+    def stop_rematch():
+        if rematch_state["running"]:
+            rematch_stop_event.set()
+            _rematch_log_event({"kind": "info", "text": "Stop requested — finishing the current job…"})
+        return JSONResponse({"stopped": True})
+
+    # Backs the dashboard's LLM status light -- a configured LLM
+    # (llm.provider != "none") that's reachable shows green; anything else
+    # (not configured, unreachable, a bad model/key) shows red rather than
+    # guessing. Cached briefly: Ollama's check is cheap (one /api/tags hit)
+    # but Anthropic's is a real billed call, and this is meant to be polled
+    # by every open dashboard tab.
+    _llm_status_cache: dict[str, Any] = {"checked_at": 0.0, "connected": None, "detail": ""}
+    LLM_STATUS_CACHE_SECONDS = 30
+
+    @app.get("/api/llm/status")
+    def llm_status():
+        now = time.time()
+        if now - _llm_status_cache["checked_at"] < LLM_STATUS_CACHE_SECONDS and _llm_status_cache["connected"] is not None:
+            return JSONResponse({"connected": _llm_status_cache["connected"], "detail": _llm_status_cache["detail"]})
+        if isinstance(market_analysis_llm, NullLLMClient):
+            # check_llm_available() treats llm.provider = "none" as a
+            # deliberate, valid state (nothing to check) -- correct for
+            # deciding whether a search may proceed, but wrong for this
+            # light: there IS no LLM, so it must show red/"not connected",
+            # not green.
+            connected, detail = False, "No LLM configured (llm.provider = \"none\") — jobs are scored with a plain keyword-overlap match instead."
+        else:
+            try:
+                check_llm_available(market_analysis_llm, settings.data_dir)
+                connected, detail = True, "LLM is reachable and will be used for job-fit scoring."
+            except Exception as exc:  # noqa: BLE001 - any failure means "not known connected"
+                connected, detail = False, str(exc)[:300] or "LLM is not configured or not reachable."
+        _llm_status_cache.update(checked_at=now, connected=connected, detail=detail)
+        return JSONResponse({"connected": connected, "detail": detail})
 
     @app.post("/remind")
     def trigger_remind(request: Request):

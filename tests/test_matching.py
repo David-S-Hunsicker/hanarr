@@ -1,10 +1,13 @@
 import datetime as dt
 import json
 
+import pytest
+
 from hanarr.config import Preferences
 from hanarr.connectors.base import RawJobPosting
-from hanarr.llm.base import LLMClient
+from hanarr.llm.base import LLMClient, NullLLMClient
 from hanarr.matching import (
+    LLMScoringFailedError,
     _detected_title_seniority,
     _rule_based_score,
     passes_prefilter,
@@ -333,10 +336,11 @@ def test_score_fit_disqualifies_on_llm_dealbreaker_hit():
     prefs = Preferences(dealbreakers=["no visa sponsorship available"])
     llm = _FakeLLM({"score": 90, "dealbreaker_hit": True, "rationale": "No visa sponsorship offered."})
 
-    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
     assert score == 0
     assert "visa" in rationale.lower()
+    assert method == "llm"
 
 
 def test_score_fit_keeps_llm_score_when_no_dealbreaker_hit():
@@ -344,10 +348,11 @@ def test_score_fit_keeps_llm_score_when_no_dealbreaker_hit():
     prefs = Preferences(dealbreakers=["no visa sponsorship available"])
     llm = _FakeLLM({"score": 85, "dealbreaker_hit": False, "rationale": "Strong match."})
 
-    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
     assert score == 85
     assert rationale == "Strong match."
+    assert method == "llm"
 
 
 def test_score_fit_surfaces_unmet_requirements_when_llm_omits_rationale():
@@ -362,10 +367,11 @@ def test_score_fit_surfaces_unmet_requirements_when_llm_omits_rationale():
         }
     )
 
-    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
     assert score == 35
     assert "Kubernetes" in rationale
+    assert method == "llm"
 
 
 def test_score_fit_disqualifies_on_fails_minimum_requirements():
@@ -381,10 +387,11 @@ def test_score_fit_disqualifies_on_fails_minimum_requirements():
         }
     )
 
-    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
     assert score == 0
     assert "cybersecurity" in rationale.lower()
+    assert method == "llm"
 
 
 def test_score_fit_keeps_score_when_minimum_requirements_met():
@@ -400,10 +407,11 @@ def test_score_fit_keeps_score_when_minimum_requirements_met():
         }
     )
 
-    score, rationale = score_fit(job, {}, "resume text", prefs, llm)
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
 
     assert score == 78
     assert rationale == "Strong match."
+    assert method == "llm"
 
 
 def test_score_fit_sends_resume_text_to_llm():
@@ -422,12 +430,26 @@ def test_score_fit_sends_resume_text_to_llm():
     assert "10 years of Python" in captured["user"]
 
 
-def test_score_fit_logs_a_warning_when_falling_back_to_rule_based_scoring(caplog):
-    """Regression test: a malformed/off-schema LLM response used to fall
-    back to the rule-based scorer completely silently -- indistinguishable
-    from llm.provider="none" with no way to tell "not configured" apart
-    from "configured but every call is failing" short of manually
-    reproducing a call. Every fallback must now log why."""
+def test_score_fit_uses_rule_based_scoring_only_for_the_none_provider():
+    """llm.provider = "none" (NullLLMClient) is the one deliberate case
+    that should use the keyword fallback -- tagged "rule_based" so the
+    dashboard can show it plainly."""
+    job = make_job(title="Backend Engineer", description="python distributed systems")
+    prefs = Preferences(target_titles=["Backend Engineer"])
+
+    score, rationale, method = score_fit(job, {"skills": ["python"]}, "resume text", prefs, NullLLMClient())
+
+    assert method == "rule_based"
+    assert "Rule-based score" in rationale
+
+
+def test_score_fit_raises_instead_of_silently_falling_back_when_a_configured_llm_fails():
+    """Regression test: a configured (not "none") LLM that fails used to
+    silently substitute the much weaker rule-based score, one job at a
+    time, completely invisibly -- a real user report ("it fell back to
+    word-match scoring"). A configured LLM failing must now raise so the
+    caller (run_search_cycle) can pause the search and tell the user,
+    instead of quietly downgrading score quality."""
     job = make_job()
     prefs = Preferences()
 
@@ -435,8 +457,7 @@ def test_score_fit_logs_a_warning_when_falling_back_to_rule_based_scoring(caplog
         def complete_json(self, system: str, user: str) -> str:
             return "not json"
 
-    with caplog.at_level("WARNING", logger="hanarr.matching"):
+    with pytest.raises(LLMScoringFailedError) as exc_info:
         score_fit(job, {}, "resume text", prefs, _GarbageLLM())
 
-    assert "falling back to rule-based scoring" in caplog.text
-    assert job.title in caplog.text
+    assert job.title in str(exc_info.value)
