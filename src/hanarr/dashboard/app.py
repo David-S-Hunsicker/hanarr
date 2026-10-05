@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 
-from ..config import DEFAULT_CONFIG_PATH, Preferences, Settings, effective_preferences
+from ..config import DEFAULT_CONFIG_PATH, Preferences, Settings, backup_profile_preferences, effective_preferences
 from ..agent_orchestration import AgentOrchestrator
 from ..connectors.base import RawJobPosting, to_naive_utc
 from ..db import get_active_profile, get_or_create_profile, list_profiles, make_session_factory
@@ -2264,6 +2264,7 @@ def create_app(
         if tab == "preferences":
             with session_factory() as session:
                 profile = get_active_profile(session, settings, _active_profile_id(request))
+                backup_profile_preferences(settings, profile.id, profile.preferences_json)
                 profile.preferences_json = new_settings.preferences.model_dump_json()
                 profile.preferences_version += 1
                 session.commit()

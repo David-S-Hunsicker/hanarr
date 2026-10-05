@@ -468,6 +468,40 @@ def _backup_config(settings: Settings, config_path: Path) -> None:
         pass
 
 
+def backup_profile_preferences(settings: Settings, profile_id: int, preferences_json: str | None) -> None:
+    """Mirrors _backup_config, but for a profile's own preferences_json.
+
+    The first time a profile's Preferences tab is saved, its match criteria
+    fork away from config.yaml's shared defaults into profiles.preferences_json
+    (see the "forks a profile" comment in app.py's config-save route) --
+    config.yaml's preferences block becomes a dead fallback from that point
+    on. That DB column has no backup of its own, unlike config.yaml, which
+    meant a bad save there (a stale browser tab resubmitting an old
+    snapshot, a bug in a form handler) was silently permanent with no way
+    back -- this happened for real: a forked profile's salary floor and
+    dealbreakers were found reset to blank with no recorded history to
+    recover from. Best-effort, same as _backup_config: a failed backup must
+    never block saving the actual change."""
+    if not preferences_json:
+        return
+    try:
+        backup_dir = settings.data_dir / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = backup_dir / f"profile-{profile_id}-preferences-{timestamp}.json"
+        suffix = 1
+        while backup_path.exists():
+            backup_path = backup_dir / f"profile-{profile_id}-preferences-{timestamp}-{suffix}.json"
+            suffix += 1
+        backup_path.write_text(preferences_json, encoding="utf-8")
+
+        existing = sorted(backup_dir.glob(f"profile-{profile_id}-preferences-*.json"))
+        for stale in existing[:-MAX_CONFIG_BACKUPS]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_CONFIG_PATH) -> None:
     """Writes settings back to config.yaml, omitting secrets that
     load_settings() populates from the environment (ANTHROPIC_API_KEY,

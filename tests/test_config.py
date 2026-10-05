@@ -4,7 +4,15 @@ import pytest
 from pydantic import ValidationError
 
 from hanarr import secrets_store
-from hanarr.config import Preferences, ScheduleConfig, Settings, effective_preferences, load_settings, save_settings_to_yaml
+from hanarr.config import (
+    Preferences,
+    ScheduleConfig,
+    Settings,
+    backup_profile_preferences,
+    effective_preferences,
+    load_settings,
+    save_settings_to_yaml,
+)
 from hanarr.models import Profile
 
 
@@ -172,6 +180,44 @@ def test_save_settings_to_yaml_does_not_back_up_when_no_file_exists_yet(tmp_path
 
     backups_dir = tmp_path / "data" / "backups"
     assert not backups_dir.exists() or not list(backups_dir.glob("config-*.yaml"))
+
+
+def test_backup_profile_preferences_writes_a_recoverable_copy(tmp_path):
+    """Once a profile forks away from config.yaml's shared preferences (see
+    config_form.py), its match criteria live only in profiles.preferences_json
+    -- a column config.yaml's own backup/recovery machinery never touches.
+    A real incident found a forked profile's salary floor and dealbreakers
+    silently reset to blank with no history to recover from, because only
+    config.yaml had backups. This must keep a copy the same way
+    _backup_config does for config.yaml."""
+    settings = Settings(data_dir=tmp_path / "data")
+
+    backup_profile_preferences(settings, 1, '{"salary_floor_usd": 170000}')
+
+    backups = list((tmp_path / "data" / "backups").glob("profile-1-preferences-*.json"))
+    assert len(backups) == 1
+    assert "170000" in backups[0].read_text(encoding="utf-8")
+
+
+def test_backup_profile_preferences_does_nothing_for_an_unforked_profile(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data")
+
+    backup_profile_preferences(settings, 1, None)
+
+    backups_dir = tmp_path / "data" / "backups"
+    assert not backups_dir.exists() or not list(backups_dir.glob("profile-1-preferences-*.json"))
+
+
+def test_backup_profile_preferences_prunes_backups_beyond_the_limit(tmp_path):
+    from hanarr.config import MAX_CONFIG_BACKUPS
+
+    settings = Settings(data_dir=tmp_path / "data")
+
+    for _ in range(MAX_CONFIG_BACKUPS + 5):
+        backup_profile_preferences(settings, 1, '{"salary_floor_usd": 170000}')
+
+    backups = list((tmp_path / "data" / "backups").glob("profile-1-preferences-*.json"))
+    assert len(backups) <= MAX_CONFIG_BACKUPS
 
 
 def test_save_settings_to_yaml_prunes_backups_beyond_the_limit(tmp_path):

@@ -1,4 +1,4 @@
-__version__ = "0.1.28"
+__version__ = "0.1.29"
 
 
 def _use_os_trust_store_for_tls() -> None:

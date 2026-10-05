@@ -40,6 +40,35 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-04 — v0.1.29
+
+Shipped: a second config-corruption gap closed (a forked profile's own preferences had no backup),
+plus a tutorial-banner visual fix.
+
+### 2026-10-04 — Profile preferences backups + tutorial banner fix
+
+Found a second, previously-undiscovered consequence of the same historical stale-autosave incident
+`save_settings_to_yaml`'s v0.1.27 fix addressed: match criteria (`preferences.*`) are actually stored
+per-profile, in `profiles.preferences_json`, once a profile's Preferences tab is first saved --
+config.yaml's own `preferences` block becomes a dead fallback from that point on (see the "forks a
+profile" comment in `app.py`'s config-save route and `config.effective_preferences`). The earlier
+fix only ever restored/backed up config.yaml, so the forked profile's actual, live salary floor and
+dealbreakers were still sitting at blank in the database the whole time, with zero backup history to
+recover from -- restoring config.yaml did nothing, because nothing was still reading it.
+
+Fixed the data directly (the profile's salary floor and dealbreakers restored from the matching
+config.yaml backup) and closed the structural gap: `backup_profile_preferences()` mirrors
+`_backup_config()` -- every Preferences-tab save now keeps a timestamped copy of the profile's prior
+`preferences_json` in `data/backups/`, pruned the same way, before overwriting it. If a forked
+profile's preferences are ever found blanked again, there's now a trail to recover from, the same
+guarantee config.yaml itself has had since v0.1.27.
+
+Also fixed: the dismissible tutorial banner at the top of Coaching/Coach/Prep/Skills (
+`_tutorial_banner.html`) was styled as a `border-radius: 999px` pill. With these banners' actual
+one-sentence messages wrapping across multiple lines inside that shape, it rendered as a large
+rounded blob rather than a clean banner -- easy to mistake for an editable input, when it's static,
+dismissible text. Changed to a plain rectangular banner (`border-radius: 8px`, normal block layout).
+
 ### 2026-10-04 — v0.1.28
 
 Shipped: input-chip boxes for every list field in Settings, plus 11 more verified Recruitee
