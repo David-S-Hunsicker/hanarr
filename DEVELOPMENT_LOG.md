@@ -40,6 +40,26 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-04 — v0.1.30
+
+Shipped: clicking "Install" on an update now actually tells you what happened once it's done,
+instead of going silent.
+
+### 2026-10-04 — Update-install flow gave no feedback once the update finished
+
+User report: "clicking update didn't show anything to the user, especially when the update was
+finished." `/config/update/install`'s response only confirms the installer *launched* (Inno Setup's
+own CloseApplications/RestartApplications closes and relaunches Hanarr, not this code) -- the old JS
+set a static "Installing… will restart shortly" message and never checked again, so the page sat on
+that forever even once the new version was already up and running.
+
+Fixed by reusing the same reconnect-and-reload pattern the App tab's restart button already has:
+after the install call, the page polls `/` until the (new) process answers, then reloads itself. On
+reload, it compares the version that came back against the one that was requested and reports
+"Updated to vX.Y.Z" or, if they don't match, re-arms the wait a few more times before reporting the
+install may not have finished -- guards against reconnecting to the old process in the brief window
+before Inno Setup actually closes it, rather than declaring success (or failure) too early.
+
 ### 2026-10-04 — v0.1.29
 
 Shipped: a second config-corruption gap closed (a forked profile's own preferences had no backup),

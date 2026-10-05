@@ -2359,6 +2359,23 @@ def test_updates_tab_shows_auto_update_controls(tmp_path):
     assert 'id="updates_check_interval_hours" name="updates_check_interval_hours" value="12"' in html
 
 
+def test_updates_tab_install_flow_reconnects_and_confirms_the_version(tmp_path):
+    """User report: clicking Install gave no feedback once the install
+    actually finished -- the old JS just set a static "will restart
+    shortly" message and never checked again. Inno Setup closes and
+    relaunches Hanarr itself; the page must poll until it's back and then
+    say whether the version that came back is the one that was requested,
+    the same reconnect-and-reload the App tab's restart button already
+    does, plus a pass/fail confirmation once it lands."""
+    settings = _make_isolated_settings(tmp_path)
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "updates"}).text
+
+    assert "waitForServerAndReload" in html
+    assert "hanarr_update_pending" in html
+    assert "Updated to v" in html
+    assert "may not have finished" in html
+
+
 def test_preferences_tab_shows_common_dealbreakers_as_checked_checkboxes(tmp_path):
     """Common dealbreakers should be checkboxes, not something the user has
     to type out as free text every time."""

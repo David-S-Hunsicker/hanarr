@@ -1536,6 +1536,56 @@
         progress.style.display = visible ? "inline-block" : "none";
       }
 
+      // Inno Setup (not this page) actually closes and relaunches Hanarr
+      // once the installer runs -- the earlier /config/update/install
+      // response only confirms the installer *launched*, not that it's
+      // done. Without this, the page was left forever on "Installing...
+      // will restart shortly" with no way to tell whether or when it
+      // actually finished -- the same reconnect-and-reload the restart
+      // button already does, duplicated here since that one only runs for
+      // the App tab's `.restart-btn`.
+      function waitForServerAndReload() {
+        const check = () => {
+          fetch("/", { cache: "no-store" })
+            .then(() => { window.location.reload(); })
+            .catch(() => { setTimeout(check, 1500); });
+        };
+        setTimeout(check, 3000); // give the old process time to actually exit and the installer to run
+      }
+
+      // After the reload waitForServerAndReload() triggers, this is that
+      // same page loading back up -- show whether the version that landed
+      // actually matches what was requested instead of just going silent.
+      // The first reconnect can race Inno Setup actually closing the old
+      // process (we may reconnect to the still-running old version before
+      // it's replaced) -- re-arm the wait instead of reporting failure on
+      // the first mismatch, bounded so a genuinely failed install doesn't
+      // retry forever.
+      try {
+        const pendingVersion = sessionStorage.getItem("hanarr_update_pending");
+        if (pendingVersion) {
+          const runningVersion = "{{ app_version }}";
+          if (runningVersion === pendingVersion) {
+            sessionStorage.removeItem("hanarr_update_pending");
+            sessionStorage.removeItem("hanarr_update_pending_attempts");
+            status.textContent = `Updated to v${pendingVersion}.`;
+            status.className = "suggest-status";
+          } else {
+            const attempts = Number(sessionStorage.getItem("hanarr_update_pending_attempts") || "0");
+            if (attempts < 10) {
+              sessionStorage.setItem("hanarr_update_pending_attempts", String(attempts + 1));
+              status.textContent = `Still installing v${pendingVersion}… (currently v${runningVersion})`;
+              waitForServerAndReload();
+            } else {
+              sessionStorage.removeItem("hanarr_update_pending");
+              sessionStorage.removeItem("hanarr_update_pending_attempts");
+              status.textContent = `Expected v${pendingVersion} after the update, but Hanarr is still running v${runningVersion}. The install may not have finished -- try checking for updates again.`;
+              status.className = "suggest-status error";
+            }
+          }
+        }
+      } catch (error) { /* sessionStorage unavailable -- not worth blocking the page over */ }
+
       checkBtn.addEventListener("click", async () => {
         status.textContent = "Checking…";
         installBtn.hidden = true;
@@ -1589,7 +1639,12 @@
           });
           const result = await response.json();
           if (result.status === "applying") {
-            status.textContent = `Installing ${result.version}… Hanarr will restart shortly.`;
+            status.textContent = `Installing ${result.version}… Hanarr will restart shortly. This page will reload automatically once it's back.`;
+            try {
+              sessionStorage.setItem("hanarr_update_pending", result.version);
+              sessionStorage.removeItem("hanarr_update_pending_attempts");
+            } catch (error) { /* ignore */ }
+            waitForServerAndReload();
           } else {
             status.textContent = result.message || "Could not install the update.";
             status.className = "suggest-status error";
