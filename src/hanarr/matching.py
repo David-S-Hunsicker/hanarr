@@ -381,6 +381,24 @@ def score_fit(
         unmet = data.get("unmet_requirements") or []
 
         if data.get("dealbreaker_hit"):
+            if not _dealbreaker_plausible(job, prefs.dealbreakers):
+                # A real incident: a model hallucinated "requires a security
+                # clearance" as the dealbreaker hit on 50+ completely
+                # unrelated software engineering postings -- a plausible-
+                # sounding rationale every time, but the word "clearance"
+                # didn't appear in a single one of those job descriptions.
+                # dealbreaker_hit is a hard, score-zeroing disqualifier, so
+                # trusting an ungrounded one is exactly as costly as
+                # trusting a blank rationale. This is deliberately a loose
+                # keyword-overlap check, not a requirement that the posting
+                # use the dealbreaker's exact wording -- the LLM is still
+                # trusted to recognize a dealbreaker phrased differently,
+                # just not one with literally zero textual basis.
+                raise ValueError(
+                    f"LLM claimed a dealbreaker hit for {job.title!r} at {job.company!r} but none "
+                    "of the candidate's stated dealbreakers have any keyword overlap with the "
+                    "posting text -- treating as a hallucinated disqualification."
+                )
             return 0.0, rationale or "Disqualified: posting appears to violate a stated dealbreaker.", "llm"
 
         if data.get("fails_minimum_requirements"):
@@ -409,6 +427,28 @@ def score_fit(
         raise LLMScoringFailedError(
             f"LLM fit scoring failed for {job.title!r} at {job.company!r}: {str(exc)[:300]}"
         ) from exc
+
+
+_DEALBREAKER_STOPWORDS = {
+    "a", "an", "the", "of", "to", "in", "on", "for", "with", "is", "are", "or", "and", "not",
+    "that", "this", "any", "all", "has", "have", "will", "must", "require", "requires", "required",
+}
+
+
+def _dealbreaker_plausible(job: RawJobPosting, dealbreakers: list[str]) -> bool:
+    """Loose keyword-overlap sanity check on an LLM's dealbreaker_hit claim
+    -- not a requirement that the posting use the dealbreaker's exact
+    wording (the LLM is still trusted to recognize one phrased
+    differently), just that at least one substantive word from some
+    stated dealbreaker appears anywhere in the posting's own text. Catches
+    a hallucinated dealbreaker with zero textual basis without rejecting a
+    real one worded differently than the user's own phrasing."""
+    text = f"{job.title} {job.description}".lower()
+    for dealbreaker in dealbreakers:
+        words = [w for w in re.findall(r"[a-z]+", dealbreaker.lower()) if len(w) > 3 and w not in _DEALBREAKER_STOPWORDS]
+        if any(w in text for w in words):
+            return True
+    return False
 
 
 def _rule_based_score(

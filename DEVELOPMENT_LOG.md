@@ -40,6 +40,29 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-05 — v0.1.37
+
+Shipped: a hallucinated dealbreaker-hit claim is now rejected the same way a blank rationale is
+(see below) -- v0.1.36's fix wasn't the whole story.
+
+### 2026-10-05 — Hallucinated dealbreaker hits were also silently zeroing scores
+
+User report (after v0.1.36 had already shipped, and after an actual restart this time): "scoring is
+absolutely fucked right now. nearly everything is zeroed out." v0.1.36 only caught a blank
+rationale; a *second*, more common failure mode in the same rescore run was the model confidently
+claiming `dealbreaker_hit: true` with a plausible-sounding rationale ("requires a security
+clearance") on 50+ completely unrelated software engineering postings at companies like Stripe and
+Coinbase -- the word "clearance" didn't appear in a single one of those job descriptions. A hard,
+score-zeroing disqualifier with zero textual basis is exactly as costly as a blank rationale, and
+the existing guard didn't catch it because the rationale wasn't blank, just wrong.
+
+Added a loose keyword-overlap sanity check (`_dealbreaker_plausible`): before trusting a
+`dealbreaker_hit`, at least one substantive word from one of the candidate's stated dealbreakers
+must appear somewhere in the posting's own title/description. Deliberately loose -- it doesn't
+require the posting to use the dealbreaker's exact wording (a real dealbreaker phrased differently
+still passes), only that there's *some* textual basis at all. No overlap raises
+`LLMScoringFailedError`, same retry path as the blank-rationale and LLM-unreachable cases.
+
 ### 2026-10-05 — v0.1.36
 
 Shipped: a malformed-but-valid LLM response (score 0, no rationale) is now rejected and retried

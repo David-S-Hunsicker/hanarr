@@ -332,7 +332,7 @@ class _FakeLLM(LLMClient):
 
 
 def test_score_fit_disqualifies_on_llm_dealbreaker_hit():
-    job = make_job()
+    job = make_job(description="We use python and distributed systems every day. No visa sponsorship.")
     prefs = Preferences(dealbreakers=["no visa sponsorship available"])
     llm = _FakeLLM({"score": 90, "dealbreaker_hit": True, "rationale": "No visa sponsorship offered."})
 
@@ -487,8 +487,8 @@ def test_score_fit_does_not_require_a_rationale_for_a_dealbreaker_or_minimum_req
     """The blank-rationale guard must not reject the two paths that already
     supply their own fallback text -- those are legitimate score-0 verdicts
     with a real reason, not a degenerate response."""
-    job = make_job()
-    prefs = Preferences()
+    job = make_job(description="Requires an active government security clearance.")
+    prefs = Preferences(dealbreakers=["Requires a security clearance"])
 
     score, rationale, method = score_fit(
         job, {}, "resume text", prefs,
@@ -501,3 +501,40 @@ def test_score_fit_does_not_require_a_rationale_for_a_dealbreaker_or_minimum_req
         _FakeLLM({"score": 40, "dealbreaker_hit": False, "fails_minimum_requirements": True, "rationale": ""}),
     )
     assert score == 0.0 and rationale and method == "llm"
+
+
+def test_score_fit_raises_on_a_hallucinated_dealbreaker_hit_with_no_textual_basis():
+    """Regression test for a real incident: a model claimed "requires a
+    security clearance" as the dealbreaker hit (with a plausible-sounding
+    rationale) on 50+ completely unrelated software engineering postings --
+    the word "clearance" didn't appear in a single one of those job
+    descriptions. dealbreaker_hit is a hard, score-zeroing disqualifier, so
+    a hallucinated one must be rejected and retried instead of trusted."""
+    job = make_job(description="We use python and distributed systems every day.")
+    prefs = Preferences(dealbreakers=["Requires a security clearance"])
+    llm = _FakeLLM({
+        "score": 10, "dealbreaker_hit": True,
+        "rationale": "This role requires a security clearance, which you don't have.",
+    })
+
+    with pytest.raises(LLMScoringFailedError) as exc_info:
+        score_fit(job, {}, "resume text", prefs, llm)
+
+    assert job.title in str(exc_info.value)
+
+
+def test_score_fit_accepts_a_dealbreaker_hit_phrased_differently_than_the_users_own_wording():
+    """The plausibility check is loose keyword overlap, not a requirement
+    that the posting echo the dealbreaker's exact phrasing -- the LLM must
+    still be trusted to recognize the same dealbreaker worded differently."""
+    job = make_job(description="Must be eligible to obtain a government security clearance.")
+    prefs = Preferences(dealbreakers=["Requires a security clearance"])
+    llm = _FakeLLM({
+        "score": 10, "dealbreaker_hit": True,
+        "rationale": "This role requires eligibility for a government clearance, which disqualifies you.",
+    })
+
+    score, rationale, method = score_fit(job, {}, "resume text", prefs, llm)
+
+    assert score == 0.0
+    assert method == "llm"
