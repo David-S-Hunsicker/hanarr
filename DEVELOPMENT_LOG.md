@@ -40,6 +40,43 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-04 — v0.1.27
+
+Shipped: config.yaml can no longer be silently wiped by an interrupted write (see below).
+
+### 2026-10-04 — config.yaml corruption: atomic writes + backup recovery
+
+Real incident, reported independently on two separate machines: every job source (and some
+preferences) silently reset to blank defaults, with no error, no warning, nothing in the UI
+pointing at what happened. Root cause: `save_settings_to_yaml()` opened `config.yaml` with plain
+`open(path, "w")`, which truncates the file to zero bytes *before* writing a single line of the
+new content. Anything that interrupts the process at that exact moment -- a crash, a forced quit,
+the machine losing power, antivirus briefly locking the file -- leaves `config.yaml` empty.
+`load_settings()` then reads that empty file, YAML parses it as nothing, and silently hands back
+an all-Pydantic-defaults `Settings` object: every job source disabled, every preference blanked --
+indistinguishable from someone deliberately clearing their config, and exactly the failure mode
+`tests/conftest.py`'s `_protect_real_config_yaml` fixture was *already* built to catch in the test
+suite (a prior, related incident) but which had no equivalent protection for a real running
+install.
+
+Two-part fix:
+1. **Atomic writes.** `save_settings_to_yaml()` now writes to a staged temp file
+   (`.config.yaml.tmp`), `fsync`s it, and only then atomically swaps it into place with
+   `os.replace()` -- `config.yaml` is always either the complete old content or the complete new
+   content, never a partial write caught mid-truncate. A failure during the write now leaves the
+   real file completely untouched instead of corrupted, and cleans up the staged file rather than
+   leaving it behind.
+2. **Load-time recovery.** `load_settings()` now treats an existing-but-empty config.yaml as a
+   corruption signal (a fresh install never reaches this state -- it always gets a copied template
+   first) rather than a legitimate "nothing configured" state, and automatically recovers from the
+   newest valid backup in `data/backups/config-*.yaml` (the same backups `_backup_config` already
+   wrote before every prior save) before falling back to defaults -- trying progressively older
+   backups if the newest one is also unusable. This catches the corruption even for a config.yaml
+   written before this fix, or corrupted by some other cause the atomic write doesn't cover.
+
+Recovered the actual lost values on the reporting machine from a backup taken before the
+corruption (job source company lists, salary floor, a dealbreaker) rather than leaving them lost.
+
 ### 2026-10-04 — v0.1.26
 
 Shipped: networking outreach email drafts on the Jobs page (see below).

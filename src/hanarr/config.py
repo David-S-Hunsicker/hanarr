@@ -7,6 +7,7 @@ committed template — copy it to get started (see `hanarr init`).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -23,6 +24,8 @@ if TYPE_CHECKING:
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 EXAMPLE_CONFIG_PATH = Path("config.example.yaml")
+
+logger = logging.getLogger(__name__)
 
 
 class Preferences(BaseModel):
@@ -320,6 +323,28 @@ class Settings(BaseModel):
         arbitrary_types_allowed = True
 
 
+def _recover_from_latest_backup(config_path: Path) -> dict | None:
+    """Best-effort recovery for an existing config.yaml that parsed to
+    nothing (see load_settings' use of this -- that's a corruption signal,
+    not a legitimate state). Looks in the default backup location
+    (data/backups/config-*.yaml, the same directory save_settings_to_yaml's
+    _backup_config writes to) for the newest one and returns its parsed
+    content, or None if no usable backup exists."""
+    backup_dir = config_path.parent / "data" / "backups"
+    if not backup_dir.is_dir():
+        return None
+    backups = sorted(backup_dir.glob("config-*.yaml"))
+    for candidate in reversed(backups):
+        try:
+            with open(candidate, "r") as f:
+                recovered = yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if recovered:
+            return recovered
+    return None
+
+
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     """Load config.yaml (falling back to defaults for anything missing) and
     apply .env secrets on top.
@@ -342,6 +367,36 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     if config_path.exists():
         with open(config_path, "r") as f:
             raw = yaml.safe_load(f) or {}
+        if not raw:
+            # An existing config.yaml that parses to nothing is corruption,
+            # not a legitimate "nothing configured yet" state -- a fresh
+            # install never reaches this branch (the copy above always
+            # populates *something* first). The most common real cause is a
+            # non-atomic write interrupted mid-truncate (a crash, a forced
+            # quit, antivirus briefly locking the file) leaving an empty or
+            # truncated file -- save_settings_to_yaml now writes atomically
+            # specifically to prevent this, but an old file written before
+            # that fix, or corruption from some other cause, still lands
+            # here. Recovering from the newest backup beats silently handing
+            # back an all-defaults Settings -- every job source disabled,
+            # every preference blanked -- which is exactly the data loss
+            # this project has already been burned by, twice, on two
+            # separate machines.
+            logger.critical(
+                "config.yaml exists but contains no usable data (likely a truncated or "
+                "corrupted file) -- attempting to recover from the newest backup instead of "
+                "silently resetting every setting to its default."
+            )
+            recovered = _recover_from_latest_backup(config_path)
+            if recovered:
+                raw = recovered
+                logger.warning("Recovered config.yaml from a backup in data/backups/ after detecting corruption.")
+            else:
+                logger.critical(
+                    "No usable config.yaml backup was found in data/backups/ either -- "
+                    "continuing with default settings. Check that directory for any "
+                    "config-*.yaml file to restore by hand."
+                )
 
     settings = Settings(**raw)
 
@@ -417,7 +472,21 @@ def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_
     """Writes settings back to config.yaml, omitting secrets that
     load_settings() populates from the environment (ANTHROPIC_API_KEY,
     SMTP_PASSWORD, USAJOBS_API_KEY) — those belong in .env, never in the
-    gitignored-but-still-plaintext config file."""
+    gitignored-but-still-plaintext config file.
+
+    Writes to a staged temp file and atomically replaces config.yaml
+    (os.replace) rather than truncating it in place. A plain `open(path,
+    "w")` truncates the file to zero bytes before writing a single line of
+    the new content -- if the process is interrupted at that exact moment
+    (killed, crashed, the machine loses power, antivirus briefly locks the
+    file), config.yaml is left empty. load_settings() then sees an empty
+    file, which YAML parses as nothing, and silently hands back an
+    all-Pydantic-defaults Settings -- every job source disabled, every
+    preference blanked -- indistinguishable from someone deliberately
+    clearing their config. This happened for real, independently, on two
+    separate machines. The atomic swap means config.yaml is always either
+    the complete old content or the complete new content, never a partial
+    write caught mid-truncate."""
     config_path = Path(config_path)
     _backup_config(settings, config_path)
     data = settings.model_dump(mode="json", exclude={"data_dir"})
@@ -429,5 +498,13 @@ def save_settings_to_yaml(settings: Settings, config_path: Path | str = DEFAULT_
         route.pop("api_key", None)
     data["reminders"]["email"].pop("smtp_password", None)
     data["sources"]["usajobs"].pop("api_key", None)
-    with open(config_path, "w") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    staged = config_path.with_name(f".{config_path.name}.tmp")
+    try:
+        with open(staged, "w") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(staged, config_path)
+    except Exception:
+        staged.unlink(missing_ok=True)
+        raise

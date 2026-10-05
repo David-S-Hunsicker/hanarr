@@ -188,6 +188,100 @@ def test_save_settings_to_yaml_prunes_backups_beyond_the_limit(tmp_path):
     assert len(backups) <= MAX_CONFIG_BACKUPS
 
 
+def test_save_settings_to_yaml_leaves_the_original_file_untouched_if_the_write_fails(tmp_path, monkeypatch):
+    """The write goes to a staged temp file and only replaces config.yaml
+    via an atomic os.replace() once that staged file is fully written --
+    an interruption partway through (here simulated by making the actual
+    dump raise) must never truncate or otherwise corrupt the real file."""
+    import hanarr.config as config_module
+
+    settings = Settings(data_dir=tmp_path / "data")
+    config_path = tmp_path / "config.yaml"
+    original = "preferences:\n  salary_floor_usd: 111111\n"
+    config_path.write_text(original, encoding="utf-8")
+
+    monkeypatch.setattr(
+        config_module.yaml, "safe_dump",
+        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("simulated crash mid-write")),
+    )
+
+    try:
+        save_settings_to_yaml(settings, config_path)
+        assert False, "expected the simulated crash to propagate"
+    except RuntimeError:
+        pass
+
+    assert config_path.read_text(encoding="utf-8") == original
+    assert not list(tmp_path.glob(".config.yaml.tmp"))
+
+
+def test_save_settings_to_yaml_produces_a_file_load_settings_can_read_back(tmp_path):
+    """Pins the atomic-write change doesn't break the normal round trip."""
+    from hanarr.config import load_settings
+
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.preferences.salary_floor_usd = 123456
+    config_path = tmp_path / "config.yaml"
+
+    save_settings_to_yaml(settings, config_path)
+    reloaded = load_settings(config_path)
+
+    assert reloaded.preferences.salary_floor_usd == 123456
+
+
+def test_load_settings_recovers_from_the_newest_backup_when_config_yaml_is_empty(tmp_path):
+    """The real incident this guards against: config.yaml left empty by an
+    interrupted write (or any other corruption) must not silently hand
+    back an all-defaults Settings -- every job source disabled, every
+    preference blanked. The newest backup should be used instead."""
+    from hanarr.config import load_settings
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("", encoding="utf-8")  # simulates a truncated/corrupted file
+
+    backups_dir = tmp_path / "data" / "backups"
+    backups_dir.mkdir(parents=True)
+    (backups_dir / "config-20260101T000000000000Z.yaml").write_text(
+        "preferences:\n  salary_floor_usd: 90000\n", encoding="utf-8",
+    )
+    (backups_dir / "config-20260102T000000000000Z.yaml").write_text(
+        "preferences:\n  salary_floor_usd: 150000\n", encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.preferences.salary_floor_usd == 150000  # the newer of the two
+
+
+def test_load_settings_skips_a_backup_that_is_also_empty(tmp_path):
+    from hanarr.config import load_settings
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("", encoding="utf-8")
+
+    backups_dir = tmp_path / "data" / "backups"
+    backups_dir.mkdir(parents=True)
+    (backups_dir / "config-20260101T000000000000Z.yaml").write_text(
+        "preferences:\n  salary_floor_usd: 90000\n", encoding="utf-8",
+    )
+    (backups_dir / "config-20260102T000000000000Z.yaml").write_text("", encoding="utf-8")  # also corrupt
+
+    settings = load_settings(config_path)
+
+    assert settings.preferences.salary_floor_usd == 90000  # fell back to the older, usable one
+
+
+def test_load_settings_falls_back_to_defaults_when_config_yaml_is_empty_and_no_backup_exists(tmp_path):
+    from hanarr.config import load_settings
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("", encoding="utf-8")
+
+    settings = load_settings(config_path)  # must not raise
+
+    assert settings.preferences.salary_floor_usd is None
+
+
 def test_effective_preferences_falls_back_to_shared_settings_when_profile_has_none():
     settings = Settings()
     settings.preferences.target_titles = ["Backend Engineer"]

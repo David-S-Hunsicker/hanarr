@@ -32,6 +32,12 @@ file is `data/hanarr.db`; an installation from before the project's rename (when
 named JobCopilot) has its `jobcopilot.db` renamed to `hanarr.db` automatically, once, the first
 time the app starts — nothing to do manually.
 
+`config.yaml` is written atomically (a staged temp file, fsynced, then swapped into place) — an
+interrupted write (a crash, a forced quit, a lost-power moment) can never leave it truncated.
+Every save is also backed up to `data/backups/` first, and if `config.yaml` is ever found empty
+anyway (e.g. one written before this protection existed), startup automatically recovers from the
+newest usable backup there instead of silently resetting every setting to its default.
+
 ## How it works
 
 1. Run `hanarr serve` and open the dashboard. A first-time "Get set up" checklist walks you
@@ -51,7 +57,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (553 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (558 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -330,7 +336,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (553 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (558 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
