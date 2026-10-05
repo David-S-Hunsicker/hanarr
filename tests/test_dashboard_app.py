@@ -2377,6 +2377,31 @@ def test_preferences_tab_shows_common_dealbreakers_as_checked_checkboxes(tmp_pat
     assert 'id="dealbreakers_custom"' in html
 
 
+def test_list_fields_render_with_a_chip_box_enhancement_script(tmp_path):
+    """The job-source/keyword/location textareas are large and plain-text
+    to type into by hand -- a JS enhancement turns each into a small input
+    plus removable chips, one per existing line, without touching how the
+    underlying <textarea> is actually submitted (so no server-side parsing
+    changed). Regression-pins that the enhancement script and every known
+    field id are present, and that the real textarea (still the thing
+    that's actually submitted) still carries the saved values."""
+    settings = _make_isolated_settings(tmp_path)
+    settings.preferences.target_titles = ["Backend Engineer", "Platform Engineer"]
+    settings.sources.greenhouse.company_boards = ["stripe", "airbnb"]
+    html = TestClient(create_app(settings)).get("/config", params={"tab": "preferences"}).text
+
+    assert "chip-box" in html
+    assert "turnIntoChipBox" in html
+    for field_id in ("target_titles", "greenhouse_company_boards", "recruitee_company_boards"):
+        assert f'"{field_id}"' in html  # listed in CHIP_FIELD_IDS
+
+    assert 'id="target_titles" name="target_titles"' in html
+    assert "Backend Engineer" in html
+    assert "stripe" in html
+    assert "sortValues" in html  # chips display alphabetically, not insertion order
+    assert "field-row" in html  # label-left, box-right layout, uniform across fields
+
+
 def test_schedule_tab_displays_hours_or_days_based_on_the_stored_interval(tmp_path):
     """The stored config only ever has hours -- the Settings UI shows it
     as whichever unit divides evenly, so "every 3 days" doesn't force the

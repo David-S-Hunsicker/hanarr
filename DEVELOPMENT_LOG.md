@@ -40,6 +40,37 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-04 — v0.1.28
+
+Shipped: input-chip boxes for every list field in Settings, plus 11 more verified Recruitee
+defaults (see below).
+
+### 2026-10-04 — Input-chip list fields + expanded Recruitee defaults
+
+Every list-type field in Settings (target titles, keyword boosts/excludes, locations, industries,
+dealbreakers, and every job source's company boards/tags/queries -- 15 fields in total) is now an
+input-chip box instead of a large freeform textarea: a small text input, Enter to add a value as a
+removable bubble, an "×" to remove one. Pure front-end progressive enhancement -- the real
+`<textarea>` is kept (just hidden) as the actual form field, re-synced to newline-separated text on
+every add/remove, so every server-side save/autosave code path keeps reading it exactly as before.
+Two iterations based on direct feedback once it was actually used:
+
+- A field with many entries (Greenhouse's 67 default boards) wrapped into a tall, page-pushing
+  block with no cap -- capped the box at a fixed max-height with internal scrolling instead.
+- Each field's label now sits to the left of its chip box at a uniform width, instead of stacked
+  above a box whose width/position varied field to field -- `keywords_boost`/`keywords_exclude`
+  and `industries_include`/`industries_exclude` were pulled out of their side-by-side two-column
+  grid into the same full-width row layout as everything else, for one consistent alignment down
+  the whole page.
+- Chips display in alphabetical order (re-sorted on every add/remove, and the underlying saved
+  order matches what's displayed) rather than raw insertion order.
+
+Separately: the Recruitee default company list grew from 7 to 18, each verified live the same way
+as the original seven -- keolis (transit), pretamanger and boulangerieange (food retail), vion food
+group (food processing), ballast nedam (construction), sircle collection (hospitality), better
+collective (sports media), dpd (logistics), cm.com and livestorm (SaaS), and greenpeace cee (a
+nonprofit) -- categorized in `company_categories.py` for the existing profile-based board filter.
+
 ### 2026-10-04 — v0.1.27
 
 Shipped: config.yaml can no longer be silently wiped by an interrupted write (see below).

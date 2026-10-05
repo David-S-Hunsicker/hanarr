@@ -202,6 +202,82 @@
       color: var(--text-primary);
     }
     .field textarea { min-height: 4.5rem; resize: vertical; font-family: inherit; }
+    /* Label to the left, the chip input/box to the right, aligned the same
+       width across every list field in a tab instead of each one stacking
+       its label above a full-width box at a different height. */
+    .field-row {
+      display: flex;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+    }
+    .field-row > label,
+    .field-row > .label-row {
+      flex: 0 0 11rem;
+      padding-top: 0.55rem;
+      margin-bottom: 0;
+    }
+    .field-row > .chip-box { flex: 1 1 14rem; }
+    .field-row > .hint,
+    .field-row > .suggest-status { flex-basis: 100%; margin-left: calc(11rem + 1rem); margin-top: 0; }
+    @media (max-width: 640px) {
+      .field-row { flex-direction: column; }
+      .field-row > label, .field-row > .label-row { flex-basis: auto; padding-top: 0; }
+      .field-row > .hint, .field-row > .suggest-status { margin-left: 0; }
+    }
+    .chip-box {
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      align-items: flex-start;
+      gap: 0.4rem;
+      width: 100%;
+      min-height: 2.6rem;
+      max-height: 7rem;
+      overflow-y: auto;
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--page-plane);
+      cursor: text;
+    }
+    .chip-box:focus-within { border-color: var(--accent); }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.25rem 0.3rem 0.25rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--accent-weak);
+      color: var(--text-primary);
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .chip-remove {
+      font: inherit;
+      border: none;
+      background: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 0.3rem;
+      border-radius: 50%;
+    }
+    .chip-remove:hover { background: var(--border); color: var(--text-primary); }
+    .chip-input {
+      flex: 1 1 8rem;
+      min-width: 8rem;
+      border: none;
+      outline: none;
+      background: transparent;
+      font: inherit;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      padding: 0.25rem 0.1rem;
+    }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
 
@@ -297,24 +373,22 @@
       <input type="hidden" name="config_version" value="{{ config_version }}" id="config_version">
       <fieldset>
         <legend>What you're looking for</legend>
-        <div class="field">
+        <div class="field field-row">
           <label for="target_titles">Target titles</label>
           <textarea id="target_titles" name="target_titles">{{ "\n".join(preferences.target_titles) }}</textarea>
           <div class="hint">One title per line, e.g. "Software Engineer"</div>
         </div>
-        <div class="row">
-          <div class="field">
-            <div class="label-row">
-              <label for="keywords_boost">Keywords to boost</label>
-              <button type="button" class="suggest-btn" id="suggest-keywords-btn">Suggest from resume</button>
-            </div>
-            <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(preferences.keywords_boost) }}</textarea>
-            <div class="suggest-status" id="suggest-keywords-status" hidden></div>
+        <div class="field field-row">
+          <div class="label-row">
+            <label for="keywords_boost">Keywords to boost</label>
+            <button type="button" class="suggest-btn" id="suggest-keywords-btn">Suggest from resume</button>
           </div>
-          <div class="field">
-            <label for="keywords_exclude">Keywords to exclude</label>
-            <textarea id="keywords_exclude" name="keywords_exclude">{{ "\n".join(preferences.keywords_exclude) }}</textarea>
-          </div>
+          <textarea id="keywords_boost" name="keywords_boost">{{ "\n".join(preferences.keywords_boost) }}</textarea>
+          <div class="suggest-status" id="suggest-keywords-status" hidden></div>
+        </div>
+        <div class="field field-row">
+          <label for="keywords_exclude">Keywords to exclude</label>
+          <textarea id="keywords_exclude" name="keywords_exclude">{{ "\n".join(preferences.keywords_exclude) }}</textarea>
         </div>
         <div class="row">
           <div class="field">
@@ -346,7 +420,7 @@
 
       <fieldset>
         <legend>Location &amp; salary</legend>
-        <div class="field">
+        <div class="field field-row">
           <label for="locations">Locations</label>
           <textarea id="locations" name="locations">{{ "\n".join(preferences.locations) }}</textarea>
         </div>
@@ -391,16 +465,14 @@
 
       <fieldset>
         <legend>Industries &amp; dealbreakers</legend>
-        <div class="row">
-          <div class="field">
-            <label for="industries_include">Industries to include</label>
-            <textarea id="industries_include" name="industries_include">{{ "\n".join(preferences.industries_include) }}</textarea>
-            <div class="hint">Leave blank for no restriction</div>
-          </div>
-          <div class="field">
-            <label for="industries_exclude">Industries to exclude</label>
-            <textarea id="industries_exclude" name="industries_exclude">{{ "\n".join(preferences.industries_exclude) }}</textarea>
-          </div>
+        <div class="field field-row">
+          <label for="industries_include">Industries to include</label>
+          <textarea id="industries_include" name="industries_include">{{ "\n".join(preferences.industries_include) }}</textarea>
+          <div class="hint">Leave blank for no restriction</div>
+        </div>
+        <div class="field field-row">
+          <label for="industries_exclude">Industries to exclude</label>
+          <textarea id="industries_exclude" name="industries_exclude">{{ "\n".join(preferences.industries_exclude) }}</textarea>
         </div>
         <div class="field">
           <label>Dealbreakers</label>
@@ -412,9 +484,11 @@
             </label>
             {% endfor %}
           </div>
-          <label for="dealbreakers_custom" class="hint" style="display:block; margin-top:.6rem;">Other dealbreakers (one per line)</label>
-          <textarea id="dealbreakers_custom" name="dealbreakers_custom">{{ "\n".join(dealbreakers_custom) }}</textarea>
-          <div class="hint">Free text, considered by the LLM scorer</div>
+          <div class="field-row" style="margin-top:.6rem;">
+            <label for="dealbreakers_custom">Other dealbreakers</label>
+            <textarea id="dealbreakers_custom" name="dealbreakers_custom">{{ "\n".join(dealbreakers_custom) }}</textarea>
+            <div class="hint">Free text, one per line, considered by the LLM scorer</div>
+          </div>
         </div>
       </fieldset>
 
@@ -436,7 +510,7 @@
             <input type="checkbox" id="greenhouse_enabled" name="greenhouse_enabled" {% if settings.sources.greenhouse.enabled %}checked{% endif %}>
             <label for="greenhouse_enabled">Greenhouse</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="greenhouse_company_boards">Company boards</label>
             <textarea id="greenhouse_company_boards" name="greenhouse_company_boards">{{ "\n".join(settings.sources.greenhouse.company_boards) }}</textarea>
             <div class="hint">Slugs from boards.greenhouse.io/&lt;slug&gt;, one per line</div>
@@ -447,7 +521,7 @@
             <input type="checkbox" id="lever_enabled" name="lever_enabled" {% if settings.sources.lever.enabled %}checked{% endif %}>
             <label for="lever_enabled">Lever</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="lever_companies">Companies</label>
             <textarea id="lever_companies" name="lever_companies">{{ "\n".join(settings.sources.lever.companies) }}</textarea>
             <div class="hint">Slugs from jobs.lever.co/&lt;slug&gt;, one per line</div>
@@ -458,7 +532,7 @@
             <input type="checkbox" id="ashby_enabled" name="ashby_enabled" {% if settings.sources.ashby.enabled %}checked{% endif %}>
             <label for="ashby_enabled">Ashby</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="ashby_company_boards">Company boards</label>
             <textarea id="ashby_company_boards" name="ashby_company_boards">{{ "\n".join(settings.sources.ashby.company_boards) }}</textarea>
             <div class="hint">Slugs from jobs.ashbyhq.com/&lt;slug&gt;, one per line</div>
@@ -469,7 +543,7 @@
             <input type="checkbox" id="remoteok_enabled" name="remoteok_enabled" {% if settings.sources.remoteok.enabled %}checked{% endif %}>
             <label for="remoteok_enabled">RemoteOK</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="remoteok_tags">Tags (optional filter)</label>
             <textarea id="remoteok_tags" name="remoteok_tags">{{ "\n".join(settings.sources.remoteok.tags) }}</textarea>
           </div>
@@ -486,7 +560,7 @@
             <input type="checkbox" id="workday_enabled" name="workday_enabled" {% if settings.sources.workday.enabled %}checked{% endif %}>
             <label for="workday_enabled">Workday</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="workday_career_site_urls">Career site URLs</label>
             <textarea id="workday_career_site_urls" name="workday_career_site_urls">{{ "\n".join(settings.sources.workday.career_site_urls) }}</textarea>
             <div class="hint">
@@ -503,7 +577,7 @@
             <input type="checkbox" id="recruitee_enabled" name="recruitee_enabled" {% if settings.sources.recruitee.enabled %}checked{% endif %}>
             <label for="recruitee_enabled">Recruitee</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="recruitee_company_boards">Company boards</label>
             <textarea id="recruitee_company_boards" name="recruitee_company_boards">{{ "\n".join(settings.sources.recruitee.company_boards) }}</textarea>
             <div class="hint">Slugs from &lt;slug&gt;.recruitee.com, one per line</div>
@@ -514,7 +588,7 @@
             <input type="checkbox" id="workable_enabled" name="workable_enabled" {% if settings.sources.workable.enabled %}checked{% endif %}>
             <label for="workable_enabled">Workable</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="workable_queries">Search keywords</label>
             <textarea id="workable_queries" name="workable_queries">{{ "\n".join(settings.sources.workable.queries) }}</textarea>
             <div class="hint">
@@ -529,7 +603,7 @@
             <input type="checkbox" id="usajobs_enabled" name="usajobs_enabled" {% if settings.sources.usajobs.enabled %}checked{% endif %}>
             <label for="usajobs_enabled">USAJOBS (federal government)</label>
           </div>
-          <div class="field">
+          <div class="field field-row">
             <label for="usajobs_queries">Search keywords</label>
             <textarea id="usajobs_queries" name="usajobs_queries">{{ "\n".join(settings.sources.usajobs.queries) }}</textarea>
             <div class="hint">Federal job titles/keywords to search for, one per line -- there's no company list here, postings span every US federal agency.</div>
@@ -1532,6 +1606,113 @@
     })();
   </script>
   {% endif %}
+
+  <script>
+    (function () {
+      // Turns each list-type textarea (job boards, keywords, locations,
+      // etc.) into a small text box plus removable chips/bubbles, one per
+      // line -- purely a front-end presentation layer. The underlying
+      // <textarea> is kept (just hidden) as the actual form field, so
+      // every existing save/autosave code path on the server keeps reading
+      // newline-separated values exactly as before; nothing server-side
+      // changes. Runs for every known field id regardless of which
+      // Settings tab is active -- only the ids actually present in the DOM
+      // for the current tab do anything.
+      const CHIP_FIELD_IDS = [
+        "target_titles", "keywords_boost", "keywords_exclude", "locations",
+        "industries_include", "industries_exclude", "dealbreakers_custom",
+        "greenhouse_company_boards", "lever_companies", "ashby_company_boards",
+        "remoteok_tags", "workday_career_site_urls", "recruitee_company_boards",
+        "workable_queries", "usajobs_queries",
+      ];
+
+      function linesFrom(value) {
+        return value.split("\n").map((s) => s.trim()).filter(Boolean);
+      }
+
+      function turnIntoChipBox(textareaId) {
+        const textarea = document.getElementById(textareaId);
+        if (!textarea || textarea.dataset.chipified) return;
+        textarea.dataset.chipified = "1";
+        textarea.style.display = "none";
+
+        const box = document.createElement("div");
+        box.className = "chip-box";
+        textarea.insertAdjacentElement("afterend", box);
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "chip-input";
+        input.placeholder = "Type and press Enter…";
+
+        let values = linesFrom(textarea.value);
+
+        function sync() {
+          textarea.value = values.join("\n");
+        }
+
+        function sortValues() {
+          values.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        }
+        sortValues();
+        sync();
+
+        function render() {
+          box.querySelectorAll(".chip").forEach((el) => el.remove());
+          values.forEach((value, index) => {
+            const chip = document.createElement("span");
+            chip.className = "chip";
+            const text = document.createElement("span");
+            text.textContent = value;
+            chip.appendChild(text);
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "chip-remove";
+            remove.textContent = "×";
+            remove.setAttribute("aria-label", "Remove " + value);
+            remove.addEventListener("click", function () {
+              values.splice(index, 1);
+              sortValues();
+              sync();
+              render();
+            });
+            chip.appendChild(remove);
+            box.insertBefore(chip, input);
+          });
+        }
+
+        function addFromInput() {
+          const value = input.value.trim();
+          if (!value) return;
+          values.push(value);
+          input.value = "";
+          sortValues();
+          sync();
+          render();
+        }
+
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === ",") {
+            event.preventDefault();
+            addFromInput();
+          } else if (event.key === "Backspace" && !input.value && values.length) {
+            values.pop();
+            sync();
+            render();
+          }
+        });
+        input.addEventListener("blur", addFromInput);
+        box.addEventListener("click", function (event) {
+          if (event.target === box) input.focus();
+        });
+
+        box.appendChild(input);
+        render();
+      }
+
+      CHIP_FIELD_IDS.forEach(turnIntoChipBox);
+    })();
+  </script>
 
   <script>
     (function () {

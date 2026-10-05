@@ -164,6 +164,17 @@ COMPANY_ROLE_CATEGORIES: dict[str, frozenset[str]] = {
     "bunq": frozenset({SOFTWARE, FINANCE}),
     "vanmossel": frozenset({OPERATIONS, SALES_MARKETING}),
     "channable": frozenset({SOFTWARE, SALES_MARKETING}),
+    "keolis": frozenset({OPERATIONS}),
+    "pretamanger": frozenset({OPERATIONS, SALES_MARKETING}),
+    "boulangerieange": frozenset({OPERATIONS, SALES_MARKETING}),
+    "ballastnedam": frozenset({OPERATIONS}),
+    "vionfoodgroup": frozenset({OPERATIONS}),
+    "sirclecollection": frozenset({OPERATIONS, SALES_MARKETING}),
+    "bettercollective": frozenset({SOFTWARE, SALES_MARKETING}),
+    "dpd": frozenset({OPERATIONS}),
+    "cmcom": frozenset({SOFTWARE, SALES_MARKETING}),
+    "livestorm": frozenset({SOFTWARE, SALES_MARKETING}),
+    "greenpeacecee": frozenset({GENERAL}),
 }
 
 # Keyword -> category, checked against the candidate's resume-derived titles/

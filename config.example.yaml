@@ -223,6 +223,17 @@ sources:
       - "bunq"
       - "vanmossel"
       - "channable"
+      - "keolis"
+      - "pretamanger"
+      - "boulangerieange"
+      - "ballastnedam"
+      - "vionfoodgroup"
+      - "sirclecollection"
+      - "bettercollective"
+      - "dpd"
+      - "cmcom"
+      - "livestorm"
+      - "greenpeacecee"
   workable:
     enabled: false
     # No company list here (unlike the sources above) -- most individual

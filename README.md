@@ -57,7 +57,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (558 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (559 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -244,7 +244,7 @@ account and isn't something to build around.
 | RemoteOK | An optional tag filter | Free public API |
 | Arbeitnow | Nothing — just enable it | Free public API, mostly EU-heavy listings |
 | Workday | A company's own public Workday careers URL, one per line | Public but *undocumented* — the same JSON endpoint the careers page's own JavaScript calls, not a contract Workday publishes or supports. Reaches traditional-enterprise/healthcare/large-non-tech employers the sources above mostly miss. Slower per company (a second request per job is needed just to get a description) and no shipped defaults, since there's no directory of tenants to sample from. |
-| Recruitee | Company slugs from `<slug>.recruitee.com` | Free public API. Skews European and toward small/mid-size employers rather than funded startups — ships with 7 verified boards (energy, construction, retail, automotive, plus a couple of tech companies), a genuinely different mix than the sources above. |
+| Recruitee | Company slugs from `<slug>.recruitee.com` | Free public API. Skews European and toward small/mid-size employers rather than funded startups — ships with 18 verified boards (transit, food retail/processing, construction, hospitality, logistics, a nonprofit, plus a few SaaS companies), a genuinely different mix than the sources above. |
 | Workable | Free-text search keywords (e.g. your target titles) | Free public API, but shaped differently from the sources above: Workable has no stable per-company board directory to ship defaults from (most individual accounts return zero current postings), so this searches Workable's own public cross-employer job search by keyword instead, same shape as RemoteOK's tags. |
 | USAJOBS | A free API key + the email you registered it with | The official US federal government jobs API (`developer.usajobs.gov`). Unlike every other source above, there's no anonymous access — register a free key, tied to your email, and both are entered in Settings (the key goes to your OS credential store, never config.yaml). Reaches federal/public-sector postings none of the other sources touch at all. |
 
@@ -270,7 +270,9 @@ scripting or reading `config.example.yaml` directly, not instructions for hand-e
 - **Preferences & matching** tab — target titles, keyword boosts/excludes, seniority, locations,
   remote/onsite, salary floor, industries to include/exclude, dealbreakers (common ones like
   on-call, travel, or undisclosed pay are checkboxes, plus free text for anything else), minimum
-  fit score, and job sources (see **Job sources** above). Fields autosave.
+  fit score, and job sources (see **Job sources** above). Every list field (titles, keywords,
+  locations, company boards, etc.) is an input-chip box — type a value and press Enter to add it
+  as a removable bubble, instead of a large freeform textarea. Fields autosave.
 - **App config** tab — resume upload, LLM provider (`ollama` default/local/free, `anthropic`
   hosted with a usage cost, or `none` for rule-based keyword scoring only), model selection and
   download, and the Anthropic API key (stored via your OS's credential store, never in
@@ -336,7 +338,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (558 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (559 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
