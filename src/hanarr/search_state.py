@@ -138,6 +138,13 @@ def on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["llm_paused"] = False
         state["llm_paused_message"] = None
         log_event(state, {"kind": "info", "text": "LLM reconnected — resuming."})
+    elif kind == "gave_up":
+        state["llm_paused"] = False
+        state["llm_paused_message"] = None
+        log_event(state, {
+            "kind": "error",
+            "text": f"Gave up on {event['title']} at {event['company']} after repeated bad responses — skipped, moving on.",
+        })
 
 
 def new_rescore_state() -> dict[str, Any]:
@@ -181,6 +188,13 @@ def rescore_on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
         log_event(state, {"kind": "done", "text": f"Rescore complete — {event['rescored_count']} job(s) rescored."})
     elif kind == "stopped":
         log_event(state, {"kind": "error", "text": f"Rescore stopped — {event['rescored_count']} job(s) rescored."})
+    elif kind == "gave_up":
+        state["llm_paused"] = False
+        state["llm_paused_message"] = None
+        log_event(state, {
+            "kind": "error",
+            "text": f"Gave up on {event['title']} at {event['company']} after repeated bad responses — skipped, moving on.",
+        })
     elif kind == "llm_paused":
         state["llm_paused"] = True
         state["llm_paused_message"] = event["message"]

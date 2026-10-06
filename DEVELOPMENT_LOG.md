@@ -40,6 +40,30 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-06 — v0.1.39
+
+Shipped: a posting a model can't seem to answer no longer blocks an entire rescore/search run
+forever (see below).
+
+### 2026-10-06 — Pause-and-retry had no upper bound, so one bad posting could hang forever
+
+User report: a "Rescore all jobs" run sat retrying the same posting for roughly 8 hours, log
+spamming "Paused — LLM returned no rationale..." / "LLM reconnected — resuming" in a tight loop,
+before they gave up and stopped it manually. `check_llm_available` kept succeeding the entire
+time (Ollama itself was fine) -- the pause-and-retry loop in `_score_with_pause` had no way to
+distinguish "the LLM is down, worth waiting out" from "the LLM is up but will never produce a
+usable answer for this specific posting," so it retried the second case exactly as patiently as
+the first: forever.
+
+Added `MAX_CONSECUTIVE_SCORE_FAILURES` (5): after that many straight failures scoring the *same*
+posting, `_score_with_pause` raises the new `LLMScoringGaveUpError` instead of retrying again.
+`run_search_cycle` and `rescore_all_jobs` both catch it, log a "gave up" event, and move on to the
+next posting rather than hanging or aborting the whole batch. A given-up-on posting during a
+search is deliberately left un-seen (not added to `SeenPosting`), so a later run -- maybe with a
+more reliable model -- gets another chance at it instead of being permanently skipped. A
+given-up-on job during a rescore keeps its existing score/rationale untouched rather than being
+overwritten with a bad guess.
+
 ### 2026-10-05 — v0.1.38
 
 Shipped: dealbreakers moved out of the LLM's job entirely, into a fully deterministic prefilter

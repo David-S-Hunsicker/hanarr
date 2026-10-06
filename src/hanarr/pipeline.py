@@ -92,6 +92,27 @@ StopCheck = Callable[[], bool]
 # bounds that cost).
 LLM_RETRY_INTERVAL_SECONDS = 5
 
+# A real incident: the LLM was reachable the entire time (check_llm_available
+# kept succeeding instantly) but gave a malformed answer -- blank rationale --
+# for the SAME posting on every single retry, for 8 hours straight, before a
+# user finally gave up and stopped it manually. Reachability and "produces a
+# usable answer for this specific input" are different failures; only the
+# first one is worth retrying indefinitely. After this many consecutive
+# failures scoring the same posting, give up on that one posting (see
+# LLMScoringGaveUpError) rather than retrying it forever and blocking
+# everything after it in the batch.
+MAX_CONSECUTIVE_SCORE_FAILURES = 5
+
+
+class LLMScoringGaveUpError(RuntimeError):
+    """Raised by _score_with_pause after MAX_CONSECUTIVE_SCORE_FAILURES
+    consecutive failures scoring the same posting. Distinct from a plain
+    LLMScoringFailedError (which triggers a pause-and-retry) and from a
+    should_stop()-interrupted pause (which returns None) -- callers catch
+    this specifically to skip just this one posting and move on to the
+    rest of the batch, rather than retrying forever or aborting
+    everything over one posting a model can't seem to answer."""
+
 
 def _score_with_pause(
     job: RawJobPosting,
@@ -111,17 +132,25 @@ def _score_with_pause(
     retrying the SAME job, so nothing already scored this cycle is lost or
     silently downgraded over what's often a transient outage (Ollama not
     started yet, a momentary network blip). Returns None if the pause was
-    interrupted by should_stop().
+    interrupted by should_stop(). Raises LLMScoringGaveUpError after
+    MAX_CONSECUTIVE_SCORE_FAILURES straight failures on this same posting.
 
     resume_event, if given, lets a caller (the dashboard's "Resume now"
     button) cut the wait short instead of waiting out the full retry
     interval -- Event.wait(timeout) returns as soon as either happens.
     Cleared right after waking so it doesn't short-circuit every
     subsequent wait if the LLM is still down after this one click."""
+    attempts = 0
     while True:
         try:
             return score_fit(job, resume_summary, resume_text, prefs, llm)
         except LLMScoringFailedError as exc:
+            attempts += 1
+            if attempts >= MAX_CONSECUTIVE_SCORE_FAILURES:
+                raise LLMScoringGaveUpError(
+                    f"Gave up scoring {job.title!r} at {job.company!r} after {attempts} "
+                    f"consecutive failures: {exc}"
+                ) from exc
             if on_progress:
                 on_progress({"event": "llm_paused", "message": str(exc)})
             while True:
@@ -213,10 +242,22 @@ def run_search_cycle(
             if on_progress:
                 on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
 
-            result = _score_with_pause(
-                job, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
-                resume_event,
-            )
+            try:
+                result = _score_with_pause(
+                    job, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+                    resume_event,
+                )
+            except LLMScoringGaveUpError as exc:
+                # Not marked seen -- left for a future search (hopefully
+                # with a more reliable model/connection by then) to try
+                # again, rather than permanently skipping a posting that
+                # might score fine next time.
+                logger.warning(str(exc))
+                if on_progress:
+                    on_progress({
+                        "event": "gave_up", "title": job.title, "company": job.company, "message": str(exc),
+                    })
+                continue
             if result is None:
                 stopped = True
                 break
@@ -333,10 +374,21 @@ def rescore_all_jobs(
             location=job.location, remote=job.remote, url=job.url, description=job.description,
             salary_min=job.salary_min, salary_max=job.salary_max, posted_at=job.posted_at,
         )
-        result = _score_with_pause(
-            raw, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
-            resume_event,
-        )
+        try:
+            result = _score_with_pause(
+                raw, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
+                resume_event,
+            )
+        except LLMScoringGaveUpError as exc:
+            # Leaves this job's existing score/rationale untouched -- better
+            # than either overwriting it with a guess or getting stuck
+            # retrying one posting forever and never reaching the rest.
+            logger.warning(str(exc))
+            if on_progress:
+                on_progress({
+                    "event": "gave_up", "title": job.title, "company": job.company, "message": str(exc),
+                })
+            continue
         if result is None:
             stopped = True
             break

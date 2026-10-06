@@ -14,7 +14,13 @@ from hanarr.llm.ollama_client import OllamaClient
 from hanarr.models import Base, JobPosting, Profile, ScoreSnapshot, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, InstalledModel, ModelRecommendation, OllamaDiagnostics
 import hanarr.pipeline as pipeline_mod
-from hanarr.pipeline import LLMUnavailableError, check_llm_available, rescore_all_jobs, run_search_cycle
+from hanarr.pipeline import (
+    LLMScoringGaveUpError,
+    LLMUnavailableError,
+    check_llm_available,
+    rescore_all_jobs,
+    run_search_cycle,
+)
 
 
 def _make_session():
@@ -481,3 +487,102 @@ def test_run_search_cycle_resume_event_cuts_the_pause_short(monkeypatch):
 
     assert count == 1
     assert elapsed < 5, "resume_event.set() should wake the pause loop almost immediately, not after 300s"
+
+
+class _FailsOnlyForOneTitle(LLMClient):
+    """Returns a response score_fit treats as a failure (blank rationale)
+    for one specific posting (identified by its title, which score_fit's
+    user prompt includes verbatim), succeeds for everything else -- for
+    exercising the give-up-after-N-attempts path on just one posting
+    without it taking down the rest of a batch too."""
+
+    def __init__(self, bad_title: str):
+        self.bad_title = bad_title
+        self.attempts = 0
+
+    def complete_json(self, system: str, user: str) -> str:
+        self.attempts += 1
+        if self.bad_title in user:
+            return json.dumps({"score": 0, "dealbreaker_hit": False, "rationale": ""})
+        return json.dumps({"score": 80, "dealbreaker_hit": False, "rationale": "Good fit."})
+
+
+def test_run_search_cycle_skips_a_posting_that_fails_repeatedly_instead_of_retrying_forever(monkeypatch):
+    """Regression test for a real incident: a model gave a malformed
+    response (blank rationale) for the SAME posting on every retry for 8
+    hours straight before a user gave up and stopped it manually --
+    check_llm_available kept succeeding (Ollama itself was fine), so the
+    pause-and-retry loop had no way to know it would never get a usable
+    answer for this one posting and never stopped on its own. After
+    MAX_CONSECUTIVE_SCORE_FAILURES straight failures on the same posting,
+    it must give up on just that one and move on to the rest."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+    settings = Settings()
+    settings.matching.min_fit_score = 0
+
+    bad_job = _make_job("1")
+    bad_job.title = "Bad Posting"
+    good_job = _make_job("2")
+    good_job.title = "Good Posting"
+    connector = _FakeConnector("arbeitnow", [bad_job, good_job])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [connector])
+    monkeypatch.setattr(pipeline_mod.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline_mod, "check_llm_available", lambda llm, data_dir: None)
+
+    llm = _FailsOnlyForOneTitle(bad_title="Bad Posting")
+    events = []
+
+    count = run_search_cycle(session, settings, profile, llm, on_progress=events.append)
+
+    assert count == 1, "the second, scoreable posting should still be matched"
+    # MAX_CONSECUTIVE_SCORE_FAILURES calls failing on the bad posting, plus
+    # exactly one more succeeding on the good one -- not an unbounded number.
+    assert llm.attempts == pipeline_mod.MAX_CONSECUTIVE_SCORE_FAILURES + 1, (
+        "must stop retrying the bad posting at the cap, not keep going forever"
+    )
+    assert any(e["event"] == "gave_up" for e in events)
+    assert session.query(SeenPosting).filter_by(external_id="1").first() is None, (
+        "a given-up-on posting must not be marked seen -- a later run (maybe with a better "
+        "model) should get another chance at it"
+    )
+    assert session.query(JobPosting).count() == 1
+
+
+def test_rescore_all_jobs_skips_a_job_that_fails_repeatedly_leaving_its_score_untouched(monkeypatch):
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+
+    bad_job = JobPosting(
+        profile_id=profile.id, source="s", external_id="1", company="A", title="Bad",
+        url="u1", fit_score=55, fit_rationale="old", fit_score_method="llm",
+    )
+    good_job = JobPosting(
+        profile_id=profile.id, source="s", external_id="2", company="B", title="Good",
+        url="u2", fit_score=10, fit_rationale="old", fit_score_method="rule_based",
+    )
+    session.add_all([bad_job, good_job])
+    session.commit()
+
+    monkeypatch.setattr(pipeline_mod.time, "sleep", lambda *a, **k: None)
+
+    class _FailsOnlyForBadJob(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            if "Bad" in user:
+                return json.dumps({"score": 0, "dealbreaker_hit": False, "rationale": ""})
+            return json.dumps({"score": 90, "dealbreaker_hit": False, "rationale": "Great fit."})
+
+    events = []
+    count = rescore_all_jobs(session, Settings(), profile, _FailsOnlyForBadJob(), on_progress=events.append)
+
+    assert count == 1, "only the good job should count as actually rescored"
+    assert any(e["event"] == "gave_up" and e["title"] == "Bad" for e in events)
+
+    session.refresh(bad_job)
+    session.refresh(good_job)
+    assert bad_job.fit_score == 55 and bad_job.fit_rationale == "old", "untouched, not overwritten with a bad guess"
+    assert good_job.fit_score == 90

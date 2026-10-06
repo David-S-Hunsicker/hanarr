@@ -57,7 +57,7 @@ scripting or a one-off run without the dashboard; see **Command line** below.
 
 ## Status: what's actually verified
 
-The full test suite passes (586 tests), `src/` byte-compiles cleanly, and `git diff --check` is
+The full test suite passes (588 tests), `src/` byte-compiles cleanly, and `git diff --check` is
 clean. Tagged releases have shipped through the real GitHub Actions release pipeline — see
 [Releases](https://github.com/David-S-Hunsicker/hanarr/releases) for the current published list,
 rather than a version count here that goes stale every time a new one ships. Beyond the automated
@@ -76,9 +76,12 @@ Windows build/install/uninstall cycle, real connector APIs) rather than only moc
   menu button) and a page-wide "Rescore all jobs" button re-score what's already saved, and a
   status light on the Jobs page (click it to force a fresh check) shows whether a real LLM is
   currently reachable. A "Resume now" button appears wherever a pause is shown, to skip the wait
-  instead of relying purely on the automatic retry. Dealbreakers are a deterministic keyword
-  check in the prefilter stage, not an LLM judgment call — a real incident found a model would
-  occasionally hallucinate a dealbreaker hit (a hard, score-zeroing disqualifier) with no textual
+  instead of relying purely on the automatic retry. If the LLM is reachable but keeps giving a
+  malformed answer for one specific posting, retrying is capped (5 straight failures) rather than
+  hanging on it forever — that one posting is skipped and the rest of the run continues.
+- Dealbreakers are a deterministic keyword check in the prefilter stage, not an LLM judgment
+  call — a real incident found a model would occasionally hallucinate a dealbreaker hit (a hard,
+  score-zeroing disqualifier) with no textual
   basis in the posting at all.
 - Greenhouse and Lever connectors were confirmed fetching and correctly cleaning real postings
   from live company boards.
@@ -348,7 +351,7 @@ cover the prefilter and the rule-based fallback scorer.
   verified across all nine migrations on a real database.
 - [x] Confirm the dashboard remains bound to localhost and that resume/local-submission limits
   reject oversized uploads (covered by tests; live-verified for resume uploads).
-- [x] Run `python -m pytest -q` (586 tests), `python -m compileall -q src`, and
+- [x] Run `python -m pytest -q` (588 tests), `python -m compileall -q src`, and
   `git diff --check`.
 - [x] Walk through Jobs, Coaching, Resume, Skills, Applications, Settings, and Profiles on a
   real running instance with real data.
