@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import logging
 import shutil
+import threading
 from pathlib import Path
 
 import click
@@ -249,12 +250,18 @@ def serve(ctx: click.Context, launch_mode: str | None):
     # update shows up on the dashboard identically to something triggered
     # manually -- see search_state.py / update_state.py. rescore_state is
     # shared the same way so a scheduled search and a dashboard-triggered
-    # rescore refuse to run at the same time.
+    # rescore refuse to run at the same time. stop_event/resume_now_event
+    # are shared too, so the dashboard's "Stop search"/"Resume now" buttons
+    # actually reach a scheduled run -- previously those only worked for a
+    # manual search, since the scheduler's own job never saw either event.
     search_state = new_search_state()
     update_state = new_update_state()
     rescore_state = new_rescore_state()
+    stop_event = threading.Event()
+    resume_now_event = threading.Event()
     scheduler = start_scheduler(
         settings, search_state=search_state, update_state=update_state, rescore_state=rescore_state,
+        stop_event=stop_event, resume_now_event=resume_now_event,
     )
 
     from .dashboard.app import create_app
@@ -262,7 +269,7 @@ def serve(ctx: click.Context, launch_mode: str | None):
 
     app = create_app(
         settings, scheduler=scheduler, search_state=search_state, update_state=update_state,
-        rescore_state=rescore_state,
+        rescore_state=rescore_state, stop_event=stop_event, resume_now_event=resume_now_event,
     )
     mode = launch_mode or settings.dashboard.launch_mode
     launch_config = DashboardLaunchConfig(

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 
 import tzlocal
@@ -35,7 +36,8 @@ UPDATE_APPLY_TICK_SECONDS = 15
 
 def start_scheduler(
     settings: Settings, search_state: dict | None = None, update_state: dict | None = None,
-    rescore_state: dict | None = None,
+    rescore_state: dict | None = None, stop_event: threading.Event | None = None,
+    resume_now_event: threading.Event | None = None,
 ) -> BackgroundScheduler:
     """`search_state`/`update_state`/`rescore_state` are the same shared
     dicts passed to create_app() -- pass the same objects to both so a
@@ -46,14 +48,27 @@ def start_scheduler(
     search_state existed, the scheduled search job ran with no progress
     callback at all, so an automatic background search (real GPU/CPU load,
     potentially for minutes) happened with nothing on the dashboard to show
-    it was happening. Omit any of these (e.g. in a test that only exercises
-    part of the scheduler) and a fresh, unshared one is created."""
+    it was happening.
+
+    `stop_event`/`resume_now_event` are the same Events create_app()'s
+    "Stop search"/"Resume now" routes set -- share them so those buttons
+    actually reach a *scheduled* run too. Before this, a scheduled search
+    passed no should_stop/resume_event into run_search_cycle at all, so
+    "Stop search" could set stop_requested on the dashboard forever without
+    the running job ever checking it.
+
+    Omit any of these (e.g. in a test that only exercises part of the
+    scheduler) and a fresh, unshared one is created."""
     if search_state is None:
         search_state = new_search_state()
     if update_state is None:
         update_state = new_update_state()
     if rescore_state is None:
         rescore_state = new_rescore_state()
+    if stop_event is None:
+        stop_event = threading.Event()
+    if resume_now_event is None:
+        resume_now_event = threading.Event()
     session_factory = make_session_factory(settings)
     llm = build_llm_client(settings.llm)
     scheduler = BackgroundScheduler()
@@ -84,8 +99,12 @@ def start_scheduler(
 
         from .connectors import build_enabled_connectors
 
+        stop_event.clear()
+        resume_now_event.clear()
         try:
             for profile_id in profile_ids:
+                if stop_event.is_set():
+                    break
                 reset_for_run(search_state, search_state["run_id"] + 1, "scheduled")
                 with session_factory() as session:
                     profile = session.get(Profile, profile_id)
@@ -104,6 +123,8 @@ def start_scheduler(
                         n = run_search_cycle(
                             session, settings, profile, llm,
                             on_progress=lambda e: search_on_progress(search_state, e),
+                            should_stop=stop_event.is_set,
+                            resume_event=resume_now_event,
                         )
                         logger.info(
                             "Search cycle complete for profile %d (%s): %d new posting(s)",
@@ -113,13 +134,17 @@ def start_scheduler(
                         profile.last_search_new_count = n
                         profile.last_search_trigger = "scheduled"
                         session.commit()
-                        search_state["last_search_result"] = f"{n} new posting(s) matched and stored (scheduled)."
+                        if stop_event.is_set():
+                            search_state["last_search_result"] = f"Search stopped — {n} new posting(s) kept (scheduled)."
+                        else:
+                            search_state["last_search_result"] = f"{n} new posting(s) matched and stored (scheduled)."
                     except Exception as exc:  # noqa: BLE001
                         logger.exception("Search cycle failed for profile %d (%s)", profile.id, profile.name)
                         message = f"Scheduled search failed — {exc}"
                         search_state["last_search_result"] = message[:300]
         finally:
             search_state["search_running"] = False
+            stop_event.clear()
 
     def _reminder_job():
         with session_factory() as session:

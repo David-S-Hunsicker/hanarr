@@ -243,7 +243,8 @@ def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = N
 
 def create_app(
     settings: Settings, scheduler: Any = None, search_state: dict | None = None, update_state: dict | None = None,
-    rescore_state: dict | None = None,
+    rescore_state: dict | None = None, stop_event: threading.Event | None = None,
+    resume_now_event: threading.Event | None = None,
 ) -> FastAPI:
     """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
     through so the restart route can shut it down cleanly before
@@ -254,9 +255,19 @@ def create_app(
     passed to start_scheduler(), so a scheduled background search or a
     found/staged update shows up here identically to something triggered
     manually, and the scheduler's own search job can see (and refuse to
-    collide with) a rescore started from this app -- pass the same objects
-    to both, or omit any of them entirely (tests, or any caller that
-    doesn't run a scheduler) and a fresh, unshared one is created."""
+    collide with) a rescore started from this app.
+
+    `stop_event`/`resume_now_event` are the same Events start_scheduler()
+    uses for its own scheduled search job -- sharing them means "Stop
+    search"/"Resume now" here actually reach a scheduled run too, not just
+    one started from this app's own "/search" route. Before this, a
+    scheduled search ignored both entirely, so clicking "Stop search"
+    during one just left stop_requested true forever with nothing checking
+    it.
+
+    Pass the same objects to both start_scheduler() and create_app(), or
+    omit any of them entirely (tests, or any caller that doesn't run a
+    scheduler) and a fresh, unshared one is created."""
     app = FastAPI(title="Hanarr")
 
     @app.exception_handler(Exception)
@@ -294,11 +305,11 @@ def create_app(
     # run" apart from "a new one started" across polls.
     state = search_state if search_state is not None else new_search_state()
     upd_state = update_state if update_state is not None else new_update_state()
-    stop_event = threading.Event()
+    stop_event = stop_event if stop_event is not None else threading.Event()
     # Lets the "Resume now" button cut a mid-search LLM-unavailable pause
     # short instead of waiting out the full retry interval -- see
     # pipeline._score_with_pause.
-    resume_now_event = threading.Event()
+    resume_now_event = resume_now_event if resume_now_event is not None else threading.Event()
 
     # Incremented on every successful config.yaml save. A page's rendered
     # config_version travels with any save it makes (a hidden field, or the

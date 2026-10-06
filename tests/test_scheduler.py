@@ -1,3 +1,4 @@
+import threading
 import time
 
 import tzlocal
@@ -125,6 +126,72 @@ def test_scheduled_search_updates_the_shared_search_state(tmp_path, monkeypatch)
     assert search_state["scoring_count"] == 1
     assert search_state["considered_done"] == 1
     assert search_state["search_running"] is False
+
+
+def test_scheduled_search_job_passes_should_stop_and_resume_event_through(tmp_path, monkeypatch):
+    """Regression test: a scheduled search used to pass neither should_stop
+    nor resume_event into run_search_cycle at all, so clicking "Stop
+    search" (or "Resume now") during an automatic background run did
+    nothing -- the dashboard's stop_requested flag stayed true forever
+    with nothing underneath actually checking it."""
+    settings = _settings(tmp_path)
+    with make_session_factory(settings)() as session:
+        get_or_create_profile(session, settings)
+
+    seen_kwargs = {}
+
+    def fake_run_search_cycle(session, settings, profile, llm, **kwargs):
+        seen_kwargs.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(scheduler_mod, "run_search_cycle", fake_run_search_cycle)
+    monkeypatch.setattr(scheduler_mod, "build_llm_client", lambda cfg: object())
+
+    stop_event = threading.Event()
+    resume_now_event = threading.Event()
+    scheduler = scheduler_mod.start_scheduler(settings, stop_event=stop_event, resume_now_event=resume_now_event)
+    try:
+        search_job = scheduler.get_job("search").func
+        search_job()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert seen_kwargs.get("should_stop") == stop_event.is_set
+    assert seen_kwargs.get("resume_event") is resume_now_event
+
+
+def test_scheduled_search_stops_between_profiles_once_stop_event_is_set(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        default_profile = get_or_create_profile(session, settings)
+        second_profile = Profile(name="Jordan")
+        session.add(second_profile)
+        session.commit()
+        default_id, second_id = default_profile.id, second_profile.id
+
+    stop_event = threading.Event()
+    seen_profile_ids = []
+
+    def fake_run_search_cycle(session, settings, profile, llm, **kwargs):
+        seen_profile_ids.append(profile.id)
+        stop_event.set()  # simulates "Stop search" being clicked mid-run
+        return 0
+
+    monkeypatch.setattr(scheduler_mod, "run_search_cycle", fake_run_search_cycle)
+    monkeypatch.setattr(scheduler_mod, "build_llm_client", lambda cfg: object())
+
+    search_state = new_search_state()
+    scheduler = scheduler_mod.start_scheduler(settings, search_state=search_state, stop_event=stop_event)
+    try:
+        search_job = scheduler.get_job("search").func
+        search_job()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert len(seen_profile_ids) == 1, "the second profile must not start once stop_event is set"
+    assert search_state["search_running"] is False
+    assert stop_event.is_set() is False, "stop_event must be cleared once the job finishes"
 
 
 def test_scheduled_search_skips_when_one_is_already_running(tmp_path, monkeypatch):

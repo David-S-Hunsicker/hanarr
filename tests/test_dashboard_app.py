@@ -3279,6 +3279,38 @@ def test_search_resume_now_route_sets_the_event_only_while_paused(tmp_path):
     assert response.json()["resumed"] is True
 
 
+def test_search_stop_route_sets_the_injected_shared_stop_event(tmp_path):
+    """Regression test: create_app() used to always create its own private
+    stop_event, with no way to share it with the scheduler -- so "Stop
+    search" could only ever reach a manual search, never a scheduled one.
+    Passing stop_event in (as cli.py's serve command now does, sharing it
+    with start_scheduler()) must make this route set that exact object."""
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    stop_event = threading.Event()
+    client = TestClient(create_app(settings, search_state=search_state, stop_event=stop_event))
+
+    response = client.post("/search/stop", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert stop_event.is_set() is True
+
+
+def test_search_resume_now_route_sets_the_injected_shared_resume_event(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    search_state["llm_paused"] = True
+    resume_now_event = threading.Event()
+    client = TestClient(create_app(settings, search_state=search_state, resume_now_event=resume_now_event))
+
+    response = client.post("/search/resume-now")
+
+    assert response.status_code == 200
+    assert resume_now_event.is_set() is True
+
+
 def test_rescore_resume_now_route_sets_the_event_only_while_paused(tmp_path):
     settings = _make_isolated_settings(tmp_path)
     client = TestClient(create_app(settings))

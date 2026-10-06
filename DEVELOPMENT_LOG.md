@@ -40,6 +40,35 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-06 — v0.1.41
+
+Shipped: "Stop search" and "Resume now" now actually reach a scheduled (automatic) search, not
+just a manually-triggered one (see below).
+
+### 2026-10-06 — "Stop search" never actually stopped a scheduled search
+
+User report: clicked "Stop search" and the dashboard kept showing "Stopping…" indefinitely. Live
+`/search/status` showed `"trigger":"scheduled"` and `"stop_requested":true` at the same time --
+the stop request had been recorded, but the run never ended. Root cause: `scheduler.py`'s
+`_search_job` called `run_search_cycle(...)` without ever passing `should_stop` or
+`resume_event` at all. Those parameters have existed and worked correctly since `_score_with_pause`
+was introduced, but only `create_app()`'s manual `/search` route ever wired them in -- the
+scheduler's own background job had no `stop_event`/`resume_now_event` of its own, and no way to
+receive the dashboard's. A scheduled search was therefore unstoppable by design, not just buggy:
+clicking "Stop search" during one could only ever flip a flag nothing was reading.
+
+Fixed by sharing `stop_event`/`resume_now_event` through the same already-established pattern as
+`search_state`/`update_state`/`rescore_state`: `cli.py` creates one of each and passes them to
+both `start_scheduler()` and `create_app()`. The scheduler's `_search_job` now clears both at the
+start of a run, passes them into every per-profile `run_search_cycle()` call, and checks
+`stop_event` between profiles so a multi-profile run actually stops rather than finishing the
+remaining profiles first.
+
+(Separately, the specific run the report came from was also still on v0.1.38 -- predating the
+v0.1.39 retry cap -- which is why its log showed the exact "Paused — LLM returned no rationale"
+loop that fix was meant to end. That's a stale-process issue, not a code regression; restarting
+onto current code picks up both fixes at once.)
+
 ### 2026-10-06 — v0.1.40
 
 Shipped: a search and a rescore can no longer run at the same time (see below); also fixed the
