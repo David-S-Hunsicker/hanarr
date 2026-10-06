@@ -762,6 +762,18 @@
               this size.
             </div>
           </div>
+          <div class="field">
+            <label for="llm_max_concurrent_scoring">Concurrent scoring requests</label>
+            <input type="number" id="llm_max_concurrent_scoring" name="llm_max_concurrent_scoring"
+                   value="{{ settings.llm.max_concurrent_scoring }}" min="1">
+            <div class="hint">
+              How many postings a search or rescore scores against the LLM at once. Most GPU-served
+              local models can genuinely run several requests in parallel, not just queue them -- but
+              each one needs its own share of VRAM for the context window above, so too high a
+              number on a smaller GPU will slow every request down instead of speeding them up. 1
+              restores the original one-at-a-time behavior.
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="anthropic_api_key">Anthropic API key</label>

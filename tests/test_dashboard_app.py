@@ -2751,6 +2751,36 @@ def test_app_config_page_saves_a_custom_num_ctx(tmp_path, monkeypatch, fake_keyr
     assert settings.llm.num_ctx == 16384
 
 
+def test_app_config_page_saves_a_custom_max_concurrent_scoring(tmp_path, monkeypatch, fake_keyring):
+    """max_concurrent_scoring controls how many postings a search/rescore
+    scores at once -- must be editable and persisted the same way the
+    other LLM tuning fields already are."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    page = client.get("/config?tab=app").text
+    assert 'name="llm_max_concurrent_scoring"' in page
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "llm_max_concurrent_scoring": "5",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.llm.max_concurrent_scoring == 5
+
+
 def test_app_config_page_shows_per_task_model_sizing_and_saves_an_override(tmp_path, monkeypatch, fake_keyring):
     monkeypatch.chdir(tmp_path)
     settings = _make_isolated_settings(tmp_path)

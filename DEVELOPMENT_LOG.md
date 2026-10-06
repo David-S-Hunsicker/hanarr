@@ -40,6 +40,57 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-06 — v0.1.43
+
+Shipped: search and rescore now score multiple postings against the LLM at once instead of one at
+a time, cutting wall-clock time on a hardware-measured sweet spot (see below).
+
+### 2026-10-06 — Search/rescore now score postings concurrently, not one at a time
+
+User's framing: "What my goal is is to get the most out of a multithreaded LLM. If we can perform
+tasks faster without threatening reliability then we absolutely should." Confirmed empirically
+first, against the live Ollama instance: 3 concurrent chat requests completed in ~33s total versus
+an estimated ~136s run sequentially (throughput measured at roughly 43 tok/s at 2-3 concurrent
+requests vs. 8.4 tok/s for one at a time) -- a real, substantial win, not a theoretical one. Also
+measured where it stops helping: 4 concurrent requests fell to 13 tok/s and 6 fell to 6.1 tok/s,
+*worse* than running sequentially, almost certainly from exceeding the ~6.6GB of free VRAM left
+after the model and its context window (see v0.1.42's num_ctx fix) are already loaded on a 16GB
+GPU. 3 was chosen as the default to match the measured sweet spot exactly.
+
+Added `_score_batch_concurrently` (pipeline.py): a bounded worker pool (new
+`Settings.llm.max_concurrent_scoring`, default 3) that scores several postings against the LLM at
+once instead of the previous strictly-sequential loop, used by both `run_search_cycle` and
+`rescore_all_jobs`. Several correctness properties had to be preserved carefully across this
+change, since it's the first place in the app that genuinely runs the same kind of work on
+multiple threads at once:
+
+- **Per-job retry/pause state stays per-job.** `_score_with_pause`'s consecutive-failure counter
+  is already a local variable scoped to one call, so running several concurrently never lets one
+  bad posting's failures count against another's cap.
+- **DB writes stay on one thread.** Scoring (a pure LLM call, no DB access) runs on worker
+  threads; every `session.add()`/`commit()` still happens back on the calling thread as each
+  result comes in, never inside a worker -- SQLAlchemy sessions aren't thread-safe.
+- **`should_stop` is checked before each new submission, not just once up front**, so a stop
+  requested partway through a large batch still takes effect for jobs not yet started. Jobs
+  already in flight when that happens are drained and their real results still saved rather than
+  discarded -- an in-flight HTTP call to the LLM can't be safely interrupted anyway, and throwing
+  away a result that came back successfully would be a worse outcome than the second or two it
+  costs to let it finish.
+- **The progress log is now genuinely thread-safe**, not just GIL-lucky: `search_state.log_event`
+  gained an explicit lock, since `_score_with_pause`'s "llm_paused"/"llm_resumed" events are now
+  fired from worker threads scoring different postings at the same time.
+- **`rescore_all_jobs`'s raw-to-ORM mapping uses `id()`, not the `RawJobPosting` value itself**,
+  since that's a plain (unhashable) dataclass -- using it directly as a dict key would crash
+  outright, not just risk a value collision.
+- A couple of existing tests assumed strictly sequential LLM-call ordering (one asserted outcomes
+  by call count, another unpacked progress events in a fixed fetch-order tuple) -- both are real
+  assumptions that concurrency breaks, not things concurrency makes "wrong"; pinned
+  `max_concurrent_scoring = 1` for those specific tests rather than rewriting what they're actually
+  testing.
+
+Exposed as an editable Settings field next to the context-window one, since the right number
+depends on the user's own GPU/VRAM, not a universal constant.
+
 ### 2026-10-06 — v0.1.42
 
 Shipped: the actual root cause of the recurring "LLM returned no rationale alongside a score of

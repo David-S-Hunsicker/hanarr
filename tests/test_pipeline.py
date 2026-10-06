@@ -30,16 +30,44 @@ def _make_session():
 
 
 class _CountingLLM(LLMClient):
-    """Returns a fixed score/rationale and counts how many times it's called."""
+    """Returns a fixed score/rationale and counts how many times it's called.
+    Locked since scoring now genuinely happens from multiple threads at
+    once (see Settings.llm.max_concurrent_scoring) -- plain += isn't
+    guaranteed atomic across threads even under the GIL, and this count is
+    asserted on exactly."""
 
     def __init__(self, score: float, rationale: str = "test rationale"):
         self.score = score
         self.rationale = rationale
         self.call_count = 0
+        self._lock = threading.Lock()
 
     def complete_json(self, system: str, user: str) -> str:
-        self.call_count += 1
+        with self._lock:
+            self.call_count += 1
         return json.dumps({"score": self.score, "dealbreaker_hit": False, "rationale": self.rationale})
+
+
+class _ConcurrencyTrackingLLM(LLMClient):
+    """Tracks how many complete_json calls are in flight at once --
+    confirms _score_batch_concurrently actually overlaps LLM calls rather
+    than just being a differently-shaped sequential loop."""
+
+    def __init__(self, score: float = 80.0, hold_seconds: float = 0.05):
+        self.score = score
+        self.hold_seconds = hold_seconds
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self.peak_concurrency = 0
+
+    def complete_json(self, system: str, user: str) -> str:
+        with self._lock:
+            self._in_flight += 1
+            self.peak_concurrency = max(self.peak_concurrency, self._in_flight)
+        time.sleep(self.hold_seconds)
+        with self._lock:
+            self._in_flight -= 1
+        return json.dumps({"score": self.score, "dealbreaker_hit": False, "rationale": "r"})
 
 
 class _FakeConnector:
@@ -150,6 +178,14 @@ def test_considered_event_fires_exactly_once_per_posting_across_outcomes(monkeyp
     settings = Settings()
     settings.matching.min_fit_score = 60
     settings.preferences.keywords_exclude = ["blocked"]
+    # This test's LLM double picks a score by call order, and its own
+    # assertions unpack considered_events in a fixed fetch-order tuple --
+    # both assume strictly sequential scoring. Pinned to 1 here so this
+    # test still verifies what it's actually about (each outcome type
+    # fires "considered" exactly once) rather than becoming a flaky
+    # ordering test now that scoring can run several jobs at once by
+    # default -- see Settings.llm.max_concurrent_scoring.
+    settings.llm.max_concurrent_scoring = 1
 
     prefiltered_job = _make_job("prefiltered")
     prefiltered_job.description = "this posting is blocked by a keyword"
@@ -494,14 +530,19 @@ class _FailsOnlyForOneTitle(LLMClient):
     for one specific posting (identified by its title, which score_fit's
     user prompt includes verbatim), succeeds for everything else -- for
     exercising the give-up-after-N-attempts path on just one posting
-    without it taking down the rest of a batch too."""
+    without it taking down the rest of a batch too. Locked: the bad and
+    good postings are now scored concurrently (see
+    Settings.llm.max_concurrent_scoring), and attempts is asserted on
+    exactly."""
 
     def __init__(self, bad_title: str):
         self.bad_title = bad_title
         self.attempts = 0
+        self._lock = threading.Lock()
 
     def complete_json(self, system: str, user: str) -> str:
-        self.attempts += 1
+        with self._lock:
+            self.attempts += 1
         if self.bad_title in user:
             return json.dumps({"score": 0, "dealbreaker_hit": False, "rationale": ""})
         return json.dumps({"score": 80, "dealbreaker_hit": False, "rationale": "Good fit."})
@@ -586,3 +627,147 @@ def test_rescore_all_jobs_skips_a_job_that_fails_repeatedly_leaving_its_score_un
     session.refresh(good_job)
     assert bad_job.fit_score == 55 and bad_job.fit_rationale == "old", "untouched, not overwritten with a bad guess"
     assert good_job.fit_score == 90
+
+
+def test_score_batch_concurrently_runs_multiple_jobs_in_parallel_not_sequentially():
+    """The whole point of Settings.llm.max_concurrent_scoring > 1 -- confirms
+    multiple LLM calls genuinely overlap in time, not just that the batch
+    function exists."""
+    llm = _ConcurrencyTrackingLLM(hold_seconds=0.05)
+    jobs = [_make_job(str(i)) for i in range(5)]
+    prefs = Settings().preferences
+
+    results = list(pipeline_mod._score_batch_concurrently(
+        jobs, {}, "", prefs, llm, ".", None, None, None, max_workers=3,
+    ))
+
+    assert len(results) == 5
+    assert all(outcome is not None and not isinstance(outcome, Exception) for _, outcome in results)
+    assert llm.peak_concurrency >= 2, "with max_workers=3 and 5 jobs, at least some calls should overlap"
+
+
+def test_score_batch_concurrently_with_max_workers_1_is_strictly_sequential():
+    """max_workers=1 is the escape hatch back to the original one-at-a-time
+    behavior -- must never let two calls overlap."""
+    llm = _ConcurrencyTrackingLLM(hold_seconds=0.02)
+    jobs = [_make_job(str(i)) for i in range(4)]
+    prefs = Settings().preferences
+
+    results = list(pipeline_mod._score_batch_concurrently(
+        jobs, {}, "", prefs, llm, ".", None, None, None, max_workers=1,
+    ))
+
+    assert len(results) == 4
+    assert llm.peak_concurrency == 1
+
+
+def test_score_batch_concurrently_stops_submitting_new_work_but_drains_in_flight_results():
+    """should_stop is checked before each new submission, not mid-flight.
+    Jobs already dispatched when a stop fires still complete and their
+    real results are still yielded -- an in-flight HTTP call to the LLM
+    can't be safely interrupted anyway, and discarding a result that came
+    back successfully would be worse than the second it costs to let it
+    finish."""
+    both_in_flight = threading.Event()
+    release = threading.Event()
+
+    class _BlockingLLM(LLMClient):
+        def __init__(self):
+            self.call_count = 0
+            self._lock = threading.Lock()
+
+        def complete_json(self, system: str, user: str) -> str:
+            with self._lock:
+                self.call_count += 1
+                if self.call_count == 2:
+                    both_in_flight.set()
+            release.wait(timeout=5)  # held open until the test confirms exactly 2 are in flight
+            return json.dumps({"score": 80, "dealbreaker_hit": False, "rationale": "r"})
+
+    llm = _BlockingLLM()
+    jobs = [_make_job(str(i)) for i in range(5)]
+    prefs = Settings().preferences
+
+    stop_after = {"n": 0}
+
+    def should_stop():
+        stop_after["n"] += 1
+        return stop_after["n"] > 2  # the first 2 submission-checks pass; the 3rd stops everything after
+
+    results = []
+
+    def _drain():
+        for job, outcome in pipeline_mod._score_batch_concurrently(
+            jobs, {}, "", prefs, llm, ".", None, should_stop, None, max_workers=2,
+        ):
+            results.append((job, outcome))
+
+    t = threading.Thread(target=_drain)
+    t.start()
+    assert both_in_flight.wait(timeout=5), "both of the first 2 jobs should start before being released"
+    release.set()
+    t.join(timeout=5)
+
+    assert llm.call_count == 2, "only the first 2 jobs (filling max_workers) should ever be submitted"
+    assert len(results) == 2, "both in-flight jobs' real results must still be yielded, not discarded"
+    assert all(outcome is not None and not isinstance(outcome, Exception) for _, outcome in results)
+
+
+def test_rescore_all_jobs_maps_results_back_correctly_for_field_identical_jobs(monkeypatch):
+    """RawJobPosting is a plain dataclass with field-based __eq__ and no
+    __hash__ override -- Python makes that combination unhashable, so it
+    can never be a dict key directly. rescore_all_jobs maps each scored
+    result back to its JobPosting row by id() instead, specifically so
+    this doesn't crash (or silently cross-assign scores) for jobs that
+    share every field except external_id."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+
+    job_a = JobPosting(
+        profile_id=profile.id, source="s", external_id="a", company="Acme",
+        title="Engineer", url="u", fit_score=1, fit_rationale="old",
+    )
+    job_b = JobPosting(
+        profile_id=profile.id, source="s", external_id="b", company="Acme",
+        title="Engineer", url="u", fit_score=1, fit_rationale="old",
+    )
+    session.add_all([job_a, job_b])
+    session.commit()
+
+    class _FixedScoreLLM(LLMClient):
+        def complete_json(self, system: str, user: str) -> str:
+            return json.dumps({"score": 77, "dealbreaker_hit": False, "rationale": "r"})
+
+    count = rescore_all_jobs(session, Settings(), profile, _FixedScoreLLM())
+
+    assert count == 2
+    session.refresh(job_a)
+    session.refresh(job_b)
+    assert job_a.fit_score == 77
+    assert job_b.fit_score == 77
+
+
+def test_run_search_cycle_respects_configured_max_concurrent_scoring(monkeypatch):
+    """End-to-end check that Settings.llm.max_concurrent_scoring actually
+    reaches the scoring loop, not just that _score_batch_concurrently
+    honors its own max_workers argument in isolation."""
+    session = _make_session()
+    profile = Profile(name="Test")
+    session.add(profile)
+    session.commit()
+
+    settings = Settings()
+    settings.matching.min_fit_score = 0
+    settings.llm.max_concurrent_scoring = 1
+
+    connector = _FakeConnector("arbeitnow", [_make_job(str(i)) for i in range(4)])
+    monkeypatch.setattr(pipeline_mod, "build_enabled_connectors", lambda sources, **kwargs: [connector])
+
+    llm = _ConcurrencyTrackingLLM(hold_seconds=0.02)
+
+    count = run_search_cycle(session, settings, profile, llm)
+
+    assert count == 4
+    assert llm.peak_concurrency == 1, "max_concurrent_scoring=1 must reach the loop, not just the default"

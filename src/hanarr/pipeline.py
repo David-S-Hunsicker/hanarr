@@ -8,6 +8,8 @@ import json
 import logging
 import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
+from concurrent.futures import wait as wait_for_futures
 from typing import Callable, Optional
 
 from sqlalchemy import select
@@ -171,6 +173,75 @@ def _score_with_pause(
             # Loop back around and retry score_fit on this same job.
 
 
+def _score_batch_concurrently(
+    jobs: list[RawJobPosting],
+    resume_summary: dict,
+    resume_text: str,
+    prefs,
+    llm: LLMClient,
+    data_dir,
+    on_progress: Optional[ProgressCallback],
+    should_stop: Optional[StopCheck],
+    resume_event: Optional[threading.Event],
+    max_workers: int,
+):
+    """Scores multiple postings against the LLM with up to max_workers in
+    flight at once, instead of one at a time -- see
+    Settings.llm.max_concurrent_scoring for why a bounded pool, not
+    unlimited or purely sequential. Yields (job, outcome) for every job
+    that was actually submitted, as each one completes (not necessarily
+    input order): outcome is a (score, rationale, method) tuple on
+    success, None if a mid-pause should_stop() interrupted that one job
+    specifically (see _score_with_pause), or the LLMScoringGaveUpError
+    raised for it.
+
+    should_stop is checked before each new submission, not just once up
+    front, so a stop requested partway through a large batch still takes
+    effect for jobs not yet started. Jobs already in flight when that
+    happens are drained and their real results still yielded -- an
+    in-flight HTTP call to the LLM can't be safely interrupted anyway, and
+    discarding a result that came back successfully would be a worse
+    outcome than the one or two extra seconds it costs to let it finish.
+
+    Fires the "scoring" progress event per job at the moment it's actually
+    dispatched to a worker, not before -- with max_workers > 1 this can
+    mean several "Scoring: ..." lines appear at once, which is an honest
+    reflection of real concurrent work rather than a sequential narrative
+    that isn't true anymore."""
+    with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
+        next_idx = 0
+        in_flight: dict = {}
+
+        def _try_submit():
+            nonlocal next_idx
+            while len(in_flight) < max_workers and next_idx < len(jobs):
+                if should_stop and should_stop():
+                    next_idx = len(jobs)  # stop handing out new work
+                    return
+                job = jobs[next_idx]
+                next_idx += 1
+                if on_progress:
+                    on_progress({
+                        "event": "scoring", "source": job.source, "title": job.title, "company": job.company,
+                    })
+                future = pool.submit(
+                    _score_with_pause, job, resume_summary, resume_text, prefs, llm, data_dir,
+                    on_progress, should_stop, resume_event,
+                )
+                in_flight[future] = job
+
+        _try_submit()
+        while in_flight:
+            done, _ = wait_for_futures(list(in_flight.keys()), return_when=FIRST_COMPLETED)
+            for future in done:
+                job = in_flight.pop(future)
+                try:
+                    yield job, future.result()
+                except LLMScoringGaveUpError as exc:
+                    yield job, exc
+            _try_submit()
+
+
 def run_search_cycle(
     session: Session,
     settings: Settings,
@@ -213,6 +284,10 @@ def run_search_cycle(
         if on_progress:
             on_progress({"event": "source_fetched", "source": connector.name, "count": len(raw_jobs)})
 
+        # Prefilter + dedup are cheap, deterministic, and read from `session`
+        # -- kept strictly sequential here, unlike the LLM scoring below.
+        # Only postings that clear both go on to be scored at all.
+        jobs_to_score: list[RawJobPosting] = []
         for job in raw_jobs:
             if should_stop and should_stop():
                 stopped = True
@@ -239,82 +314,88 @@ def run_search_cycle(
                     on_progress({"event": "considered", "already_seen": True})
                 continue  # fetched and scored on a previous search, whether matched or rejected
 
-            if on_progress:
-                on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
+            jobs_to_score.append(job)
 
-            try:
-                result = _score_with_pause(
-                    job, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
-                    resume_event,
-                )
-            except LLMScoringGaveUpError as exc:
-                # Not marked seen -- left for a future search (hopefully
-                # with a more reliable model/connection by then) to try
-                # again, rather than permanently skipping a posting that
-                # might score fine next time.
-                logger.warning(str(exc))
-                if on_progress:
-                    on_progress({
-                        "event": "gave_up", "title": job.title, "company": job.company, "message": str(exc),
-                    })
-                continue
-            if result is None:
-                stopped = True
-                break
-            score, rationale, method = result
-            session.add(SeenPosting(profile_id=profile.id, source=job.source, external_id=job.external_id))
+        # Scoring is the one part of this loop that's actually safe (and
+        # worth it) to parallelize -- it's a pure LLM call with no DB
+        # access, unlike everything above. DB writes below still happen
+        # one at a time on this thread as each result comes back, never
+        # inside a worker thread -- see _score_batch_concurrently.
+        if not stopped and jobs_to_score:
+            for job, outcome in _score_batch_concurrently(
+                jobs_to_score, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress,
+                should_stop, resume_event, settings.llm.max_concurrent_scoring,
+            ):
+                if isinstance(outcome, LLMScoringGaveUpError):
+                    # Not marked seen -- left for a future search (hopefully
+                    # with a more reliable model/connection by then) to try
+                    # again, rather than permanently skipping a posting that
+                    # might score fine next time.
+                    logger.warning(str(outcome))
+                    if on_progress:
+                        on_progress({
+                            "event": "gave_up", "title": job.title, "company": job.company, "message": str(outcome),
+                        })
+                    continue
+                if outcome is None:
+                    continue  # this one job's pause was interrupted by should_stop; drain the rest of the batch
+                score, rationale, method = outcome
+                session.add(SeenPosting(profile_id=profile.id, source=job.source, external_id=job.external_id))
 
-            if score < settings.matching.min_fit_score:
-                session.commit()
-                if on_progress:
-                    on_progress({
-                        "event": "considered", "rejected": True,
-                        "reason": f"Fit score {score:.0f} is below your minimum of {settings.matching.min_fit_score:.0f}",
-                        "title": job.title, "company": job.company, "source": job.source,
-                    })
-                continue
+                if score < settings.matching.min_fit_score:
+                    session.commit()
+                    if on_progress:
+                        on_progress({
+                            "event": "considered", "rejected": True,
+                            "reason": f"Fit score {score:.0f} is below your minimum of {settings.matching.min_fit_score:.0f}",
+                            "title": job.title, "company": job.company, "source": job.source,
+                        })
+                    continue
 
-            posting = JobPosting(
-                profile_id=profile.id,
-                source=job.source,
-                external_id=job.external_id,
-                company=job.company,
-                title=job.title,
-                location=job.location,
-                remote=job.remote,
-                url=job.url,
-                description=job.description,
-                salary_min=job.salary_min,
-                salary_max=job.salary_max,
-                posted_at=job.posted_at,
-                fit_score=score,
-                fit_rationale=rationale,
-                fit_score_method=method,
-            )
-            session.add(posting)
-            session.commit()
-            session.add(
-                ScoreSnapshot(
+                posting = JobPosting(
                     profile_id=profile.id,
-                    job_id=posting.id,
+                    source=job.source,
+                    external_id=job.external_id,
+                    company=job.company,
+                    title=job.title,
+                    location=job.location,
+                    remote=job.remote,
+                    url=job.url,
+                    description=job.description,
+                    salary_min=job.salary_min,
+                    salary_max=job.salary_max,
+                    posted_at=job.posted_at,
                     fit_score=score,
                     fit_rationale=rationale,
-                    trigger="initial",
+                    fit_score_method=method,
                 )
-            )
-            session.commit()
-            new_count += 1
-            if on_progress:
-                on_progress(
-                    {
-                        "event": "matched",
-                        "source": posting.source,
-                        "title": posting.title,
-                        "company": posting.company,
-                        "fit_score": posting.fit_score,
-                    }
+                session.add(posting)
+                session.commit()
+                session.add(
+                    ScoreSnapshot(
+                        profile_id=profile.id,
+                        job_id=posting.id,
+                        fit_score=score,
+                        fit_rationale=rationale,
+                        trigger="initial",
+                    )
                 )
-                on_progress({"event": "considered"})
+                session.commit()
+                new_count += 1
+                if on_progress:
+                    on_progress(
+                        {
+                            "event": "matched",
+                            "source": posting.source,
+                            "title": posting.title,
+                            "company": posting.company,
+                            "fit_score": posting.fit_score,
+                        }
+                    )
+                    on_progress({"event": "considered"})
+
+        if should_stop and should_stop():
+            stopped = True
 
         session.commit()
         if on_progress:
@@ -359,41 +440,42 @@ def rescore_all_jobs(
         select(JobPosting).where(JobPosting.profile_id == profile.id)
     ).scalars().all()
 
-    rescored = 0
-    stopped = False
-    for job in jobs:
-        if should_stop and should_stop():
-            stopped = True
-            break
-
-        if on_progress:
-            on_progress({"event": "scoring", "source": job.source, "title": job.title, "company": job.company})
-
-        raw = RawJobPosting(
+    # RawJobPosting is the shape _score_with_pause/score_fit expect; it's a
+    # plain (unhashable -- field-based __eq__ with no __hash__) dataclass,
+    # so it can't be a dict key itself. Pairing by id() instead of value
+    # lets two jobs with identical title/company/etc. map back to the
+    # right JobPosting row rather than colliding.
+    pairs = [
+        (job, RawJobPosting(
             source=job.source, external_id=job.external_id, company=job.company, title=job.title,
             location=job.location, remote=job.remote, url=job.url, description=job.description,
             salary_min=job.salary_min, salary_max=job.salary_max, posted_at=job.posted_at,
-        )
-        try:
-            result = _score_with_pause(
-                raw, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress, should_stop,
-                resume_event,
-            )
-        except LLMScoringGaveUpError as exc:
+        ))
+        for job in jobs
+    ]
+    raw_to_orm = {id(raw): orm_job for orm_job, raw in pairs}
+    raw_jobs = [raw for _, raw in pairs]
+
+    rescored = 0
+    for raw_job, outcome in _score_batch_concurrently(
+        raw_jobs, resume_summary, resume_text, prefs, llm, settings.data_dir, on_progress,
+        should_stop, resume_event, settings.llm.max_concurrent_scoring,
+    ):
+        job = raw_to_orm[id(raw_job)]
+        if isinstance(outcome, LLMScoringGaveUpError):
             # Leaves this job's existing score/rationale untouched -- better
             # than either overwriting it with a guess or getting stuck
             # retrying one posting forever and never reaching the rest.
-            logger.warning(str(exc))
+            logger.warning(str(outcome))
             if on_progress:
                 on_progress({
-                    "event": "gave_up", "title": job.title, "company": job.company, "message": str(exc),
+                    "event": "gave_up", "title": job.title, "company": job.company, "message": str(outcome),
                 })
             continue
-        if result is None:
-            stopped = True
-            break
+        if outcome is None:
+            continue  # this one job's pause was interrupted by should_stop; drain the rest of the batch
 
-        score, rationale, method = result
+        score, rationale, method = outcome
         before = job.fit_score
         job.fit_score, job.fit_rationale, job.fit_score_method = score, rationale, method
         session.add(ScoreSnapshot(
@@ -409,6 +491,7 @@ def rescore_all_jobs(
                 "company": job.company, "fit_score": score,
             })
 
+    stopped = bool(should_stop and should_stop())
     if on_progress:
         on_progress({"event": "stopped" if stopped else "complete", "rescored_count": rescored})
 

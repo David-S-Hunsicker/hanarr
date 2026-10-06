@@ -200,6 +200,20 @@ class LLMConfig(BaseModel):
     # VRAM for the KV cache -- lower this if the model won't fit on a
     # memory-constrained GPU.
     num_ctx: int = 8192
+    # How many postings run_search_cycle/rescore_all_jobs score against the
+    # LLM at once, instead of one at a time. Ollama (and most GPU-served
+    # local models) can genuinely process several requests in parallel, not
+    # just queue them -- measured live on an RTX 5080 Laptop (16GB VRAM):
+    # throughput at 2-3 concurrent requests was roughly 5x a single
+    # sequential request (43 tok/s vs 8.4 tok/s), with no penalty between 2
+    # and 3; at 4+ it fell *below* the sequential baseline (13 tok/s, then
+    # 6 tok/s at 6), almost certainly from exceeding available VRAM once the
+    # model's own weights plus num_ctx above are already using most of it.
+    # 3 is a reasonable default matching that measurement, not a universal
+    # constant -- raise it on a GPU with more headroom, lower it (1 restores
+    # the original fully-sequential behavior) on a smaller one or a weaker
+    # CPU-only setup where parallel requests would only slow each other down.
+    max_concurrent_scoring: int = 3
 
 
 AgentProvider = Literal["ollama", "anthropic", "none"]

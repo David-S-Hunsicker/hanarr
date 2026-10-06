@@ -279,6 +279,11 @@ llm:
                               # which can drop the system prompt or input entirely and produce a
                               # degenerate response. Lower this only if the model won't fit in VRAM
                               # at this size; raise it for a very large resume/posting pair.
+  max_concurrent_scoring: 3  # How many postings a search/rescore scores at once. Most GPU-served
+                              # local models genuinely run several requests in parallel -- measured
+                              # ~5x throughput at 2-3 concurrent vs. one at a time on a 16GB GPU, but
+                              # higher than that fell *below* the sequential baseline from VRAM
+                              # pressure. Tune for your hardware; 1 restores fully sequential scoring.
   # api_key: set via ANTHROPIC_API_KEY env var if provider = anthropic
 
 # Specialized agents inherit llm above unless overridden. Task overrides take

@@ -139,6 +139,7 @@ def apply_app_config_form(current: dict[str, Any], form: dict[str, str]) -> dict
     llm["base_url"] = form.get("llm_base_url", llm["base_url"])
     llm["timeout_seconds"] = float(_int_or_none(form.get("llm_timeout_seconds")) or llm["timeout_seconds"])
     llm["num_ctx"] = _int_or_none(form.get("llm_num_ctx")) or llm["num_ctx"]
+    llm["max_concurrent_scoring"] = _int_or_none(form.get("llm_max_concurrent_scoring")) or llm["max_concurrent_scoring"]
 
     # A blank field means "use the shared llm.model above" -- AgentRoute.model
     # stays None (inherited), not overwritten with an empty string.

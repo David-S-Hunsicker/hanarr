@@ -10,8 +10,19 @@ postings unless they'd personally clicked the button a moment earlier.
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
+
+# search_state/rescore_state now get mutated from multiple worker threads at
+# once -- pipeline._score_batch_concurrently fires "llm_paused"/"llm_resumed"
+# from inside worker threads scoring different postings in parallel (see
+# Settings.llm.max_concurrent_scoring). list.append is already safe enough
+# under CPython's GIL for the common case, but the trim-to-MAX_LOG_ENTRIES
+# step right after it is a read-then-reassign that two threads could
+# interleave -- a lock here costs nothing (log_event is never the hot path)
+# and removes any doubt rather than relying on GIL happenstance.
+_log_lock = threading.Lock()
 
 MAX_LOG_ENTRIES = 25
 # Deliberately larger than MAX_LOG_ENTRIES -- the activity log is a
@@ -88,9 +99,10 @@ def reset_for_run(state: dict[str, Any], run_id: int, trigger: str) -> None:
 
 def log_event(state: dict[str, Any], entry: dict[str, Any]) -> None:
     entry["at"] = time.time()
-    state["log"].append(entry)
-    if len(state["log"]) > MAX_LOG_ENTRIES:
-        state["log"] = state["log"][-MAX_LOG_ENTRIES:]
+    with _log_lock:
+        state["log"].append(entry)
+        if len(state["log"]) > MAX_LOG_ENTRIES:
+            state["log"] = state["log"][-MAX_LOG_ENTRIES:]
 
 
 def on_progress(state: dict[str, Any], event: dict[str, Any]) -> None:
