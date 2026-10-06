@@ -93,6 +93,20 @@ def test_release_metadata_allows_unsigned_release():
     assert metadata["signing"]["status"] == "not-configured"
 
 
+def test_release_metadata_version_matches_the_package_version():
+    """publish-windows-release.yml refuses to publish unless the release
+    tag, packaging/release-metadata.json, and pyproject.toml all agree on
+    the version -- but that check only runs in CI, at tag-push time, which
+    is too late to catch a forgotten bump cheaply. release-metadata.json
+    was left at 0.1.28 for eleven releases (through 0.1.39) before this
+    test existed, since nothing local ever exercised it."""
+    import tomllib
+
+    metadata = json.loads((ROOT / "packaging" / "release-metadata.json").read_text(encoding="utf-8"))
+    package_version = tomllib.load((ROOT / "pyproject.toml").open("rb"))["project"]["version"]
+    assert metadata["version"] == package_version
+
+
 def test_windows_workflow_tests_preflights_builds_and_only_uploads_success():
     source = (ROOT / ".github" / "workflows" / "windows-installer.yml").read_text(encoding="utf-8")
     assert "python -m pytest -q" in source
