@@ -11,7 +11,10 @@ class OllamaClient(LLMClient):
     `ollama pull <model>`, and it's ready — no API key, no network calls
     beyond localhost."""
 
-    def __init__(self, model: str, base_url: str = "http://localhost:11434", timeout: float = 120.0):
+    def __init__(
+        self, model: str, base_url: str = "http://localhost:11434", timeout: float = 120.0,
+        num_ctx: int = 8192,
+    ):
         self.model = model
         # "localhost" resolves to both ::1 and 127.0.0.1 on Windows, which
         # tries IPv6 first; Ollama's Windows service only binds IPv4, so
@@ -19,6 +22,11 @@ class OllamaClient(LLMClient):
         # before falling back. See ollama_setup._prefer_ipv4_loopback.
         self.base_url = _prefer_ipv4_loopback(base_url).rstrip("/")
         self.timeout = timeout
+        # Without this, Ollama silently caps the actual context window at
+        # its own default (observed: 4096 tokens) regardless of what the
+        # model's weights support -- see LLMConfig.num_ctx's docstring for
+        # why that's big enough to matter for fit-scoring's long prompts.
+        self.num_ctx = num_ctx
 
     def complete_json(self, system: str, user: str) -> str:
         resp = httpx.post(
@@ -31,6 +39,7 @@ class OllamaClient(LLMClient):
                 ],
                 "format": "json",
                 "stream": False,
+                "options": {"num_ctx": self.num_ctx},
             },
             timeout=self.timeout,
         )

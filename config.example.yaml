@@ -274,6 +274,11 @@ llm:
   model: "qwen2.5:14b"
   base_url: "http://localhost:11434"
   timeout_seconds: 1800       # seconds to wait for LLM response (increase for slower models like deepseek-r1)
+  num_ctx: 8192               # Ollama only -- the model's context window in tokens. Left too low,
+                              # Ollama silently truncates long prompts (a full resume + job posting),
+                              # which can drop the system prompt or input entirely and produce a
+                              # degenerate response. Lower this only if the model won't fit in VRAM
+                              # at this size; raise it for a very large resume/posting pair.
   # api_key: set via ANTHROPIC_API_KEY env var if provider = anthropic
 
 # Specialized agents inherit llm above unless overridden. Task overrides take

@@ -40,6 +40,42 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-06 — v0.1.42
+
+Shipped: the actual root cause of the recurring "LLM returned no rationale alongside a score of
+0.0" failures -- Ollama was silently running the model at a 4096-token context window regardless
+of what the model natively supports, and nothing in Hanarr ever told it otherwise (see below).
+
+### 2026-10-06 — Found why LLM scoring failures were so common: a silently truncated context window
+
+User pushback, verbatim: "why is it so hard to pass data to the LLM and get a response? Aren't we
+just passing text and expecting to get some text back?" -- a fair challenge after months of
+chasing "blank rationale"/"score 0" failures as if they were inherent model unreliability. They
+weren't, or at least not only that.
+
+`OllamaClient.complete_json` never passed an `options.num_ctx` in its request body. Checked the
+live server (`/api/ps`): the already-loaded `qwen2.5:14b` was running with `"context_length": 4096`
+even though `/api/show` reports the model's own weights support 32768 -- Ollama was silently
+applying its own conservative default, with nothing in Hanarr's request ever overriding it.
+Reproduced directly against the live Ollama instance: a synthetic but realistic fit-scoring prompt
+(resume text + job description, each at the code's own 8000-character cap, plus the ~4000-character
+SYSTEM_PROMPT) measured at roughly 3,300-3,700 tokens -- uncomfortably close to that 4096 ceiling.
+A real multi-page resume against a large company's lengthy posting (exactly the shape of postings
+seen failing in production: Pinterest, Reddit) can plausibly exceed it outright. Ollama truncates
+an overlong conversation from its start to fit, which can silently drop the system prompt or the
+earliest part of the input -- the model is then still forced to emit *something* valid under
+`"format": "json"` grammar constraints with critical context missing, which looks exactly like the
+degenerate "score 0, blank rationale" responses the v0.1.36 guard was written to catch. That guard
+was correctly catching the symptom; this is the first fix at the actual mechanism.
+
+Added `LLMConfig.num_ctx` (default 8192, Ollama-only, inherited by `AgentRoute` the same way
+`timeout_seconds` already is) and now pass it as `options: {num_ctx}` on every Ollama request.
+Verified live: with `num_ctx=8192` the model still loads 100% into VRAM (`size_vram == size` in
+`/api/ps`, no CPU offload), and the same realistic worst-case prompt that measured ~3,700 tokens
+now has more than double the headroom before truncation. Exposed as an editable Settings field
+(`llm_num_ctx`) next to the existing timeout field, since this is exactly the kind of thing a user
+running a different model/GPU may need to tune.
+
 ### 2026-10-06 — v0.1.41
 
 Shipped: "Stop search" and "Resume now" now actually reach a scheduled (automatic) search, not

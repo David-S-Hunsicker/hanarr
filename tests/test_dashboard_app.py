@@ -2719,6 +2719,38 @@ def test_saving_an_anthropic_key_stores_it_in_keyring_not_config_yaml(tmp_path, 
     assert "api_key" not in config_yaml
 
 
+def test_app_config_page_saves_a_custom_num_ctx(tmp_path, monkeypatch, fake_keyring):
+    """num_ctx controls Ollama's actual context window -- left at Ollama's
+    own default (observed: 4096 tokens), a long resume/posting prompt can
+    be silently truncated instead of erroring, which was the real cause
+    behind repeated "no rationale" scoring failures. Must be editable and
+    persisted the same way llm_timeout_seconds already is."""
+    monkeypatch.chdir(tmp_path)
+    settings = _make_isolated_settings(tmp_path)
+    client = TestClient(create_app(settings))
+
+    page = client.get("/config?tab=app").text
+    assert 'name="llm_num_ctx"' in page
+
+    response = client.post(
+        "/config/app",
+        data={
+            "resume_path": settings.profile.resume_path,
+            "llm_provider": settings.llm.provider,
+            "llm_model": settings.llm.model,
+            "llm_base_url": settings.llm.base_url,
+            "llm_timeout_seconds": "60",
+            "llm_num_ctx": "16384",
+            "dashboard_host": settings.dashboard.host,
+            "dashboard_port": str(settings.dashboard.port),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert settings.llm.num_ctx == 16384
+
+
 def test_app_config_page_shows_per_task_model_sizing_and_saves_an_override(tmp_path, monkeypatch, fake_keyring):
     monkeypatch.chdir(tmp_path)
     settings = _make_isolated_settings(tmp_path)

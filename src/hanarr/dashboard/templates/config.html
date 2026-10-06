@@ -750,6 +750,19 @@
             <input type="number" id="llm_timeout_seconds" name="llm_timeout_seconds" value="{{ settings.llm.timeout_seconds|int }}">
           </div>
         </div>
+        <div class="row">
+          <div class="field">
+            <label for="llm_num_ctx">Context window (tokens, Ollama only)</label>
+            <input type="number" id="llm_num_ctx" name="llm_num_ctx" value="{{ settings.llm.num_ctx }}" min="1">
+            <div class="hint">
+              Left too low, Ollama silently truncates a long prompt (a full resume plus a job
+              posting) instead of erroring, which can drop the system prompt or the input itself
+              and produce a degenerate response. Raise this if scoring keeps failing with "no
+              rationale" on long postings/resumes; lower it only if the model won't fit in VRAM at
+              this size.
+            </div>
+          </div>
+        </div>
         <div class="field">
           <label for="anthropic_api_key">Anthropic API key</label>
           <input type="password" id="anthropic_api_key" name="anthropic_api_key" autocomplete="off"

@@ -182,6 +182,24 @@ class LLMConfig(BaseModel):
     base_url: str = "http://localhost:11434"
     timeout_seconds: float = 1800.0
     api_key: Optional[str] = None
+    # Ollama-only (ignored by other providers). Left unset, Ollama silently
+    # caps the model's actual context window at its own default (observed:
+    # 4096 tokens, even for a model whose weights support 32768) -- nothing
+    # here ever told it otherwise. A real fit-scoring prompt (resume text +
+    # job description, each capped at 8000 characters, plus the system
+    # prompt) measured at roughly 3300-3700 tokens even in a synthetic test;
+    # a real multi-page resume against a large company's lengthy posting can
+    # exceed 4096 outright. Ollama truncates from the start of the
+    # conversation to fit, which can silently drop the system prompt or the
+    # input itself -- the model then has to produce *something* valid under
+    # forced JSON-mode grammar with missing context, which is indistinguishable
+    # from the "LLM returned no rationale alongside a score of 0.0" failures
+    # this was mistaken for being a pure model-reliability problem. 8192 gives
+    # comfortable headroom over the observed real-world need while staying
+    # well inside qwen2.5:14b's native 32768 limit. Larger values use more
+    # VRAM for the KV cache -- lower this if the model won't fit on a
+    # memory-constrained GPU.
+    num_ctx: int = 8192
 
 
 AgentProvider = Literal["ollama", "anthropic", "none"]
@@ -196,6 +214,7 @@ class AgentRoute(BaseModel):
     base_url: Optional[str] = None
     timeout_seconds: Optional[float] = None
     api_key: Optional[str] = None
+    num_ctx: Optional[int] = None
 
 
 class AgentsConfig(BaseModel):
