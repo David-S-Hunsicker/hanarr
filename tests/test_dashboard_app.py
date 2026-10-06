@@ -19,7 +19,7 @@ from hanarr.db import get_or_create_profile, make_session_factory
 from hanarr.llm.base import LLMClient
 from hanarr.models import ApplicationStatus, JobPosting, Profile, Reminder, ReminderType, ResumeVersion, SeenPosting
 from hanarr.ollama_setup import HardwareInfo, OllamaDiagnostics, ModelRecommendation
-from hanarr.search_state import new_search_state
+from hanarr.search_state import new_rescore_state, new_search_state
 from hanarr.update_state import new_update_state, reset_for_update
 
 
@@ -3100,6 +3100,56 @@ def test_rescore_all_jobs_route_surfaces_llm_unavailable_error(tmp_path, monkeyp
 
     assert final is not None, "rescore did not finish in time"
     assert "Ollama isn't reachable" in final["last_result"]
+
+
+def test_rescore_all_jobs_route_refuses_while_a_search_is_running(tmp_path):
+    """A search and a rescore must never run at the same time -- both hit
+    the LLM concurrently and write JobPosting rows from separate sessions
+    against the same SQLite file."""
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    client = TestClient(create_app(settings, search_state=search_state))
+
+    response = client.post("/api/jobs/rescore")
+
+    assert response.status_code == 409
+    assert response.json()["started"] is False
+    assert "search" in response.json()["error"].lower()
+    assert client.get("/api/jobs/rescore/status").json()["running"] is False
+
+
+def test_search_route_refuses_while_a_rescore_is_running(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    rescore_state = new_rescore_state()
+    rescore_state["running"] = True
+    client = TestClient(create_app(settings, rescore_state=rescore_state))
+
+    response = client.post("/search", follow_redirects=False)
+
+    assert response.status_code == 303  # redirects back like the existing already-running no-op
+    assert client.get("/search/status").json()["search_running"] is False
+
+
+def test_search_status_route_reports_whether_a_rescore_is_running(tmp_path):
+    """Lets the dashboard disable "Run search now" while a rescore is
+    using the LLM, mirroring the existing disable-while-search-running
+    behavior."""
+    settings = _make_isolated_settings(tmp_path)
+    rescore_state = new_rescore_state()
+    rescore_state["running"] = True
+    client = TestClient(create_app(settings, rescore_state=rescore_state))
+
+    assert client.get("/search/status").json()["rescore_running"] is True
+
+
+def test_rescore_status_route_reports_whether_a_search_is_running(tmp_path):
+    settings = _make_isolated_settings(tmp_path)
+    search_state = new_search_state()
+    search_state["search_running"] = True
+    client = TestClient(create_app(settings, search_state=search_state))
+
+    assert client.get("/api/jobs/rescore/status").json()["search_running"] is True
 
 
 def test_jobs_panel_shows_scoring_method_badges(tmp_path):

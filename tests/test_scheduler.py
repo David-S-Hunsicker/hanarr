@@ -9,7 +9,7 @@ import hanarr.self_update as self_update_mod
 from hanarr.config import Settings
 from hanarr.db import make_session_factory, get_or_create_profile
 from hanarr.models import Profile
-from hanarr.search_state import new_search_state
+from hanarr.search_state import new_rescore_state, new_search_state
 from hanarr.update_state import new_update_state, reset_for_update
 
 
@@ -153,6 +153,38 @@ def test_scheduled_search_skips_when_one_is_already_running(tmp_path, monkeypatc
         scheduler.shutdown(wait=False)
 
     assert call_count == 0, "a scheduled search must not start while another search is running"
+
+
+def test_scheduled_search_skips_while_a_rescore_is_running(tmp_path, monkeypatch):
+    """A dashboard-triggered "Rescore all jobs" is also a live, exclusive
+    LLM user -- a scheduled search starting underneath it would hit the
+    LLM concurrently and write JobPosting rows from a separate session
+    against the same SQLite file."""
+    settings = _settings(tmp_path)
+    factory = make_session_factory(settings)
+    with factory() as session:
+        get_or_create_profile(session, settings)
+
+    call_count = 0
+
+    def fake_run_search_cycle(session, settings, profile, llm, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return 0
+
+    monkeypatch.setattr(scheduler_mod, "run_search_cycle", fake_run_search_cycle)
+    monkeypatch.setattr(scheduler_mod, "build_llm_client", lambda cfg: object())
+
+    rescore_state = new_rescore_state()
+    rescore_state["running"] = True  # simulates a dashboard-triggered rescore in progress
+    scheduler = scheduler_mod.start_scheduler(settings, rescore_state=rescore_state)
+    try:
+        search_job = scheduler.get_job("search").func
+        search_job()
+    finally:
+        scheduler.shutdown(wait=False)
+
+    assert call_count == 0, "a scheduled search must not start while a rescore is running"
 
 
 def test_search_job_uses_an_interval_trigger_by_default(tmp_path):

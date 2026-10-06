@@ -242,20 +242,28 @@ def serve(ctx: click.Context, launch_mode: str | None):
             console.print("[green]Backfilled the resume filename shown in Settings from your saved profile.[/green]")
 
     from .scheduler import start_scheduler
-    from .search_state import new_search_state
+    from .search_state import new_rescore_state, new_search_state
     from .update_state import new_update_state
 
     # Shared with the scheduler so a scheduled search or a found/staged
     # update shows up on the dashboard identically to something triggered
-    # manually -- see search_state.py / update_state.py.
+    # manually -- see search_state.py / update_state.py. rescore_state is
+    # shared the same way so a scheduled search and a dashboard-triggered
+    # rescore refuse to run at the same time.
     search_state = new_search_state()
     update_state = new_update_state()
-    scheduler = start_scheduler(settings, search_state=search_state, update_state=update_state)
+    rescore_state = new_rescore_state()
+    scheduler = start_scheduler(
+        settings, search_state=search_state, update_state=update_state, rescore_state=rescore_state,
+    )
 
     from .dashboard.app import create_app
     from .launch import DashboardLaunchConfig, launch_dashboard
 
-    app = create_app(settings, scheduler=scheduler, search_state=search_state, update_state=update_state)
+    app = create_app(
+        settings, scheduler=scheduler, search_state=search_state, update_state=update_state,
+        rescore_state=rescore_state,
+    )
     mode = launch_mode or settings.dashboard.launch_mode
     launch_config = DashboardLaunchConfig(
         mode=mode,

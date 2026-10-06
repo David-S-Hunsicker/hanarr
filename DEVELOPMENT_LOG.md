@@ -40,6 +40,42 @@ Dated entries go here as work ships, newest first. Not a full history — `git l
 for that; this captures the *why* behind notable changes, the way commit messages don't always
 carry forward into a skimmable list.
 
+### 2026-10-06 — v0.1.40
+
+Shipped: a search and a rescore can no longer run at the same time (see below); also fixed the
+v0.1.39 release build, which failed in CI because `packaging/release-metadata.json` was stuck at
+0.1.28.
+
+### 2026-10-06 — A search and a rescore could run concurrently, both hitting the LLM and the DB
+
+User report: the dashboard looked like a search and a "Rescore all jobs" run were both active at
+once. They were -- `trigger_search` only ever checked `state["search_running"]`, and
+`trigger_rescore` only ever checked `rescore_state["running"]`; neither knew the other existed.
+Worse, the scheduler's own automatic background search had no visibility into a
+dashboard-triggered rescore at all, so it could start one mid-rescore with nobody having clicked
+anything. Both paths hit the LLM concurrently (contention) and wrote to the same `JobPosting`
+rows from separate SQLAlchemy sessions against the same SQLite file (a real race, not just a
+cosmetic one).
+
+Fixed by sharing `rescore_state` the same way `search_state`/`update_state` already are, end to
+end: `cli.py` creates one `rescore_state` dict and passes it to both `start_scheduler()` and
+`create_app()`. `/search` now refuses while a rescore is running (and vice versa for
+`/api/jobs/rescore`), the scheduler's `_search_job` now also skips while a rescore is running, and
+`/search/status`/`/api/jobs/rescore/status` each report the other's running flag so the dashboard
+can disable "Run search now" / "Rescore all jobs" the moment either one starts, not just when the
+one you clicked is already running.
+
+### 2026-10-06 — Fixed the v0.1.39 release build: release-metadata.json was stuck at 0.1.28
+
+`publish-windows-release.yml` refuses to publish unless the release tag, `pyproject.toml`'s
+version, and `packaging/release-metadata.json`'s version all agree -- and the last one had been
+stuck at 0.1.28 since that release, silently, through eleven version bumps (through 0.1.39),
+because nothing local ever exercised the file; the mismatch only ever surfaced in CI at
+tag-push time, as a build failure. Bumped it to match, moved the existing `v0.1.39` tag onto the
+fix commit (it had never successfully published), and added a test
+(`test_release_metadata_version_matches_the_package_version`) asserting the two files agree, so a
+future bump can't silently skip this file again.
+
 ### 2026-10-06 — v0.1.39
 
 Shipped: a posting a model can't seem to answer no longer blocks an entire rescore/search run

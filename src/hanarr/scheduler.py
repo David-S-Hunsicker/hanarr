@@ -20,7 +20,7 @@ from .llm import build_llm_client
 from .models import Profile, utc_now
 from .pipeline import run_search_cycle
 from .reminders import deliver_reminders, get_due_reminders
-from .search_state import new_search_state, on_progress as search_on_progress, reset_for_run
+from .search_state import new_rescore_state, new_search_state, on_progress as search_on_progress, reset_for_run
 from .update_service import UpdateCheckError, check_for_update
 from .update_state import clear as clear_update_state, mark_checked, new_update_state, reset_for_update
 
@@ -35,20 +35,25 @@ UPDATE_APPLY_TICK_SECONDS = 15
 
 def start_scheduler(
     settings: Settings, search_state: dict | None = None, update_state: dict | None = None,
+    rescore_state: dict | None = None,
 ) -> BackgroundScheduler:
-    """`search_state`/`update_state` are the same shared dicts passed to
-    create_app() -- pass the same objects to both so a scheduled search or
-    a found/staged update shows up on the dashboard identically to
-    something triggered manually. Before search_state existed, the
-    scheduled search job ran with no progress callback at all, so an
-    automatic background search (real GPU/CPU load, potentially for
-    minutes) happened with nothing on the dashboard to show it was
-    happening. Omit either (e.g. in a test that only exercises part of
-    the scheduler) and a fresh, unshared one is created."""
+    """`search_state`/`update_state`/`rescore_state` are the same shared
+    dicts passed to create_app() -- pass the same objects to both so a
+    scheduled search or a found/staged update shows up on the dashboard
+    identically to something triggered manually, and so a scheduled search
+    refuses to start while a dashboard-triggered rescore is using the LLM
+    (and vice versa -- see create_app's trigger_rescore route). Before
+    search_state existed, the scheduled search job ran with no progress
+    callback at all, so an automatic background search (real GPU/CPU load,
+    potentially for minutes) happened with nothing on the dashboard to show
+    it was happening. Omit any of these (e.g. in a test that only exercises
+    part of the scheduler) and a fresh, unshared one is created."""
     if search_state is None:
         search_state = new_search_state()
     if update_state is None:
         update_state = new_update_state()
+    if rescore_state is None:
+        rescore_state = new_rescore_state()
     session_factory = make_session_factory(settings)
     llm = build_llm_client(settings.llm)
     scheduler = BackgroundScheduler()
@@ -60,6 +65,12 @@ def start_scheduler(
             # searches at once, since they'd share and corrupt the same
             # progress counters, and it doubles the load on the same LLM.
             logger.info("Skipping scheduled search -- a search is already running.")
+            return
+        if rescore_state["running"]:
+            # A dashboard-triggered "Rescore all jobs" is using the LLM --
+            # starting a search too would have both write to JobPosting
+            # rows from separate sessions against the same SQLite file.
+            logger.info("Skipping scheduled search -- a rescore is already running.")
             return
 
         # Search preferences (titles, locations, connectors) are shared

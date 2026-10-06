@@ -243,18 +243,20 @@ def is_recent_posting(posted_at: dt.datetime | None, now: dt.datetime | None = N
 
 def create_app(
     settings: Settings, scheduler: Any = None, search_state: dict | None = None, update_state: dict | None = None,
+    rescore_state: dict | None = None,
 ) -> FastAPI:
     """`scheduler` is the BackgroundScheduler from start_scheduler(), passed
     through so the restart route can shut it down cleanly before
     re-executing the process. Optional — tests and other callers that don't
     run the scheduler can omit it; the restart route just skips that step.
 
-    `search_state`/`update_state` are the same shared dicts passed to
-    start_scheduler(), so a scheduled background search or a found/staged
-    update shows up here identically to something triggered manually --
-    pass the same objects to both, or omit either entirely (tests, or any
-    caller that doesn't run a scheduler) and a fresh, unshared one is
-    created."""
+    `search_state`/`update_state`/`rescore_state` are the same shared dicts
+    passed to start_scheduler(), so a scheduled background search or a
+    found/staged update shows up here identically to something triggered
+    manually, and the scheduler's own search job can see (and refuse to
+    collide with) a rescore started from this app -- pass the same objects
+    to both, or omit any of them entirely (tests, or any caller that
+    doesn't run a scheduler) and a fresh, unshared one is created."""
     app = FastAPI(title="Hanarr")
 
     @app.exception_handler(Exception)
@@ -363,10 +365,12 @@ def create_app(
 
     # "Rescore all jobs" -- re-scores every saved posting against the
     # current resume/preferences/LLM, same background-thread-plus-polling
-    # shape as a search. Its own state/stop-event: independent of a live
-    # search (either could be running without blocking the other, though
-    # in practice a user is unlikely to kick off both at once).
-    rescore_state = new_rescore_state()
+    # shape as a search. Shared with the scheduler (like search_state) so
+    # a scheduled search and a rescore can see each other and refuse to
+    # run at the same time -- they'd otherwise both hit the LLM
+    # concurrently and write to the same JobPosting rows from separate
+    # sessions against the same SQLite file.
+    rescore_state = rescore_state if rescore_state is not None else new_rescore_state()
     rescore_stop_event = threading.Event()
     rescore_resume_now_event = threading.Event()
 
@@ -1905,7 +1909,13 @@ def create_app(
 
     @app.post("/search")
     def trigger_search(request: Request):
-        if not state["search_running"]:
+        # Refuse while rescoring, same as the existing silent no-op when a
+        # search is already running -- this is a plain <form> submit (not
+        # fetch), so a JSON error body here would just replace the page
+        # with raw text instead of showing anything useful. The button is
+        # also disabled client-side while rescore_running; this is the
+        # server-side backstop for a stale page or a second tab.
+        if not state["search_running"] and not rescore_state["running"]:
             next_run_id = state["run_id"] + 1
             profile_id = _active_profile_id(request)
             threading.Thread(
@@ -1988,6 +1998,7 @@ def create_app(
                 "stop_requested": stop_event.is_set(),
                 "llm_paused": state["llm_paused"],
                 "llm_paused_message": state["llm_paused_message"],
+                "rescore_running": rescore_state["running"],
                 **_scheduler_status(_active_profile_id(request)),
             }
         )
@@ -2029,6 +2040,14 @@ def create_app(
 
     @app.post("/api/jobs/rescore")
     def trigger_rescore(request: Request):
+        if state["search_running"]:
+            # Refuse rather than let a search and a rescore both hit the LLM
+            # and write JobPosting rows concurrently from separate sessions
+            # against the same SQLite file.
+            return JSONResponse(
+                {"started": False, "error": "A search is currently running — wait for it to finish before rescoring."},
+                status_code=409,
+            )
         if not rescore_state["running"]:
             rescore_state["running"] = True  # claimed immediately so a double-click can't start two
             next_run_id = rescore_state["run_id"] + 1
@@ -2050,6 +2069,7 @@ def create_app(
             "llm_paused": rescore_state["llm_paused"],
             "llm_paused_message": rescore_state["llm_paused_message"],
             "stop_requested": rescore_stop_event.is_set(),
+            "search_running": state["search_running"],
         })
 
     @app.post("/api/jobs/rescore/stop")

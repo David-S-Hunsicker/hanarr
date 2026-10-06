@@ -1059,6 +1059,18 @@
 
               wasRunning = true;
               seenRunId = data.run_id;
+              // rescoreBtn belongs to a separate script block (its own
+              // IIFE) -- look it up fresh rather than sharing a closure.
+              const rescoreBtnEl = document.getElementById("rescore-btn");
+              if (rescoreBtnEl) rescoreBtnEl.disabled = true;
+            } else if (data.rescore_running) {
+              // A rescore is using the LLM right now -- refuse to start a
+              // second concurrent load on it (and a second writer to the
+              // same JobPosting rows) rather than letting both run at once.
+              searchBtn.disabled = true;
+              searchBtn.textContent = "Rescoring in progress…";
+              stopBtn.hidden = true;
+              if (clearJobsBtn) clearJobsBtn.disabled = true;
             } else {
               searchBtn.disabled = false;
               searchBtn.textContent = "Run search now";
@@ -1162,7 +1174,13 @@
         if (!window.confirm("Re-score every saved job against your current resume and preferences? This may take a while and will overwrite each job's current fit score.")) {
           return;
         }
-        fetch("/api/jobs/rescore", { method: "POST" }).then(poll).catch(() => {});
+        fetch("/api/jobs/rescore", { method: "POST" })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.error) window.alert(data.error);
+            poll();
+          })
+          .catch(() => {});
       });
 
       rescoreStopBtn.addEventListener("click", function () {
@@ -1191,6 +1209,13 @@
               rescoreStopBtn.hidden = false;
               if (rescoreResumeNowBtn) rescoreResumeNowBtn.hidden = !data.llm_paused;
               wasRunning = true;
+            } else if (data.search_running) {
+              // A search is using the LLM right now -- keep this disabled
+              // rather than letting both run at once (see /search's own
+              // "rescore_running" check for the mirror image of this).
+              rescoreBtn.disabled = true;
+              rescoreBtn.textContent = "Search in progress…";
+              rescoreStopBtn.hidden = true;
             } else {
               rescoreBtn.disabled = false;
               rescoreBtn.textContent = "Rescore all jobs";
